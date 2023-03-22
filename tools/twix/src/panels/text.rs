@@ -1,6 +1,7 @@
 use std::{str::FromStr, sync::Arc};
 
 use communication::client::CyclerOutput;
+use regex::Regex;
 use eframe::egui::{Label, ScrollArea, Sense, Widget};
 use log::error;
 use serde_json::{json, Value};
@@ -68,7 +69,10 @@ impl Widget for &mut TextPanel {
                     .map(|buffer| match buffer.get_latest() {
                         Ok(value) => {
                             let content = match serde_json::to_string_pretty(&value) {
-                                Ok(pretty_string) => pretty_string,
+                                Ok(pretty_string) => {
+                                    let regular_expression = Regex::new(r"(\d+\.\d{1,3})\d*,").unwrap();
+                                    regular_expression.replace_all(&pretty_string, "$1").to_string()
+                                },
                                 Err(error) => error.to_string(),
                             };
                             let label = ui.add(Label::new(&content).sense(Sense::click()));

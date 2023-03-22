@@ -4274,6 +4274,7 @@ dependencies = [
  "itertools",
  "log",
  "nalgebra",
+ "regex",
  "serde",
  "serde_bytes",
  "serde_json",
