@@ -399,7 +399,7 @@ impl SensorInterface for HardwareInterface {
             force_sensitive_resistors,
             touch_sensors,
             temperature_sensors,
-            current,
+            currents: current,
         })
     }
 }
