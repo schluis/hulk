@@ -5,6 +5,7 @@ use nalgebra::{Matrix3, Point2, Point3, Vector2, Vector3, Vector4};
 use serde::{Deserialize, Serialize};
 use serialize_hierarchy::SerializeHierarchy;
 
+use crate::joints::Joints;
 use crate::{
     initial_pose::InitialPose,
     joints::{ArmJoints, HeadJoints, LegJoints},
@@ -97,6 +98,14 @@ pub struct LookActionParameters {
     pub distance_threshold: f32,
     pub look_forward_position: Point2<f32>,
     pub position_of_interest_switch_interval: Duration,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, SerializeHierarchy)]
+pub struct MotorCommandOptimizerParameters {
+    pub offset_reset_threshold: f32,
+    pub optimization_speed: f32,
+    pub optimization_current_threshold: f32,
+    pub optimization_direction: Joints<f32>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, SerializeHierarchy)]
