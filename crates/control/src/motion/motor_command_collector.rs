@@ -33,7 +33,6 @@ pub struct CycleContext {
     joint_calibration_offsets: Parameter<Joints<f32>, "joint_calibration_offsets">,
     penalized_pose: Parameter<Joints<f32>, "penalized_pose">,
 
-    motor_commands: AdditionalOutput<JointsCommand<f32>, "motor_commands">,
     motor_position_difference: AdditionalOutput<Joints<f32>, "motor_positions_difference">,
 }
 
@@ -105,7 +104,6 @@ impl MotorCommandCollector {
             stiffnesses,
         };
 
-        context.motor_commands.fill_if_subscribed(|| motor_commands);
         context
             .motor_position_difference
             .fill_if_subscribed(|| motor_commands.positions - current_positions);
