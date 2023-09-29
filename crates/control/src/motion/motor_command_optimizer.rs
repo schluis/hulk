@@ -3,7 +3,7 @@ use context_attribute::context;
 use framework::{AdditionalOutput, MainOutput};
 use serde::{Deserialize, Serialize};
 use types::{
-    joints::{ArmJoints, Joints, JointsCommand},
+    joints::{Joints, JointsCommand},
     parameters::MotorCommandOptimizerParameters,
     sensor_data::SensorData,
 };
