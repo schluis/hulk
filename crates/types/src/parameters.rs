@@ -8,7 +8,7 @@ use serialize_hierarchy::SerializeHierarchy;
 use crate::joints::Joints;
 use crate::{
     initial_pose::InitialPose,
-    joints::{ArmJoints, HeadJoints, LegJoints},
+    joints::{arm::ArmJoints, head::HeadJoints, leg::LegJoints},
     kick_step::KickStep,
     motion_command::{KickVariant, MotionCommand},
     players::Players,
@@ -107,7 +107,7 @@ pub struct MotorCommandOptimizerParameters {
     pub offset_reset_offset: f32,
     pub optimization_speed: f32,
     pub optimization_current_threshold: f32,
-    pub optimization_sign: Joints<i32>,
+    pub optimization_sign: Joints<f32>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, SerializeHierarchy)]
