@@ -5,7 +5,6 @@ use nalgebra::{Matrix3, Point2, Point3, Vector2, Vector3, Vector4};
 use serde::{Deserialize, Serialize};
 use serialize_hierarchy::SerializeHierarchy;
 
-use crate::joints::Joints;
 use crate::{
     initial_pose::InitialPose,
     joints::{arm::ArmJoints, head::HeadJoints, leg::LegJoints},
