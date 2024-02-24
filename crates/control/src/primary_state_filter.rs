@@ -18,7 +18,9 @@ pub struct PrimaryStateFilter {
 }
 
 #[context]
-pub struct CreationContext {}
+pub struct CreationContext {
+    initial_primary_state: Parameter<PrimaryState, "initial_primary_state">,
+}
 
 #[context]
 pub struct CycleContext {
@@ -38,9 +40,9 @@ pub struct MainOutputs {
 }
 
 impl PrimaryStateFilter {
-    pub fn new(_context: CreationContext) -> Result<Self> {
+    pub fn new(context: CreationContext) -> Result<Self> {
         Ok(Self {
-            last_primary_state: PrimaryState::Unstiff,
+            last_primary_state: *context.initial_primary_state,
         })
     }
 

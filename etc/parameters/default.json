@@ -1003,6 +1003,7 @@
     "goal_depth": 0.5
   },
   "player_number": "Seven",
+  "initial_primary_state": "Unstiff",
   "spl_network": {
     "game_controller_return_message_interval": {
       "nanos": 0,
