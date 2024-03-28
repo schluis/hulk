@@ -1,4 +1,7 @@
-use std::{ops::Range, time::Duration};
+use std::{
+    ops::Range,
+    time::{Duration, SystemTime},
+};
 
 use color_eyre::Result;
 use context_attribute::context;
@@ -6,17 +9,18 @@ use framework::MainOutput;
 use serde::{Deserialize, Serialize};
 use types::{
     cycle_time::CycleTime,
-    fall_state::{FallDirection, FallState, Side},
+    fall_state::{Direction, Side},
     joints::{
         arm::ArmJoints, body::BodyJoints, head::HeadJoints, leg::LegJoints, mirror::Mirror, Joints,
     },
-    motion_selection::{MotionSafeExits, MotionType},
+    motion_command::MotionCommand,
+    motion_selection::{MotionSafeExits, MotionVariant},
     motor_commands::MotorCommands,
     sensor_data::SensorData,
 };
 
-#[derive(Clone, Copy, Debug)]
-enum FallPhase {
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Phase {
     Early,
     Late,
 }
@@ -30,7 +34,7 @@ pub struct CreationContext {}
 #[context]
 pub struct CycleContext {
     cycle_time: Input<CycleTime, "cycle_time">,
-    fall_state: Input<FallState, "fall_state">,
+    motion_command: Input<MotionCommand, "motion_command">,
     sensor_data: Input<SensorData, "sensor_data">,
 
     front_early: Parameter<Joints<f32>, "fall_protection.front_early">,
@@ -43,8 +47,6 @@ pub struct CycleContext {
     head_stiffness: Parameter<Range<f32>, "fall_protection.head_stiffness">,
     arm_stiffness: Parameter<Range<f32>, "fall_protection.arm_stiffness">,
     leg_stiffness: Parameter<Range<f32>, "fall_protection.leg_stiffness">,
-
-    motion_safe_exits: CyclerState<MotionSafeExits, "motion_safe_exits">,
 }
 
 #[context]
@@ -59,55 +61,45 @@ impl FallProtector {
     }
 
     pub fn cycle(&mut self, context: CycleContext) -> Result<MainOutputs> {
-        let measured_positions = context.sensor_data.positions;
-
-        let (start_time, falling_direction) = match *context.fall_state {
-            FallState::Upright | FallState::Sitting { .. } | FallState::Fallen { .. } => {
-                context.motion_safe_exits[MotionType::FallProtection] = true;
-                return Ok(MainOutputs::default());
-            }
-            FallState::Falling {
-                start_time,
-                direction,
-            } => (start_time, direction),
+        let MotionCommand::FallProtection {
+            start_time,
+            direction,
+        } = context.motion_command
+        else {
+            return Ok(MainOutputs::default());
         };
-        context.motion_safe_exits[MotionType::FallProtection] = false;
 
-        let phase = if context
+        let duration_in_fall = context
             .cycle_time
             .start_time
-            .duration_since(start_time)
-            .unwrap()
-            < *context.early_protection_timeout
-        {
-            FallPhase::Early
+            .duration_since(*start_time)
+            .unwrap();
+        let phase = if duration_in_fall < *context.early_protection_timeout {
+            Phase::Early
         } else {
-            FallPhase::Late
+            Phase::Late
         };
 
-        let protection_angles = match (falling_direction, phase) {
-            (FallDirection::Forward { side: Side::Left }, FallPhase::Early) => {
+        let measured_positions = context.sensor_data.positions;
+        let protection_angles = match (direction, phase) {
+            (Direction::Forward { side: Side::Left }, Phase::Early) => {
                 prevent_stuck_arms(context.front_early.mirrored(), measured_positions)
             }
-            (FallDirection::Forward { side: Side::Left }, FallPhase::Late) => {
+            (Direction::Forward { side: Side::Left }, Phase::Late) => {
                 prevent_stuck_arms(context.front_late.mirrored(), measured_positions)
             }
-            (FallDirection::Forward { side: Side::Right }, FallPhase::Early) => {
+            (Direction::Forward { side: Side::Right }, Phase::Early) => {
                 prevent_stuck_arms(*context.front_early, measured_positions)
             }
-            (FallDirection::Forward { side: Side::Right }, FallPhase::Late) => {
+            (Direction::Forward { side: Side::Right }, Phase::Late) => {
                 prevent_stuck_arms(*context.front_late, measured_positions)
             }
-            (FallDirection::Backward { side: Side::Left }, FallPhase::Early) => {
+            (Direction::Backward { side: Side::Left }, Phase::Early) => {
                 context.back_early.mirrored()
             }
-            (FallDirection::Backward { side: Side::Left }, FallPhase::Late) => {
-                context.back_late.mirrored()
-            }
-            (FallDirection::Backward { side: Side::Right }, FallPhase::Early) => {
-                *context.back_early
-            }
-            (FallDirection::Backward { side: Side::Right }, FallPhase::Late) => *context.back_late,
+            (Direction::Backward { side: Side::Left }, Phase::Late) => context.back_late.mirrored(),
+            (Direction::Backward { side: Side::Right }, Phase::Early) => *context.back_early,
+            (Direction::Backward { side: Side::Right }, Phase::Late) => *context.back_late,
         };
 
         let is_head_protected = (measured_positions.head.pitch - protection_angles.head.pitch)
@@ -123,13 +115,13 @@ impl FallProtector {
         };
 
         let body_stiffnesses = match phase {
-            FallPhase::Early => BodyJoints {
+            Phase::Early => BodyJoints {
                 left_arm: ArmJoints::fill(context.arm_stiffness.start),
                 right_arm: ArmJoints::fill(context.arm_stiffness.start),
                 left_leg: LegJoints::fill(context.leg_stiffness.start),
                 right_leg: LegJoints::fill(context.leg_stiffness.start),
             },
-            FallPhase::Late => BodyJoints {
+            Phase::Late => BodyJoints {
                 left_arm: ArmJoints::fill(context.arm_stiffness.end),
                 right_arm: ArmJoints::fill(context.arm_stiffness.end),
                 left_leg: LegJoints::fill(context.leg_stiffness.end),

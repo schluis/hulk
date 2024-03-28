@@ -1,16 +1,17 @@
-use std::time::Duration;
+use std::{ops::Range, time::Duration};
 
 use color_eyre::Result;
 use coordinate_systems::Robot;
-use linear_algebra::{vector, Vector2, Vector3};
+use linear_algebra::{vector, Isometry3, Vector2, Vector3};
 use serde::{Deserialize, Serialize};
 
 use context_attribute::context;
 use filtering::low_pass_filter::LowPassFilter;
-use framework::{AdditionalOutput, MainOutput};
+use framework::MainOutput;
 use types::{
     cycle_time::CycleTime,
-    fall_state::{Facing, FallDirection, FallState, Side},
+    fall_state::{Direction, FallState, Side, Variant},
+    joints::body::{BodyJoints, LowerBodyJoints},
     sensor_data::SensorData,
 };
 
@@ -33,21 +34,21 @@ pub struct CreationContext {
 
 #[context]
 pub struct CycleContext {
-    fallen_up_gravitational_difference: AdditionalOutput<f32, "fallen_up_gravitational_difference">,
-    filtered_angular_velocity: AdditionalOutput<Vector3<Robot>, "filtered_angular_velocity">,
-    filtered_linear_acceleration: AdditionalOutput<Vector3<Robot>, "filtered_linear_acceleration">,
-    filtered_roll_pitch: AdditionalOutput<Vector2<Robot>, "filtered_roll_pitch">,
-    fallen_down_gravitational_difference:
-        AdditionalOutput<f32, "fallen_down_gravitational_difference">,
-
-    gravitational_acceleration_threshold:
-        Parameter<f32, "fall_state_estimation.gravitational_acceleration_threshold">,
-    falling_angle_threshold_forward:
-        Parameter<Vector2<Robot>, "fall_state_estimation.falling_angle_threshold_forward">,
-    falling_timeout: Parameter<Duration, "fall_state_estimation.falling_timeout">,
+    upright_range: Parameter<Range<f32>, "fall_state_estimation.upright_range">,
+    moving_velocity_threshold: Parameter<f32, "fall_state_estimation.moving_velocity_threshold">,
+    min_falling_duration: Parameter<Duration, "fall_state_estimation.min_falling_duration">,
+    fallen_acceleration_threshold:
+        Parameter<f32, "fall_state_estimation.fallen_acceleration_threshold">,
+    fallen_sitting_rotation: Parameter<f32, "fall_state_estimation.fallen_sitting_rotation">,
+    fallen_squatting_rotation: Parameter<f32, "fall_state_estimation.fallen_squatting_rotation">,
+    fallen_sitting_positions:
+        Parameter<BodyJoints<f32>, "fall_state_estimation.fallen_sitting_joints">,
+    joints_difference_threshold:
+        Parameter<f32, "fall_state_estimation.joints_difference_threshold">,
 
     sensor_data: Input<SensorData, "sensor_data">,
     cycle_time: Input<CycleTime, "cycle_time">,
+    has_ground_contact: Input<bool, "has_ground_contact">,
 }
 
 #[context]
@@ -75,7 +76,7 @@ impl FallStateEstimation {
         })
     }
 
-    pub fn cycle(&mut self, mut context: CycleContext) -> Result<MainOutputs> {
+    pub fn cycle(&mut self, context: CycleContext) -> Result<MainOutputs> {
         let inertial_measurement_unit = context.sensor_data.inertial_measurement_unit;
 
         self.roll_pitch_filter
@@ -85,131 +86,53 @@ impl FallStateEstimation {
         self.linear_acceleration_filter
             .update(inertial_measurement_unit.linear_acceleration);
 
-        context
-            .filtered_roll_pitch
-            .fill_if_subscribed(|| self.roll_pitch_filter.state());
-        context
-            .filtered_linear_acceleration
-            .fill_if_subscribed(|| self.linear_acceleration_filter.state());
-        context
-            .filtered_angular_velocity
-            .fill_if_subscribed(|| self.angular_velocity_filter.state());
-
-        const GRAVITATIONAL_CONSTANT: f32 = 9.81;
-
-        let gravitational_force_down = vector![-GRAVITATIONAL_CONSTANT, 0.0, 0.0];
-        let gravitational_force_up = vector![GRAVITATIONAL_CONSTANT, 0.0, 0.0];
-
-        let fallen_down_gravitational_difference =
-            (self.linear_acceleration_filter.state() - gravitational_force_down).norm();
-        let fallen_up_gravitational_difference =
-            (self.linear_acceleration_filter.state() - gravitational_force_up).norm();
-        let fallen_direction = if fallen_down_gravitational_difference
-            < *context.gravitational_acceleration_threshold
-        {
-            Some(Facing::Down)
-        } else if fallen_up_gravitational_difference < *context.gravitational_acceleration_threshold
-        {
-            Some(Facing::Up)
-        } else {
-            None
-        };
-        context
-            .fallen_down_gravitational_difference
-            .fill_if_subscribed(|| fallen_down_gravitational_difference);
-        context
-            .fallen_up_gravitational_difference
-            .fill_if_subscribed(|| fallen_up_gravitational_difference);
-
         let estimated_roll = self.roll_pitch_filter.state().x();
         let estimated_pitch = self.roll_pitch_filter.state().y();
+        let estimated_angular_velocity = self.angular_velocity_filter.state();
+        let estimated_acceleration = self.linear_acceleration_filter.state();
+        let is_upright = context.upright_range.contains(&estimated_pitch);
+        let is_moving = estimated_angular_velocity.norm() > *context.moving_velocity_threshold;
 
-        let falling_direction = {
-            if !(context.falling_angle_threshold_forward.x()
-                ..context.falling_angle_threshold_forward.y())
-                .contains(&estimated_pitch)
-            {
-                let side = {
-                    if estimated_roll > 0.0 {
-                        Side::Right
-                    } else {
-                        Side::Left
-                    }
-                };
-                if estimated_pitch > 0.0 {
-                    Some(FallDirection::Forward { side })
-                } else {
-                    Some(FallDirection::Backward { side })
-                }
-            } else {
-                None
-            }
-        };
+        let falling_direction = is_falling(is_upright, is_moving, estimated_roll, estimated_pitch);
 
-        let fall_state = match (self.last_fall_state, falling_direction, fallen_direction) {
-            (FallState::Upright, None, None) => FallState::Upright,
-            (FallState::Upright, None, Some(facing)) => FallState::Fallen { facing },
-            (FallState::Upright, Some(direction), None) => FallState::Falling {
+        let fallen_variant = estimate_fallen_variant(
+            &context,
+            estimated_acceleration,
+            *context.has_ground_contact,
+        );
+
+        let fall_state = match (self.last_fall_state, falling_direction, fallen_variant) {
+            // stay upright
+            (FallState::Upright, None, _) => FallState::Upright,
+            // start falling if a fall direction is detected
+            (FallState::Upright, Some(direction), _) => FallState::Falling {
                 direction,
                 start_time: context.cycle_time.start_time,
             },
-            (FallState::Upright, Some(_), Some(facing)) => FallState::Fallen { facing },
-            (
-                current @ FallState::Falling { start_time, .. }
-                | current @ FallState::Sitting { start_time },
-                None,
-                None,
-            ) => {
-                if context
+            // keep falling
+            (current @ FallState::Falling { .. }, Some(..), None) => current,
+            (current @ FallState::Falling { start_time, .. }, _, None) => {
+                let since_fall = context
                     .cycle_time
                     .start_time
                     .duration_since(start_time)
-                    .unwrap()
-                    > *context.falling_timeout
-                // now also timeout for sitting!
-                {
+                    .unwrap();
+                if since_fall >= *context.min_falling_duration {
                     FallState::Upright
                 } else {
                     current
                 }
             }
-            (
-                current @ FallState::Falling { start_time, .. }
-                | current @ FallState::Sitting { start_time },
-                _,
-                Some(facing),
-            ) => {
-                if context
-                    .cycle_time
-                    .start_time
-                    .duration_since(start_time)
-                    .unwrap()
-                    > *context.falling_timeout
-                {
-                    FallState::Fallen { facing }
-                } else {
-                    current
-                }
+            // fallen if a fallen variant is detected
+            (FallState::Falling { .. } | FallState::Fallen { .. }, _, Some(variant)) => {
+                FallState::Fallen { variant }
             }
-            (current @ FallState::Falling { start_time, .. }, Some(_), None) => {
-                if context
-                    .cycle_time
-                    .start_time
-                    .duration_since(start_time)
-                    .unwrap()
-                    > *context.falling_timeout
-                {
-                    FallState::Sitting {
-                        start_time: context.cycle_time.start_time,
-                    }
-                } else {
-                    current
-                }
+            // upright again if no fall direction is detected
+            (FallState::Fallen { .. }, _, None) if is_upright && *context.has_ground_contact => {
+                FallState::Upright
             }
-            (FallState::Fallen { .. }, None, None) => FallState::Upright,
-            (FallState::Fallen { .. }, _, Some(facing)) => FallState::Fallen { facing },
-            (FallState::Fallen { facing }, Some(_), None) => FallState::Fallen { facing },
-            (current @ FallState::Sitting { .. }, Some(_), None) => current,
+            // stay fallen if not upright
+            (current @ FallState::Fallen { .. }, _, None) => current,
         };
 
         self.last_fall_state = fall_state;
@@ -217,5 +140,66 @@ impl FallStateEstimation {
         Ok(MainOutputs {
             fall_state: fall_state.into(),
         })
+    }
+}
+
+fn is_falling(
+    is_upright: bool,
+    is_moving: bool,
+    estimated_roll: f32,
+    estimated_pitch: f32,
+) -> Option<Direction> {
+    if is_upright || !is_moving {
+        return None;
+    }
+    let side = {
+        if estimated_roll > 0.0 {
+            Side::Right
+        } else {
+            Side::Left
+        }
+    };
+    if estimated_pitch > 0.0 {
+        Some(Direction::Forward { side })
+    } else {
+        Some(Direction::Backward { side })
+    }
+}
+
+fn estimate_fallen_variant(
+    context: &CycleContext,
+    estimated_acceleration: Vector3<Robot>,
+    has_ground_contact: bool,
+) -> Option<Variant> {
+    if has_ground_contact {
+        return None;
+    }
+
+    const GRAVITATIONAL_CONSTANT: f32 = 9.81;
+    let acceleration_front = vector![-GRAVITATIONAL_CONSTANT, 0.0, 0.0];
+    let acceleration_back = vector![GRAVITATIONAL_CONSTANT, 0.0, 0.0];
+    let acceleration_sitting =
+        Isometry3::<Robot, _>::rotation(Vector3::y_axis() * *context.fallen_sitting_rotation)
+            * vector![0.0, 0.0, GRAVITATIONAL_CONSTANT];
+
+    let acceleration_difference_front = (estimated_acceleration - acceleration_front).norm();
+    let acceleration_difference_back = (estimated_acceleration - acceleration_back).norm();
+    let acceleration_difference_sitting = (estimated_acceleration - acceleration_sitting).norm();
+
+    let measured_positions = context.sensor_data.positions.body();
+    let is_position_sitting = (measured_positions - *context.fallen_sitting_positions)
+        .into_iter()
+        .all(|joint| joint.abs() < *context.joints_difference_threshold);
+
+    if acceleration_difference_front < *context.fallen_acceleration_threshold {
+        Some(Variant::Front)
+    } else if acceleration_difference_back < *context.fallen_acceleration_threshold {
+        Some(Variant::Back)
+    } else if acceleration_difference_sitting < *context.fallen_acceleration_threshold
+        && is_position_sitting
+    {
+        Some(Variant::Sitting)
+    } else {
+        Some(Variant::Unknown)
     }
 }
