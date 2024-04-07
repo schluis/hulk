@@ -280,7 +280,7 @@ impl Behavior {
                         context
                             .parameters
                             .role_positions
-                            .left_midfielder_maximum_x_in_ready_and_when_ball_is_not_free,
+                            .left_midfielder_maximum_x_in_ready_or_ball_is_not_free,
                         context.parameters.role_positions.left_midfielder_minimum_x,
                         &walk_and_stand,
                         &look_action,
@@ -297,7 +297,7 @@ impl Behavior {
                         context
                             .parameters
                             .role_positions
-                            .right_midfielder_maximum_x_in_ready_and_when_ball_is_not_free,
+                            .right_midfielder_maximum_x_in_ready_or_ball_is_not_free,
                         context.parameters.role_positions.right_midfielder_minimum_x,
                         &walk_and_stand,
                         &look_action,
@@ -314,7 +314,7 @@ impl Behavior {
                         context
                             .parameters
                             .role_positions
-                            .striker_supporter_maximum_x_in_ready_and_when_ball_is_not_free,
+                            .striker_supporter_maximum_x_in_ready_or_ball_is_not_free,
                         context
                             .parameters
                             .role_positions

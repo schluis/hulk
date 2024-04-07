@@ -21,7 +21,7 @@ pub fn execute(
     field_dimensions: &FieldDimensions,
     field_side: Option<Side>,
     distance_to_ball: f32,
-    maximum_x_in_ready_and_when_ball_is_not_free: f32,
+    maximum_x_in_ready_or_ball_is_not_free: f32,
     minimum_x: f32,
     walk_and_stand: &WalkAndStand,
     look_action: &LookAction,
@@ -32,7 +32,7 @@ pub fn execute(
         field_dimensions,
         field_side,
         distance_to_ball,
-        maximum_x_in_ready_and_when_ball_is_not_free,
+        maximum_x_in_ready_or_ball_is_not_free,
         minimum_x,
     )?;
     walk_and_stand.execute(pose, look_action.execute(), path_obstacles_output)
@@ -43,7 +43,7 @@ fn support_pose(
     field_dimensions: &FieldDimensions,
     field_side: Option<Side>,
     distance_to_ball: f32,
-    maximum_x_in_ready_and_when_ball_is_not_free: f32,
+    maximum_x_in_ready_or_ball_is_not_free: f32,
     minimum_x: f32,
 ) -> Option<Pose2<Ground>> {
     let ground_to_field = world_state.robot.ground_to_field?;
@@ -61,14 +61,15 @@ fn support_pose(
     let filtered_game_state = world_state
         .filtered_game_controller_state
         .map(|filtered_game_controller_state| filtered_game_controller_state.game_state);
+
     let clamped_x = match filtered_game_state {
         Some(FilteredGameState::Ready { .. })
         | Some(FilteredGameState::Playing {
             ball_is_free: false,
             ..
         }) => supporting_position.x().clamp(
-            minimum_x.min(maximum_x_in_ready_and_when_ball_is_not_free),
-            minimum_x.max(maximum_x_in_ready_and_when_ball_is_not_free),
+            minimum_x.min(maximum_x_in_ready_or_ball_is_not_free),
+            minimum_x.max(maximum_x_in_ready_or_ball_is_not_free),
         ),
         _ => supporting_position
             .x()
@@ -78,6 +79,7 @@ fn support_pose(
         .y()
         .clamp(-field_dimensions.width / 2.0, field_dimensions.width / 2.0);
     let clamped_position = point![clamped_x, clamped_y];
+
     let support_pose = Pose2::new(
         clamped_position.coords(),
         clamped_position.look_at(&ball.ball_in_field).angle(),
