@@ -72,7 +72,7 @@ fn support_pose(
             kick_off: true,
         }) => supporting_position.x().clamp(
             -field_dimensions.length / 2.0,
-            field_dimensions.center_circle_diameter / SQRT_2, // x fraction of center_circle_diameter at FRAC_PI_4
+            -field_dimensions.center_circle_diameter / SQRT_2, // x fraction of center_circle_diameter at FRAC_PI_4
         ),
         Some(FilteredGameState::Playing {
             ball_is_free: false,
