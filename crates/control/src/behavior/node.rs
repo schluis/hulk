@@ -218,6 +218,7 @@ impl Behavior {
             .dribble_path_obstacles_output
             .fill_if_subscribed(|| dribble_path_obstacles.clone().unwrap_or_default());
 
+        let parameters = context.parameters;
         let (action, motion_command) = actions
             .iter()
             .find_map(|action| {
@@ -273,15 +274,16 @@ impl Behavior {
                         world_state,
                         context.field_dimensions,
                         Some(Side::Left),
-                        context
-                            .parameters
+                        parameters.role_positions.left_midfielder_distance_to_ball,
+                        parameters
                             .role_positions
-                            .left_midfielder_distance_to_ball,
-                        context
-                            .parameters
+                            .left_midfielder_minimum_x_ball_is_not_free_no_kickoff,
+                        parameters
                             .role_positions
-                            .left_midfielder_maximum_x_in_ready_or_ball_is_not_free,
-                        context.parameters.role_positions.left_midfielder_minimum_x,
+                            .left_midfielder_maximum_x_ball_is_not_free_no_kickoff,
+                        parameters
+                            .role_positions
+                            .left_midfielder_minimum_x_ball_is_free,
                         &walk_and_stand,
                         &look_action,
                         &mut context.path_obstacles_output,
@@ -290,15 +292,16 @@ impl Behavior {
                         world_state,
                         context.field_dimensions,
                         Some(Side::Right),
-                        context
-                            .parameters
+                        parameters.role_positions.right_midfielder_distance_to_ball,
+                        parameters
                             .role_positions
-                            .right_midfielder_distance_to_ball,
-                        context
-                            .parameters
+                            .right_midfielder_minimum_x_ball_is_not_free_no_kickoff,
+                        parameters
                             .role_positions
-                            .right_midfielder_maximum_x_in_ready_or_ball_is_not_free,
-                        context.parameters.role_positions.right_midfielder_minimum_x,
+                            .right_midfielder_maximum_x_ball_is_not_free_no_kickoff,
+                        parameters
+                            .role_positions
+                            .right_midfielder_minimum_x_ball_is_free,
                         &walk_and_stand,
                         &look_action,
                         &mut context.path_obstacles_output,
@@ -307,18 +310,16 @@ impl Behavior {
                         world_state,
                         context.field_dimensions,
                         None,
-                        context
-                            .parameters
+                        parameters.role_positions.striker_supporter_distance_to_ball,
+                        parameters
                             .role_positions
-                            .striker_supporter_distance_to_ball,
-                        context
-                            .parameters
+                            .striker_supporter_minimum_x_ball_is_not_free_no_kickoff,
+                        parameters
                             .role_positions
-                            .striker_supporter_maximum_x_in_ready_or_ball_is_not_free,
-                        context
-                            .parameters
+                            .striker_supporter_maximum_x_ball_is_not_free_no_kickoff,
+                        parameters
                             .role_positions
-                            .striker_supporter_minimum_x,
+                            .striker_supporter_minimum_x_ball_is_free,
                         &walk_and_stand,
                         &look_action,
                         &mut context.path_obstacles_output,

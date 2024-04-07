@@ -1,4 +1,4 @@
-use std::f32::consts::FRAC_PI_4;
+use std::f32::consts::{FRAC_PI_4, SQRT_2};
 
 use coordinate_systems::{Field, Ground};
 use framework::AdditionalOutput;
@@ -21,8 +21,9 @@ pub fn execute(
     field_dimensions: &FieldDimensions,
     field_side: Option<Side>,
     distance_to_ball: f32,
-    maximum_x_in_ready_or_ball_is_not_free: f32,
-    minimum_x: f32,
+    minimum_x_ball_is_not_free_no_kickoff: f32,
+    maximum_x_ball_is_not_free_no_kickoff: f32,
+    minimum_x_ball_is_free: f32,
     walk_and_stand: &WalkAndStand,
     look_action: &LookAction,
     path_obstacles_output: &mut AdditionalOutput<Vec<PathObstacle>>,
@@ -32,8 +33,9 @@ pub fn execute(
         field_dimensions,
         field_side,
         distance_to_ball,
-        maximum_x_in_ready_or_ball_is_not_free,
-        minimum_x,
+        minimum_x_ball_is_not_free_no_kickoff,
+        maximum_x_ball_is_not_free_no_kickoff,
+        minimum_x_ball_is_free,
     )?;
     walk_and_stand.execute(pose, look_action.execute(), path_obstacles_output)
 }
@@ -43,8 +45,9 @@ fn support_pose(
     field_dimensions: &FieldDimensions,
     field_side: Option<Side>,
     distance_to_ball: f32,
-    maximum_x_in_ready_or_ball_is_not_free: f32,
-    minimum_x: f32,
+    minimum_x_ball_is_not_free_no_kickoff: f32,
+    maximum_x_ball_is_not_free_no_kickoff: f32,
+    minimum_x_ball_is_free: f32,
 ) -> Option<Pose2<Ground>> {
     let ground_to_field = world_state.robot.ground_to_field?;
     let ball = world_state
@@ -66,14 +69,21 @@ fn support_pose(
         Some(FilteredGameState::Ready { .. })
         | Some(FilteredGameState::Playing {
             ball_is_free: false,
-            ..
+            kick_off: true,
         }) => supporting_position.x().clamp(
-            minimum_x.min(maximum_x_in_ready_or_ball_is_not_free),
-            minimum_x.max(maximum_x_in_ready_or_ball_is_not_free),
+            -field_dimensions.length / 2.0,
+            field_dimensions.center_circle_diameter / SQRT_2, // x fraction of center_circle_diameter at FRAC_PI_4
+        ),
+        Some(FilteredGameState::Playing {
+            ball_is_free: false,
+            kick_off: false,
+        }) => supporting_position.x().clamp(
+            minimum_x_ball_is_not_free_no_kickoff,
+            maximum_x_ball_is_not_free_no_kickoff,
         ),
         _ => supporting_position
             .x()
-            .clamp(minimum_x, field_dimensions.length / 2.0),
+            .clamp(minimum_x_ball_is_free, field_dimensions.length / 2.0),
     };
     let clamped_y = supporting_position
         .y()
