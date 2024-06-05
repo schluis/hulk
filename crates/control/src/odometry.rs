@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use color_eyre::Result;
 use context_attribute::context;
 use coordinate_systems::{Field, Robot};
@@ -27,6 +29,7 @@ pub struct CycleContext {
     robot_kinematics: Input<RobotKinematics, "robot_kinematics">,
     robot_orientation: Input<Orientation2<Field>, "robot_orientation">,
     support_foot: Input<SupportFoot, "support_foot">,
+    last_cycle_duration: Input<Duration, "cycle_time.last_cycle_duration">,
 
     odometry_scale_factor: Parameter<Vector2<Robot>, "odometry.odometry_scale_factor">,
 }
@@ -35,6 +38,7 @@ pub struct CycleContext {
 #[derive(Default)]
 pub struct MainOutputs {
     pub current_odometry_to_last_odometry: MainOutput<Option<Isometry2<f32>>>,
+    pub last_step_velocity: MainOutput<Option<f32>>,
 }
 
 impl Odometry {
@@ -76,6 +80,10 @@ impl Odometry {
             Translation2::from(corrected_offset_to_last_position.inner),
             orientation_offset.inner,
         );
+
+        let last_step_velocity =
+            corrected_offset_to_last_position.norm() / context.last_cycle_duration.as_secs_f32();
+
         self.accumulated_odometry = current_odometry_to_last_odometry * self.accumulated_odometry;
         context
             .accumulated_odometry
@@ -83,6 +91,7 @@ impl Odometry {
 
         Ok(MainOutputs {
             current_odometry_to_last_odometry: Some(current_odometry_to_last_odometry).into(),
+            last_step_velocity: Some(last_step_velocity).into(),
         })
     }
 }

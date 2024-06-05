@@ -446,6 +446,10 @@
   "zero_moment_point": {
     "linear_acceleration_low_pass_factor": 0.05
   },
+  "velocity_filter": {
+    "velocity_low_pass_filter_coefficient": 0.05,
+    "acceleration_low_pass_filter_coefficient": 0.05
+  },
   "whistle_filter": {
     "buffer_length": 20,
     "minimum_detections": 2
