@@ -85,10 +85,12 @@ impl WalkingEngine {
                 .inner,
         );
 
-        let torso_tilt_compensation_factor = cycle_context
-            .parameters
-            .swinging_arms
-            .torso_tilt_compensation_factor;
+        let torso_tilt_compensation_factor = self.torso_adjustment(
+            cycle_context
+                .parameters
+                .swinging_arms
+                .torso_tilt_compensation_factor,
+        );
 
         let arm_compensation = compensate_arm_motion_with_torso_tilt(
             &cycle_context.obstacle_avoiding_arms.left_arm,
@@ -185,6 +187,10 @@ impl WalkingEngine {
         let left = swing_sole.position().y() - swing_sole_base_offset.y();
         let turn = swing_sole.orientation().inner.euler_angles().2;
         Some(Isometry2::from_parts(vector![forward, left], turn).inverse())
+    }
+
+    fn torso_adjustment(&self, torso_tilt_compensation_factor: f32) -> f32 {
+        torso_tilt_compensation_factor // * self.engine.
     }
 }
 
