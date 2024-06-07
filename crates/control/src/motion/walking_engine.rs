@@ -89,6 +89,7 @@ impl WalkingEngine {
                 .parameters
                 .swinging_arms
                 .torso_tilt_compensation_factor,
+            *cycle_context.zero_moment_point,
         );
 
         let arm_compensation = compensate_arm_motion_with_torso_tilt(
@@ -188,7 +189,11 @@ impl WalkingEngine {
         })
     }
 
-    fn torso_adjustment(&self, torso_tilt_compensation_factor: f32) -> f32 {
+    fn torso_adjustment(
+        &self,
+        torso_tilt_compensation_factor: f32,
+        zero_moment_point: Point2<Ground>,
+    ) -> f32 {
         torso_tilt_compensation_factor // * self.engine.
     }
 }
