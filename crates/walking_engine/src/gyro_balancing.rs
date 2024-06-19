@@ -44,11 +44,11 @@ impl GyroBalancing {
 }
 
 pub trait GyroBalancingExt {
-    fn balance_using_gyro(self, state: &GyroBalancing, support_side: Side) -> Self;
+    fn leg_balance_using_gyro(self, state: &GyroBalancing, support_side: Side) -> Self;
 }
 
 impl GyroBalancingExt for LowerBodyJoints {
-    fn balance_using_gyro(mut self, state: &GyroBalancing, support_side: Side) -> Self {
+    fn leg_balance_using_gyro(mut self, state: &GyroBalancing, support_side: Side) -> Self {
         let support_leg = match support_side {
             Side::Left => &mut self.left_leg,
             Side::Right => &mut self.right_leg,
