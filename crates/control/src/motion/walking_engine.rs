@@ -26,6 +26,7 @@ pub struct WalkingEngine {
     engine: Engine,
     last_actuated_joints: BodyJoints,
     filtered_gyro: LowPassFilter<nalgebra::Vector3<f32>>,
+    filtered_zero_moment_point_balancing: LowPassFilter<nalgebra::Vector2<f32>>,
 }
 
 #[context]
@@ -55,6 +56,8 @@ pub struct CycleContext {
     debug_output: AdditionalOutput<Engine, "walking.engine">,
     last_actuated_joints: AdditionalOutput<BodyJoints, "walking.last_actuated_joints">,
     robot_to_walk: AdditionalOutput<Isometry3<Robot, Walk>, "walking.robot_to_walk">,
+    filtered_zero_moment_point_balancing:
+        AdditionalOutput<Point2<Ground>, "walking.filtered_zero_moment_point_balancing">,
 }
 
 #[context]
@@ -72,6 +75,13 @@ impl WalkingEngine {
                 nalgebra::Vector3::zeros(),
                 context.parameters.gyro_balancing.low_pass_factor,
             ),
+            filtered_zero_moment_point_balancing: LowPassFilter::with_smoothing_factor(
+                nalgebra::Vector2::zeros(),
+                context
+                    .parameters
+                    .base
+                    .zero_moment_point_torso_tilt_smoothing_factor,
+            ),
         })
     }
 
@@ -83,13 +93,13 @@ impl WalkingEngine {
                 .angular_velocity
                 .inner,
         );
+        self.filtered_zero_moment_point_balancing
+            .update(cycle_context.zero_moment_point.inner.coords);
 
         let torso_tilt_compensation_factor = self.torso_adjustment(
-            cycle_context
-                .parameters
-                .swinging_arms
-                .torso_tilt_compensation_factor,
-            *cycle_context.zero_moment_point,
+            cycle_context.parameters.base.torso_tilt_factor,
+            cycle_context.parameters.base.walk_height,
+            self.filtered_zero_moment_point_balancing.state().into(),
         );
 
         let arm_compensation = compensate_arm_motion_with_torso_tilt(
@@ -107,7 +117,7 @@ impl WalkingEngine {
                 cycle_context.parameters.base.walk_height,
             ],
             Orientation3::new(
-                Vector3::y_axis() * (cycle_context.parameters.base.torso_tilt + arm_compensation),
+                Vector3::y_axis() * (torso_tilt_compensation_factor + arm_compensation),
             ),
         );
 
@@ -157,6 +167,9 @@ impl WalkingEngine {
         cycle_context
             .robot_to_walk
             .fill_if_subscribed(|| robot_to_walk);
+        cycle_context
+            .filtered_zero_moment_point_balancing
+            .fill_if_subscribed(|| self.filtered_zero_moment_point_balancing.state().into());
 
         Ok(MainOutputs {
             walk_motor_commands: motor_commands.into(),
@@ -192,9 +205,10 @@ impl WalkingEngine {
     fn torso_adjustment(
         &self,
         torso_tilt_compensation_factor: f32,
+        walk_height: f32,
         zero_moment_point: Point2<Ground>,
     ) -> f32 {
-        torso_tilt_compensation_factor // * self.engine.
+        -f32::atan(zero_moment_point.x() / walk_height) * torso_tilt_compensation_factor
     }
 }
 
