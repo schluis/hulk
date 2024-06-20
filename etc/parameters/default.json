@@ -472,8 +472,10 @@
       },
       "step_midpoint": 0.5,
       "torso_offset": 0.0,
-      "torso_tilt_factor": 1.0,
-      "zero_moment_point_torso_tilt_smoothing_factor": 0.008,
+      "torso_tilt_factor_k_p": 0.5,
+      "torso_tilt_factor_k_d": 0.005,
+      "torso_tilt_factor_k_i": -0.05,
+      "zero_moment_point_variance": 0.01,
       "walk_height": 0.22
     },
     "catching_steps": {

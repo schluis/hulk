@@ -42,8 +42,10 @@ pub struct Base {
     pub step_duration_increase: Step,
     pub step_midpoint: f32,
     pub torso_offset: f32,
-    pub torso_tilt_factor: f32,
-    pub zero_moment_point_torso_tilt_smoothing_factor: f32,
+    pub torso_tilt_factor_k_p: f32,
+    pub torso_tilt_factor_k_d: f32,
+    pub torso_tilt_factor_k_i: f32,
+    pub zero_moment_point_variance: f32,
     pub walk_height: f32,
 }
 

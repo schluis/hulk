@@ -1,13 +1,18 @@
 use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::FRAC_PI_8;
+use std::time::Duration;
 
 use color_eyre::Result;
 use context_attribute::context;
 use coordinate_systems::{Ground, Robot, Walk};
+use filtering::kalman_filter::KalmanFilter;
 use filtering::low_pass_filter::LowPassFilter;
 use framework::{AdditionalOutput, MainOutput};
 use kinematics::forward;
 use linear_algebra::{vector, Isometry3, Orientation3, Point2, Point3, Vector3};
+use nalgebra::matrix;
 use serde::{Deserialize, Serialize};
+use types::multivariate_normal_distribution::MultivariateNormalDistribution;
 use types::{
     cycle_time::CycleTime,
     joints::body::BodyJoints,
@@ -26,7 +31,28 @@ pub struct WalkingEngine {
     engine: Engine,
     last_actuated_joints: BodyJoints,
     filtered_gyro: LowPassFilter<nalgebra::Vector3<f32>>,
-    filtered_zero_moment_point_balancing: LowPassFilter<nalgebra::Vector2<f32>>,
+    torso_tilt_factor_controller: PIDController,
+    filtered_zero_moment_point: MultivariateNormalDistribution<2>,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct PIDController {
+    pub last_error: f32,
+    pub i_error: f32,
+    pub k_p: f32,
+    pub k_i: f32,
+    pub k_d: f32,
+    pub setpoint: f32,
+}
+
+impl PIDController {
+    pub fn control(&mut self, process_variable: f32, time_passed: Duration) -> f32 {
+        let error = self.setpoint - process_variable;
+        let d_error = (error - self.last_error) / time_passed.as_secs_f32();
+        self.i_error += error * time_passed.as_secs_f32();
+        self.last_error = error;
+        self.k_p * error + self.k_i * self.i_error + self.k_d * d_error
+    }
 }
 
 #[context]
@@ -56,8 +82,8 @@ pub struct CycleContext {
     debug_output: AdditionalOutput<Engine, "walking.engine">,
     last_actuated_joints: AdditionalOutput<BodyJoints, "walking.last_actuated_joints">,
     robot_to_walk: AdditionalOutput<Isometry3<Robot, Walk>, "walking.robot_to_walk">,
-    filtered_zero_moment_point_balancing:
-        AdditionalOutput<Point2<Ground>, "walking.filtered_zero_moment_point_balancing">,
+    // torso_tilt_factor_controller:
+    //     AdditionalOutput<PIDController, "walking.torso_tilt_factor_controller">,
 }
 
 #[context]
@@ -75,17 +101,19 @@ impl WalkingEngine {
                 nalgebra::Vector3::zeros(),
                 context.parameters.gyro_balancing.low_pass_factor,
             ),
-            filtered_zero_moment_point_balancing: LowPassFilter::with_smoothing_factor(
-                nalgebra::Vector2::zeros(),
-                context
-                    .parameters
-                    .base
-                    .zero_moment_point_torso_tilt_smoothing_factor,
-            ),
+            torso_tilt_factor_controller: PIDController::default(),
+            filtered_zero_moment_point: MultivariateNormalDistribution {
+                mean: nalgebra::Vector2::zeros(),
+                covariance: nalgebra::Matrix2::identity(),
+            },
         })
     }
 
     pub fn cycle(&mut self, mut cycle_context: CycleContext) -> Result<MainOutputs> {
+        self.torso_tilt_factor_controller.k_p = cycle_context.parameters.base.torso_tilt_factor_k_p;
+        self.torso_tilt_factor_controller.k_i = cycle_context.parameters.base.torso_tilt_factor_k_i;
+        self.torso_tilt_factor_controller.k_d = cycle_context.parameters.base.torso_tilt_factor_k_d;
+
         self.filtered_gyro.update(
             cycle_context
                 .sensor_data
@@ -93,14 +121,33 @@ impl WalkingEngine {
                 .angular_velocity
                 .inner,
         );
-        self.filtered_zero_moment_point_balancing
-            .update(cycle_context.zero_moment_point.inner.coords);
 
-        let torso_tilt_compensation_factor = self.torso_adjustment(
-            cycle_context.parameters.base.torso_tilt_factor,
-            cycle_context.parameters.base.walk_height,
-            self.filtered_zero_moment_point_balancing.state().into(),
+        self.filtered_zero_moment_point.predict(
+            matrix![1.0, cycle_context.cycle_time.last_cycle_duration.as_secs_f32();
+                 0.0, 1.0],
+            matrix![0.0, 0.0; 0.0, 0.0],
+            nalgebra::Vector2::zeros(),
+            nalgebra::Matrix2::zeros(),
         );
+
+        self.filtered_zero_moment_point.update(
+            matrix![1.0, 0.0],
+            nalgebra::vector!(cycle_context.zero_moment_point.x()),
+            matrix![cycle_context.parameters.base.zero_moment_point_variance],
+        );
+
+        let zero_moment_point_angle = f32::atan(
+            cycle_context.zero_moment_point.x() / cycle_context.parameters.base.walk_height,
+        );
+
+        let torso_tilt_compensation_factor = self
+            .torso_tilt_factor_controller
+            .control(
+                zero_moment_point_angle,
+                cycle_context.cycle_time.last_cycle_duration,
+            )
+            // .clamp(-FRAC_PI_8, FRAC_PI_8);
+            .clamp(0.0, 0.0);
 
         let arm_compensation = compensate_arm_motion_with_torso_tilt(
             &cycle_context.obstacle_avoiding_arms.left_arm,
@@ -167,9 +214,6 @@ impl WalkingEngine {
         cycle_context
             .robot_to_walk
             .fill_if_subscribed(|| robot_to_walk);
-        cycle_context
-            .filtered_zero_moment_point_balancing
-            .fill_if_subscribed(|| self.filtered_zero_moment_point_balancing.state().into());
 
         Ok(MainOutputs {
             walk_motor_commands: motor_commands.into(),
@@ -200,15 +244,6 @@ impl WalkingEngine {
             left: swing_sole.position().y() - swing_sole_base_offset.y(),
             turn: swing_sole.orientation().inner.euler_angles().2,
         })
-    }
-
-    fn torso_adjustment(
-        &self,
-        torso_tilt_compensation_factor: f32,
-        walk_height: f32,
-        zero_moment_point: Point2<Ground>,
-    ) -> f32 {
-        -f32::atan(zero_moment_point.x() / walk_height) * torso_tilt_compensation_factor
     }
 }
 
