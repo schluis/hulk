@@ -82,10 +82,10 @@ pub struct CycleContext {
     debug_output: AdditionalOutput<Engine, "walking.engine">,
     last_actuated_joints: AdditionalOutput<BodyJoints, "walking.last_actuated_joints">,
     robot_to_walk: AdditionalOutput<Isometry3<Robot, Walk>, "walking.robot_to_walk">,
-    // torso_tilt_factor_controller:
-    //     AdditionalOutput<PIDController, "walking.torso_tilt_factor_controller">,
+    filtered_zero_moment_point_mean:
+        AdditionalOutput<nalgebra::Vector2<f32>, "walking.filtered_zero_moment_point_mean">,
+    torso_tilt_compensation_factor: AdditionalOutput<f32, "walking.torso_tilt_compensation_factor">,
 }
-
 #[context]
 #[derive(Default)]
 pub struct MainOutputs {
@@ -122,32 +122,46 @@ impl WalkingEngine {
                 .inner,
         );
 
+        // state vector:
+        // [zero_moment_point_x;
+        //  zero_moment_point_x_dot]
+
+        let state_transition_model = matrix![1.0, cycle_context.cycle_time.last_cycle_duration.as_secs_f32();
+                 0.0, 1.0];
+        let control_input_model = nalgebra::Matrix2::identity();
+        let control_vector = nalgebra::vector![0.0, 0.0]; // todo: add control input, i.e. zmp
+        let process_noise = matrix![cycle_context.parameters.base.zero_moment_point_process_noise, 0.0;
+                 0.0, cycle_context.parameters.base.zero_moment_point_process_noise];
+
         self.filtered_zero_moment_point.predict(
-            matrix![1.0, cycle_context.cycle_time.last_cycle_duration.as_secs_f32();
-                 0.0, 1.0],
-            matrix![0.0, 0.0; 0.0, 0.0],
-            nalgebra::Vector2::zeros(),
-            nalgebra::Matrix2::zeros(),
+            state_transition_model,
+            control_input_model,
+            control_vector,
+            process_noise,
         );
 
-        self.filtered_zero_moment_point.update(
-            matrix![1.0, 0.0],
-            nalgebra::vector!(cycle_context.zero_moment_point.x()),
-            matrix![cycle_context.parameters.base.zero_moment_point_variance],
-        );
+        let measurement_model = matrix![1.0, 0.0];
+        let measurement = nalgebra::vector![cycle_context.zero_moment_point.x()];
+        let measurement_noise = matrix![
+            cycle_context
+                .parameters
+                .base
+                .zero_moment_point_measurement_noise
+        ];
+
+        self.filtered_zero_moment_point
+            .update(measurement_model, measurement, measurement_noise);
 
         let zero_moment_point_angle = f32::atan(
-            cycle_context.zero_moment_point.x() / cycle_context.parameters.base.walk_height,
+            self.filtered_zero_moment_point.mean[0] / cycle_context.parameters.base.walk_height,
         );
 
-        let torso_tilt_compensation_factor = self
-            .torso_tilt_factor_controller
-            .control(
-                zero_moment_point_angle,
-                cycle_context.cycle_time.last_cycle_duration,
-            )
-            // .clamp(-FRAC_PI_8, FRAC_PI_8);
-            .clamp(0.0, 0.0);
+        let torso_tilt_compensation_factor = self.torso_tilt_factor_controller.control(
+            zero_moment_point_angle,
+            cycle_context.cycle_time.last_cycle_duration,
+        );
+        // .clamp(-FRAC_PI_8, FRAC_PI_8);
+        // .clamp(0.0, 0.0);
 
         let arm_compensation = compensate_arm_motion_with_torso_tilt(
             &cycle_context.obstacle_avoiding_arms.left_arm,
@@ -214,6 +228,12 @@ impl WalkingEngine {
         cycle_context
             .robot_to_walk
             .fill_if_subscribed(|| robot_to_walk);
+        cycle_context
+            .filtered_zero_moment_point_mean
+            .fill_if_subscribed(|| self.filtered_zero_moment_point.mean);
+        cycle_context
+            .torso_tilt_compensation_factor
+            .fill_if_subscribed(|| torso_tilt_compensation_factor);
 
         Ok(MainOutputs {
             walk_motor_commands: motor_commands.into(),
