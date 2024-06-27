@@ -32,26 +32,59 @@ pub struct WalkingEngine {
     last_actuated_joints: BodyJoints,
     filtered_gyro: LowPassFilter<nalgebra::Vector3<f32>>,
     torso_tilt_factor_controller: PIDController,
-    filtered_zero_moment_point: MultivariateNormalDistribution<2>,
+    filtered_zero_moment_point: MultivariateNormalDistribution<3>,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PIDController {
     pub last_error: f32,
     pub i_error: f32,
     pub k_p: f32,
     pub k_i: f32,
     pub k_d: f32,
+    pub k_v: f32,
+    pub k_a: f32,
     pub setpoint: f32,
+    pub anti_wind_up_clamp: f32,
+}
+
+impl Default for PIDController {
+    fn default() -> Self {
+        Self {
+            anti_wind_up_clamp: f32::MAX,
+            last_error: 0.0,
+            i_error: 0.0,
+            k_p: 0.0,
+            k_i: 0.0,
+            k_d: 0.0,
+            setpoint: 0.0,
+            k_v: 0.0,
+            k_a: 0.0,
+        }
+    }
 }
 
 impl PIDController {
     pub fn control(&mut self, process_variable: f32, time_passed: Duration) -> f32 {
         let error = self.setpoint - process_variable;
         let d_error = (error - self.last_error) / time_passed.as_secs_f32();
+
+        if (error * self.i_error).is_sign_negative() && error > 0.06 {
+            self.i_error /= 1.1;
+        }
+
         self.i_error += error * time_passed.as_secs_f32();
         self.last_error = error;
-        self.k_p * error + self.k_i * self.i_error + self.k_d * d_error
+        self.k_p * error
+            + self.k_i
+                * self
+                    .i_error
+                    .clamp(-self.anti_wind_up_clamp, self.anti_wind_up_clamp)
+            + self.k_d * d_error
+    }
+
+    pub fn feed_forward(&self, position: f32, velocity: f32, acceleration: f32) -> f32 {
+        position + self.k_v * velocity + self.k_a * acceleration
     }
 }
 
@@ -83,7 +116,7 @@ pub struct CycleContext {
     last_actuated_joints: AdditionalOutput<BodyJoints, "walking.last_actuated_joints">,
     robot_to_walk: AdditionalOutput<Isometry3<Robot, Walk>, "walking.robot_to_walk">,
     filtered_zero_moment_point_mean:
-        AdditionalOutput<nalgebra::Vector2<f32>, "walking.filtered_zero_moment_point_mean">,
+        AdditionalOutput<nalgebra::Vector3<f32>, "walking.filtered_zero_moment_point_mean">,
     torso_tilt_compensation_factor: AdditionalOutput<f32, "walking.torso_tilt_compensation_factor">,
 }
 #[context]
@@ -103,8 +136,8 @@ impl WalkingEngine {
             ),
             torso_tilt_factor_controller: PIDController::default(),
             filtered_zero_moment_point: MultivariateNormalDistribution {
-                mean: nalgebra::Vector2::zeros(),
-                covariance: nalgebra::Matrix2::identity(),
+                mean: nalgebra::Vector3::zeros(),
+                covariance: nalgebra::Matrix3::identity(),
             },
         })
     }
@@ -113,6 +146,12 @@ impl WalkingEngine {
         self.torso_tilt_factor_controller.k_p = cycle_context.parameters.base.torso_tilt_factor_k_p;
         self.torso_tilt_factor_controller.k_i = cycle_context.parameters.base.torso_tilt_factor_k_i;
         self.torso_tilt_factor_controller.k_d = cycle_context.parameters.base.torso_tilt_factor_k_d;
+        self.torso_tilt_factor_controller.anti_wind_up_clamp = cycle_context
+            .parameters
+            .base
+            .torso_tilt_factor_anti_wind_up_clamp;
+        self.torso_tilt_factor_controller.k_v = cycle_context.parameters.base.torso_tilt_factor_k_v;
+        self.torso_tilt_factor_controller.k_a = cycle_context.parameters.base.torso_tilt_factor_k_a;
 
         self.filtered_gyro.update(
             cycle_context
@@ -124,14 +163,21 @@ impl WalkingEngine {
 
         // state vector:
         // [zero_moment_point_x;
-        //  zero_moment_point_x_dot]
+        //  zero_moment_point_x_dot;
+        //  zero_moment_point_x_dot_dot]
 
-        let state_transition_model = matrix![1.0, cycle_context.cycle_time.last_cycle_duration.as_secs_f32();
-                 0.0, 1.0];
-        let control_input_model = nalgebra::Matrix2::identity();
-        let control_vector = nalgebra::vector![0.0, 0.0]; // todo: add control input, i.e. zmp
-        let process_noise = matrix![cycle_context.parameters.base.zero_moment_point_process_noise, 0.0;
-                 0.0, cycle_context.parameters.base.zero_moment_point_process_noise];
+        let passed_time = cycle_context.cycle_time.last_cycle_duration.as_secs_f32();
+        let state_transition_model = matrix![1.0, passed_time, passed_time.powi(2) / 2.0;
+                                             0.0, 1.0,         passed_time;
+                                             0.0, 0.0,         1.0];
+        let control_input_model = nalgebra::Matrix3::identity();
+        let control_vector = nalgebra::vector![0.0, 0.0, 0.0]; // todo: add control input, i.e. zmp
+        let process_noise = nalgebra::Matrix3::from_diagonal_element(
+            cycle_context
+                .parameters
+                .base
+                .zero_moment_point_process_noise,
+        );
 
         self.filtered_zero_moment_point.predict(
             state_transition_model,
@@ -140,7 +186,7 @@ impl WalkingEngine {
             process_noise,
         );
 
-        let measurement_model = matrix![1.0, 0.0];
+        let measurement_model = matrix![1.0, 0.0, 0.0];
         let measurement = nalgebra::vector![cycle_context.zero_moment_point.x()];
         let measurement_noise = matrix![
             cycle_context
@@ -156,9 +202,14 @@ impl WalkingEngine {
             self.filtered_zero_moment_point.mean[0] / cycle_context.parameters.base.walk_height,
         );
 
-        let torso_tilt_compensation_factor = self.torso_tilt_factor_controller.control(
+        let mut torso_tilt_compensation_factor = self.torso_tilt_factor_controller.control(
             zero_moment_point_angle,
             cycle_context.cycle_time.last_cycle_duration,
+        );
+        torso_tilt_compensation_factor = self.torso_tilt_factor_controller.feed_forward(
+            torso_tilt_compensation_factor,
+            self.filtered_zero_moment_point.mean[1],
+            self.filtered_zero_moment_point.mean[2],
         );
         // .clamp(-FRAC_PI_8, FRAC_PI_8);
         // .clamp(0.0, 0.0);

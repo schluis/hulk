@@ -14,5 +14,12 @@
         -0.9136542677879332
       ]
     }
+  },
+  "walking_engine": {
+      "torso_tilt_factor_k_a": 3.0,
+      "torso_tilt_factor_k_d": 0.05999999865889549,
+      "torso_tilt_factor_k_i": 0.5,
+      "torso_tilt_factor_k_p": 0.5,
+    }
   }
 }

@@ -472,11 +472,14 @@
       },
       "step_midpoint": 0.5,
       "torso_offset": 0.0,
-      "torso_tilt_factor_k_p": 0.42,
-      "torso_tilt_factor_k_d": 0.013,
-      "torso_tilt_factor_k_i": 0.13,
-      "zero_moment_point_process_noise": 0.01,
-      "zero_moment_point_measurement_noise": 0.8,
+      "torso_tilt_factor_k_a": 1.8,
+      "torso_tilt_factor_k_d": 0.01,
+      "torso_tilt_factor_k_i": 0.05,
+      "torso_tilt_factor_k_p": 0.2,
+      "torso_tilt_factor_k_v": 0.0,
+      "torso_tilt_factor_anti_wind_up_clamp": 1.0,
+      "zero_moment_point_process_noise": 0.4,
+      "zero_moment_point_measurement_noise": 0.05,
       "walk_height": 0.22
     },
     "catching_steps": {
@@ -736,7 +739,7 @@
     "roll_pitch_low_pass_factor": 0.9,
     "gravitational_acceleration_threshold": 7.0,
     "gravitational_force_sitting": [3.6, 0.0, 8.8],
-    "falling_angle_threshold_forward": [-0.3, 0.5],
+    "falling_angle_threshold_forward": [-0.5, 0.6],
     "falling_angle_threshold_forward_with_catching_steps": [-0.45, 0.6],
     "falling_timeout": {
       "nanos": 0,
