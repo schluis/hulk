@@ -163,8 +163,8 @@ impl WalkingEngine {
 
         // state vector:
         // [zero_moment_point_x;
-        //  zero_moment_point_x_dot;
-        //  zero_moment_point_x_dot_dot]
+        //  zero_moment_point_ẋ;
+        //  zero_moment_point_ẍ]
 
         let passed_time = cycle_context.cycle_time.last_cycle_duration.as_secs_f32();
         let state_transition_model = matrix![1.0, passed_time, passed_time.powi(2) / 2.0;
