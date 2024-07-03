@@ -173,14 +173,14 @@ impl WalkingEngine {
         let control_input_model = nalgebra::Matrix3::identity();
         let control_vector = nalgebra::vector![0.0, 0.0, 0.0]; // todo: add control input, i.e. zmp
         let process_noise = nalgebra::Matrix3::from_diagonal(
-            &nalgebra::Vector3::new(
+            &(&nalgebra::Vector3::new(
                 passed_time.powi(3) / 6.0,
                 passed_time.powi(2) / 2.0,
                 passed_time,
             ) * cycle_context
                 .parameters
                 .base
-                .zero_moment_point_process_noise,
+                .zero_moment_point_process_noise),
         );
 
         self.filtered_zero_moment_point.predict(
