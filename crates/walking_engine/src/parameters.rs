@@ -67,6 +67,7 @@ pub struct TorsoTiltFactorPID {
 pub struct TorsoTiltFactorSmith {
     pub delay: f32,
     pub process_model_multiplier: f32,
+    pub modelling_error_smoothing_factor: f32,
 }
 
 #[derive(

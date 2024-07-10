@@ -486,7 +486,8 @@
       },
       "torso_tilt_factor_smith": {
         "delay": 4.0,
-        "process_model_multiplier": 1.0
+        "process_model_multiplier": 1.0,
+        "modelling_error_smoothing_factor": 0.1
       },
       "zero_moment_point_process_noise": 0.5,
       "zero_moment_point_measurement_noise": 0.00001,
