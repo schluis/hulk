@@ -30,6 +30,7 @@ pub struct WalkingEngine {
     engine: Engine,
     last_actuated_joints: BodyJoints,
     filtered_gyro: LowPassFilter<nalgebra::Vector3<f32>>,
+    filtered_modelling_error: LowPassFilter<f32>,
     torso_tilt_factor_pid_controller: PIDController,
     torso_tilt_factor_smith_predictor: SmithPredictor,
     filtered_zero_moment_point: MultivariateNormalDistribution<3>,
@@ -154,6 +155,14 @@ impl WalkingEngine {
                 ),
                 predicted: VecDeque::from(vec![0.0]),
             },
+            filtered_modelling_error: LowPassFilter::with_smoothing_factor(
+                0.0,
+                context
+                    .parameters
+                    .base
+                    .torso_tilt_factor_smith
+                    .modelling_error_smoothing_factor,
+            ),
         })
     }
 
@@ -241,9 +250,9 @@ impl WalkingEngine {
                 .front()
                 .unwrap_or(&0.0);
 
-        let process_response = modeling_error; // feedback filter
+        self.filtered_modelling_error.update(modeling_error);
 
-        let control_variable = process_response
+        let control_variable = self.filtered_modelling_error.state()
             + self
                 .torso_tilt_factor_smith_predictor
                 .predicted
@@ -254,6 +263,7 @@ impl WalkingEngine {
             control_variable,
             cycle_context.cycle_time.last_cycle_duration,
         );
+
         torso_tilt_compensation_factor = self.torso_tilt_factor_pid_controller.feed_forward(
             torso_tilt_compensation_factor,
             self.filtered_zero_moment_point.mean[1],
