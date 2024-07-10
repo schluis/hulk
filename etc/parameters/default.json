@@ -477,6 +477,7 @@
       "step_midpoint": 0.5,
       "torso_offset": 0.0,
       "torso_tilt_factor_pid": {
+        "setpoint": 0.1,
         "k_p": 0.5,
         "k_i": 0.5,
         "k_d": 0.015,
@@ -485,12 +486,12 @@
         "anti_wind_up_clamp": 1.5
       },
       "torso_tilt_factor_smith": {
-        "delay": 4.0,
-        "process_model_multiplier": 1.0,
-        "modelling_error_smoothing_factor": 0.1
+        "delay": 1.5,
+        "process_model_multiplier": 0.0,
+        "modelling_error_smoothing_factor": 0.01
       },
       "zero_moment_point_process_noise": 0.5,
-      "zero_moment_point_measurement_noise": 0.00001,
+      "zero_moment_point_measurement_noise": 0.3,
       "walk_height": 0.22
     },
     "catching_steps": {

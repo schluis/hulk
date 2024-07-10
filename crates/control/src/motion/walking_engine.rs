@@ -182,6 +182,8 @@ impl WalkingEngine {
             cycle_context.parameters.base.torso_tilt_factor_pid.k_v;
         self.torso_tilt_factor_pid_controller.k_a =
             cycle_context.parameters.base.torso_tilt_factor_pid.k_a;
+        self.torso_tilt_factor_pid_controller.setpoint =
+            cycle_context.parameters.base.torso_tilt_factor_pid.setpoint;
 
         while self.torso_tilt_factor_smith_predictor.predicted.len() as f32
             * cycle_context.cycle_time.last_cycle_duration.as_secs_f32()
