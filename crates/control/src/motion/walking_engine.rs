@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::f32::consts::{FRAC_PI_2, FRAC_PI_8};
+use std::f32::consts::{FRAC_PI_2, PI};
 use std::time::Duration;
 
 use color_eyre::Result;
@@ -273,7 +273,7 @@ impl WalkingEngine {
                 self.filtered_zero_moment_point.mean[1],
                 self.filtered_zero_moment_point.mean[2],
             )
-            .clamp(-FRAC_PI_8, FRAC_PI_8);
+            .clamp(-PI / 16.0, PI / 16.0);
         // .clamp(0.0, 0.0);
 
         let predicted_delay_free = torso_tilt_compensation_factor
