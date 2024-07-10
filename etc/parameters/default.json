@@ -442,11 +442,11 @@
       "torso_offset": 0.0,
       "torso_tilt_factor_pid": {
         "setpoint": 0.1,
-        "k_p": 0.5,
-        "k_i": 0.5,
+        "k_p": 1.0,
+        "k_i": 0.005,
         "k_d": 0.015,
         "k_a": 0.0,
-        "k_v": 0.0,
+        "k_v": 0.4,
         "anti_wind_up_clamp": 1.5
       },
       "torso_tilt_factor_smith": {
