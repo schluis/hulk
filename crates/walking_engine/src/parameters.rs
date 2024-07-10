@@ -53,6 +53,7 @@ pub struct Base {
     Clone, Debug, Default, Deserialize, Serialize, PathSerialize, PathDeserialize, PathIntrospect,
 )]
 pub struct TorsoTiltFactorPID {
+    pub setpoint: f32,
     pub k_p: f32,
     pub k_d: f32,
     pub k_i: f32,
