@@ -264,12 +264,14 @@ impl WalkingEngine {
             cycle_context.cycle_time.last_cycle_duration,
         );
 
-        torso_tilt_compensation_factor = self.torso_tilt_factor_pid_controller.feed_forward(
-            torso_tilt_compensation_factor,
-            self.filtered_zero_moment_point.mean[1],
-            self.filtered_zero_moment_point.mean[2],
-        );
-        // .clamp(-FRAC_PI_8, FRAC_PI_8);
+        torso_tilt_compensation_factor = self
+            .torso_tilt_factor_pid_controller
+            .feed_forward(
+                torso_tilt_compensation_factor,
+                self.filtered_zero_moment_point.mean[1],
+                self.filtered_zero_moment_point.mean[2],
+            )
+            .clamp(-FRAC_PI_8, FRAC_PI_8);
         // .clamp(0.0, 0.0);
 
         let predicted_delay_free = torso_tilt_compensation_factor
