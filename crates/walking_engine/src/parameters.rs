@@ -34,6 +34,8 @@ pub struct Parameters {
     Clone, Debug, Default, Deserialize, Serialize, PathSerialize, PathDeserialize, PathIntrospect,
 )]
 pub struct Base {
+    pub torso_tilt_factor_pid: TorsoTiltFactorPID,
+    pub torso_tilt_factor_smith: TorsoTiltFactorSmith,
     pub foot_lift_apex: f32,
     pub foot_lift_apex_increase: Step,
     pub foot_offset_left: Vector3<Walk>,
@@ -42,15 +44,29 @@ pub struct Base {
     pub step_duration_increase: Step,
     pub step_midpoint: f32,
     pub torso_offset: f32,
-    pub torso_tilt_factor_k_p: f32,
-    pub torso_tilt_factor_k_d: f32,
-    pub torso_tilt_factor_k_i: f32,
-    pub torso_tilt_factor_k_v: f32,
-    pub torso_tilt_factor_k_a: f32,
-    pub torso_tilt_factor_anti_wind_up_clamp: f32,
     pub zero_moment_point_process_noise: f32,
     pub zero_moment_point_measurement_noise: f32,
     pub walk_height: f32,
+}
+
+#[derive(
+    Clone, Debug, Default, Deserialize, Serialize, PathSerialize, PathDeserialize, PathIntrospect,
+)]
+pub struct TorsoTiltFactorPID {
+    pub k_p: f32,
+    pub k_d: f32,
+    pub k_i: f32,
+    pub k_v: f32,
+    pub k_a: f32,
+    pub anti_wind_up_clamp: f32,
+}
+
+#[derive(
+    Clone, Debug, Default, Deserialize, Serialize, PathSerialize, PathDeserialize, PathIntrospect,
+)]
+pub struct TorsoTiltFactorSmith {
+    pub delay: f32,
+    pub process_model_multiplier: f32,
 }
 
 #[derive(
