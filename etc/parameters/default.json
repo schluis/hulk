@@ -476,12 +476,18 @@
       },
       "step_midpoint": 0.5,
       "torso_offset": 0.0,
-      "torso_tilt_factor_k_a": 0.0,
-      "torso_tilt_factor_k_d": 0.015,
-      "torso_tilt_factor_k_i": 0.5,
-      "torso_tilt_factor_k_p": 0.5,
-      "torso_tilt_factor_k_v": 0.0,
-      "torso_tilt_factor_anti_wind_up_clamp": 1.5,
+      "torso_tilt_factor_pid": {
+        "k_p": 0.5,
+        "k_i": 0.5,
+        "k_d": 0.015,
+        "k_a": 0.0,
+        "k_v": 0.0,
+        "anti_wind_up_clamp": 1.5
+      },
+      "torso_tilt_factor_smith": {
+        "delay": 4.0,
+        "process_model_multiplier": 1.0
+      },
       "zero_moment_point_process_noise": 0.5,
       "zero_moment_point_measurement_noise": 0.00001,
       "walk_height": 0.22

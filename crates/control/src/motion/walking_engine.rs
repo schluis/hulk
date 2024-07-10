@@ -1,5 +1,5 @@
-use std::f32::consts::FRAC_PI_2;
-use std::f32::consts::FRAC_PI_8;
+use std::collections::VecDeque;
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_8};
 use std::time::Duration;
 
 use color_eyre::Result;
@@ -31,8 +31,15 @@ pub struct WalkingEngine {
     engine: Engine,
     last_actuated_joints: BodyJoints,
     filtered_gyro: LowPassFilter<nalgebra::Vector3<f32>>,
-    torso_tilt_factor_controller: PIDController,
+    torso_tilt_factor_pid_controller: PIDController,
+    torso_tilt_factor_smith_predictor: SmithPredictor,
     filtered_zero_moment_point: MultivariateNormalDistribution<3>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmithPredictor {
+    delay: Duration,
+    predicted: VecDeque<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,6 +126,7 @@ pub struct CycleContext {
     filtered_zero_moment_point_mean:
         AdditionalOutput<nalgebra::Vector3<f32>, "walking.filtered_zero_moment_point_mean">,
     torso_tilt_compensation_factor: AdditionalOutput<f32, "walking.torso_tilt_compensation_factor">,
+    modeling_error: AdditionalOutput<f32, "walking.modeling_error">,
 }
 #[context]
 #[derive(Default)]
@@ -135,24 +143,43 @@ impl WalkingEngine {
                 nalgebra::Vector3::zeros(),
                 context.parameters.gyro_balancing.low_pass_factor,
             ),
-            torso_tilt_factor_controller: PIDController::default(),
+            torso_tilt_factor_pid_controller: PIDController::default(),
             filtered_zero_moment_point: MultivariateNormalDistribution {
                 mean: nalgebra::Vector3::zeros(),
                 covariance: nalgebra::Matrix3::identity(),
+            },
+            torso_tilt_factor_smith_predictor: SmithPredictor {
+                delay: Duration::from_secs_f32(
+                    context.parameters.base.torso_tilt_factor_smith.delay,
+                ),
+                predicted: VecDeque::from(vec![0.0]),
             },
         })
     }
 
     pub fn cycle(&mut self, mut cycle_context: CycleContext) -> Result<MainOutputs> {
-        self.torso_tilt_factor_controller.k_p = cycle_context.parameters.base.torso_tilt_factor_k_p;
-        self.torso_tilt_factor_controller.k_i = cycle_context.parameters.base.torso_tilt_factor_k_i;
-        self.torso_tilt_factor_controller.k_d = cycle_context.parameters.base.torso_tilt_factor_k_d;
-        self.torso_tilt_factor_controller.anti_wind_up_clamp = cycle_context
+        self.torso_tilt_factor_pid_controller.k_p =
+            cycle_context.parameters.base.torso_tilt_factor_pid.k_p;
+        self.torso_tilt_factor_pid_controller.k_i =
+            cycle_context.parameters.base.torso_tilt_factor_pid.k_i;
+        self.torso_tilt_factor_pid_controller.k_d =
+            cycle_context.parameters.base.torso_tilt_factor_pid.k_d;
+        self.torso_tilt_factor_pid_controller.anti_wind_up_clamp = cycle_context
             .parameters
             .base
-            .torso_tilt_factor_anti_wind_up_clamp;
-        self.torso_tilt_factor_controller.k_v = cycle_context.parameters.base.torso_tilt_factor_k_v;
-        self.torso_tilt_factor_controller.k_a = cycle_context.parameters.base.torso_tilt_factor_k_a;
+            .torso_tilt_factor_pid
+            .anti_wind_up_clamp;
+        self.torso_tilt_factor_pid_controller.k_v =
+            cycle_context.parameters.base.torso_tilt_factor_pid.k_v;
+        self.torso_tilt_factor_pid_controller.k_a =
+            cycle_context.parameters.base.torso_tilt_factor_pid.k_a;
+
+        while self.torso_tilt_factor_smith_predictor.predicted.len() as f32
+            * cycle_context.cycle_time.last_cycle_duration.as_secs_f32()
+            > self.torso_tilt_factor_smith_predictor.delay.as_secs_f32()
+        {
+            self.torso_tilt_factor_smith_predictor.predicted.pop_front();
+        }
 
         self.filtered_gyro.update(
             cycle_context
@@ -207,17 +234,43 @@ impl WalkingEngine {
             self.filtered_zero_moment_point.mean[0] / cycle_context.parameters.base.walk_height,
         );
 
-        let mut torso_tilt_compensation_factor = self.torso_tilt_factor_controller.control(
-            zero_moment_point_angle,
+        let modeling_error = zero_moment_point_angle
+            - self
+                .torso_tilt_factor_smith_predictor
+                .predicted
+                .front()
+                .unwrap_or(&0.0);
+
+        let process_response = modeling_error; // feedback filter
+
+        let control_variable = process_response
+            + self
+                .torso_tilt_factor_smith_predictor
+                .predicted
+                .back()
+                .unwrap_or(&0.0);
+
+        let mut torso_tilt_compensation_factor = self.torso_tilt_factor_pid_controller.control(
+            control_variable,
             cycle_context.cycle_time.last_cycle_duration,
         );
-        torso_tilt_compensation_factor = self.torso_tilt_factor_controller.feed_forward(
+        torso_tilt_compensation_factor = self.torso_tilt_factor_pid_controller.feed_forward(
             torso_tilt_compensation_factor,
             self.filtered_zero_moment_point.mean[1],
             self.filtered_zero_moment_point.mean[2],
         );
         // .clamp(-FRAC_PI_8, FRAC_PI_8);
         // .clamp(0.0, 0.0);
+
+        let predicted_delay_free = torso_tilt_compensation_factor
+            * cycle_context
+                .parameters
+                .base
+                .torso_tilt_factor_smith
+                .process_model_multiplier;
+        self.torso_tilt_factor_smith_predictor
+            .predicted
+            .push_back(predicted_delay_free);
 
         let arm_compensation = compensate_arm_motion_with_torso_tilt(
             &cycle_context.obstacle_avoiding_arms.left_arm,
@@ -237,6 +290,8 @@ impl WalkingEngine {
                 Vector3::y_axis() * (torso_tilt_compensation_factor + arm_compensation),
             ),
         );
+
+        // dbg!(&self.torso_tilt_factor_smith_predictor.predicted);
 
         let context = Context {
             parameters: cycle_context.parameters,
@@ -291,6 +346,9 @@ impl WalkingEngine {
         cycle_context
             .torso_tilt_compensation_factor
             .fill_if_subscribed(|| torso_tilt_compensation_factor);
+        cycle_context
+            .modeling_error
+            .fill_if_subscribed(|| modeling_error);
 
         Ok(MainOutputs {
             walk_motor_commands: motor_commands.into(),
