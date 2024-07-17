@@ -7,13 +7,14 @@ use geometry::{
     convex_hull::{reduce_to_convex_hull, Range},
     is_inside_polygon::is_inside_polygon,
 };
-use linear_algebra::{point, Isometry3, Point2, Point3, Vector3};
+use linear_algebra::{point, vector, Isometry3, Point2, Point3, Vector2, Vector3};
 use serde::{Deserialize, Serialize};
 use types::{robot_kinematics::RobotKinematics, sensor_data::SensorData};
 
 #[derive(Deserialize, Serialize)]
 pub struct ZeroMomentPointProvider {
     linear_acceleration_filter: LowPassFilter<Vector3<Robot>>,
+    zero_moment_point_filter: LowPassFilter<Vector2<Ground>>,
     number_of_consecutive_cycles_zero_moment_point_outside_support_polygon: i32,
     number_of_consecutive_cycles_center_of_mass_outside_support_polygon: i32,
 }
@@ -21,6 +22,8 @@ pub struct ZeroMomentPointProvider {
 pub struct CreationContext {
     linear_acceleration_low_pass_factor:
         Parameter<f32, "zero_moment_point.linear_acceleration_low_pass_factor">,
+    zero_moment_point_low_pass_factor:
+        Parameter<f32, "zero_moment_point.zero_moment_point_low_pass_factor">,
 }
 
 #[context]
@@ -43,6 +46,7 @@ pub struct CycleContext {
 #[derive(Default)]
 pub struct MainOutputs {
     pub zero_moment_point: MainOutput<Point2<Ground>>,
+    pub filtered_zero_moment_point: MainOutput<Point2<Ground>>,
     pub number_of_consecutive_cycles_zero_moment_point_outside_support_polygon: MainOutput<i32>,
 }
 
@@ -52,6 +56,10 @@ impl ZeroMomentPointProvider {
             linear_acceleration_filter: LowPassFilter::with_smoothing_factor(
                 Vector3::zeros(),
                 *context.linear_acceleration_low_pass_factor,
+            ),
+            zero_moment_point_filter: LowPassFilter::with_smoothing_factor(
+                vector![0.0, 0.0],
+                *context.zero_moment_point_low_pass_factor,
             ),
             number_of_consecutive_cycles_zero_moment_point_outside_support_polygon: 0,
             number_of_consecutive_cycles_center_of_mass_outside_support_polygon: 0,
@@ -133,6 +141,11 @@ impl ZeroMomentPointProvider {
             self.number_of_consecutive_cycles_center_of_mass_outside_support_polygon += 1;
         }
 
+        self.zero_moment_point_filter
+            .update(zero_moment_point.coords());
+
+        let filtered_zero_moment_point = self.zero_moment_point_filter.state().as_point();
+
         context
             .number_of_consecutive_cycles_center_of_mass_outside_support_polygon
             .fill_if_subscribed(|| {
@@ -141,6 +154,7 @@ impl ZeroMomentPointProvider {
 
         Ok(MainOutputs {
             zero_moment_point: zero_moment_point.into(),
+            filtered_zero_moment_point: filtered_zero_moment_point.into(),
             number_of_consecutive_cycles_zero_moment_point_outside_support_polygon: self
                 .number_of_consecutive_cycles_zero_moment_point_outside_support_polygon
                 .into(),

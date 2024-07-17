@@ -391,7 +391,7 @@
   "step_planner": {
     "injected_step": null,
     "max_step_size": {
-      "forward": 0.055,
+      "forward": 0.05,
       "left": 0.1,
       "turn": 1.0
     },
@@ -410,7 +410,8 @@
     "rotation_exponent": 2.0
   },
   "zero_moment_point": {
-    "linear_acceleration_low_pass_factor": 0.05
+    "linear_acceleration_low_pass_factor": 0.001,
+    "zero_moment_point_low_pass_factor": 0.03
   },
   "whistle_filter": {
     "buffer_length": 20,
@@ -420,7 +421,7 @@
     "base": {
       "foot_lift_apex": 0.008,
       "foot_lift_apex_increase": {
-        "forward": 0.18,
+        "forward": 0.12,
         "left": 0.17,
         "turn": 0.025
       },
@@ -428,7 +429,7 @@
       "foot_offset_right": [0.0, -0.05, 0.0],
       "step_duration": { "nanos": 260000000, "secs": 0 },
       "step_duration_increase": {
-        "forward": 0.0,
+        "forward": 0.3,
         "left": 0.3,
         "turn": 0.1
       },
@@ -439,12 +440,14 @@
     },
     "catching_steps": {
       "enabled": true,
-      "catching_step_zero_moment_point_frame_count_threshold": 5,
-      "max_adjustment": 0.0,
-      "midpoint": 0.5,
+      "catching_step_zero_moment_point_frame_count_threshold": 3,
+      "max_adjustment": 0.05,
+      "side_max_adjustment": 0.1,
+      "midpoint": 0.35,
       "target_overestimation_factor": 1.05,
       "longitudinal_offset": -0.05,
-      "additional_foot_lift": 0.0
+      "additional_foot_lift": 0.0,
+      "falling_sideways_threshold": 0.03
     },
     "gyro_balancing": {
       "balance_factors": {

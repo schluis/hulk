@@ -35,7 +35,11 @@ impl Catching {
         let start_feet =
             Feet::from_joints(context.robot_to_walk, &context.current_joints, support_side);
 
-        let end_feet = catching_end_feet(parameters, *context.zero_moment_point, support_side);
+        let end_feet = catching_end_feet(
+            parameters,
+            *context.filtered_zero_moment_pointent_point,
+            support_side,
+        );
         let max_swing_foot_lift =
             parameters.base.foot_lift_apex + parameters.catching_steps.additional_foot_lift;
         let midpoint = parameters.catching_steps.midpoint;
@@ -87,20 +91,41 @@ fn catching_end_feet(
     let target_overestimation_factor = parameters.catching_steps.target_overestimation_factor;
     let longitudinal_zero_moment_point_offset = parameters.catching_steps.longitudinal_offset;
     let max_adjustment = parameters.catching_steps.max_adjustment;
+    let side_max_adjustment = parameters.catching_steps.side_max_adjustment;
 
-    Feet::end_from_request(
-        parameters,
-        Step {
-            forward: ((zero_moment_point.x() + longitudinal_zero_moment_point_offset)
-                * target_overestimation_factor)
-                .clamp(-max_adjustment, max_adjustment),
-            left: (zero_moment_point.y() * target_overestimation_factor)
-                .clamp(-max_adjustment, max_adjustment),
-            turn: 0.0,
-        }
-        .clamp_to_anatomic_constraints(support_side, parameters.max_inside_turn),
-        support_side,
-    )
+    let falling_sideways =
+        zero_moment_point.y().abs() > parameters.catching_steps.falling_sideways_threshold;
+
+    if falling_sideways {
+        Feet::end_from_request(
+            parameters,
+            Step {
+                forward: ((zero_moment_point.x() + longitudinal_zero_moment_point_offset)
+                    * target_overestimation_factor
+                    * 0.5)
+                    .clamp(-max_adjustment, max_adjustment),
+                left: (-zero_moment_point.y() * target_overestimation_factor)
+                    .clamp(-side_max_adjustment, side_max_adjustment),
+                turn: 0.0,
+            }
+            .clamp_to_anatomic_constraints(support_side, parameters.max_inside_turn),
+            support_side,
+        )
+    } else {
+        Feet::end_from_request(
+            parameters,
+            Step {
+                forward: ((zero_moment_point.x() + longitudinal_zero_moment_point_offset)
+                    * target_overestimation_factor)
+                    .clamp(-max_adjustment, max_adjustment),
+                left: (zero_moment_point.y() * target_overestimation_factor)
+                    .clamp(-max_adjustment, max_adjustment),
+                turn: 0.0,
+            }
+            .clamp_to_anatomic_constraints(support_side, parameters.max_inside_turn),
+            support_side,
+        )
+    }
 }
 
 impl WalkTransition for Catching {
@@ -143,7 +168,7 @@ impl Catching {
     pub fn tick(&mut self, context: &Context) {
         self.step.plan.end_feet = catching_end_feet(
             context.parameters,
-            *context.zero_moment_point,
+            *context.filtered_zero_moment_pointent_point,
             self.step.plan.support_side,
         );
         self.step.tick(context);
