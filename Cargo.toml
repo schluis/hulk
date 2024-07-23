@@ -22,6 +22,7 @@ members = [
   "crates/hulk",
   "crates/hulk_behavior_simulator",
   "crates/hulk_imagine",
+  "crates/hulk_extract",
   "crates/hulk_manifest",
   "crates/hulk_nao",
   "crates/hulk_replayer",
@@ -151,6 +152,7 @@ path_serde = { path = "crates/path_serde" }
 path_serde_derive = { path = "crates/path_serde_derive" }
 petgraph = "0.6.2"
 png = "0.17.6"
+polars = "0.41.3"
 prettyplease = "0.2.19"
 proc-macro-error = "1.0.4"
 proc-macro2 = { version = "1.0.44", features = ["span-locations"] }
