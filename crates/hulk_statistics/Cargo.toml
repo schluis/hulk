@@ -1,5 +1,5 @@
 [package]
-name = "hulk_extract"
+name = "hulk_statistics"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

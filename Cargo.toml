@@ -22,7 +22,7 @@ members = [
   "crates/hulk",
   "crates/hulk_behavior_simulator",
   "crates/hulk_imagine",
-  "crates/hulk_extract",
+  "crates/hulk_statistics",
   "crates/hulk_manifest",
   "crates/hulk_nao",
   "crates/hulk_replayer",

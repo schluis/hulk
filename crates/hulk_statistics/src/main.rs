@@ -7,15 +7,15 @@ use color_eyre::{
 };
 use hardware::{
     ActuatorInterface, CameraInterface, IdInterface, MicrophoneInterface, NetworkInterface,
-    PathsInterface, RecordingInterface, SensorInterface, SpeakerInterface, TimeInterface,
+    PathsInterface, RecordingInterface, SensorInterface, SpeakerInterface,
 };
 use polars::prelude::*;
 use std::fs::create_dir_all;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{env::args, path::PathBuf, sync::Arc};
 use types::{
     audio::SpeakerRequest,
     camera_position::CameraPosition,
+    fall_state::{Direction, FallState, Kind, Side},
     hardware::{Ids, Paths},
     joints::Joints,
     led::Leds,
@@ -126,6 +126,9 @@ fn main() -> Result<()> {
             .expect("expected output path as second parameter"),
     );
 
+    let path_buf = PathBuf::from(replay_path.clone());
+    let nao_number = path_buf.parent().unwrap().file_name().unwrap();
+
     let parameters_directory = args().nth(3).unwrap_or(replay_path.clone());
     let ids = Ids {
         body_id: "replayer".into(),
@@ -141,82 +144,94 @@ fn main() -> Result<()> {
     )
     .wrap_err("failed to create image extractor")?;
 
-    let mut export_dataframe = DataFrame::default();
+    let mut control_receiver = replayer.control_receiver();
+    let instance_name = "Control";
 
-    let control_receiver = replayer.control_receiver();
-    // let vision_top_receiver = replayer.vision_top_receiver();
-    // let vision_bottom_receiver = replayer.vision_bottom_receiver();
+    create_dir_all(output_folder.clone()).expect("failed to create output folder");
 
-    for (instance_name, mut receiver) in [
-        ("Control", control_receiver),
-        // ("VisionTop", vision_top_receiver),
-        // ("VisionBottom", vision_bottom_receiver),
-    ] {
-        let mut current_dataframe = DataFrame::default();
+    let unknown_indices_error_message =
+        format!("could not find recording indices for `{instance_name}`");
+    let timings: Vec<_> = replayer
+        .get_recording_indices()
+        .get(instance_name)
+        .expect(&unknown_indices_error_message)
+        .iter()
+        .collect();
 
-        let output_folder = &output_folder.join(instance_name);
-        create_dir_all(output_folder).expect("failed to create output folder");
-
-        let unknown_indices_error_message =
-            format!("could not find recording indices for `{instance_name}`");
-        let timings: Vec<_> = replayer
-            .get_recording_indices()
-            .get(instance_name)
-            .expect(&unknown_indices_error_message)
+    let timings_series = Series::new(
+        "Timestamps",
+        timings
             .iter()
-            .collect();
+            .map(|timing| {
+                let datetime: DateTime<Utc> = timing.timestamp.into();
+                datetime.format("%d/%m/%Y %T").to_string()
+            })
+            .collect::<Series>(),
+    );
 
-        export_dataframe.insert_column(
-            0,
-            timings
-                .iter()
-                .map(|timing| {
-                    let datetime: DateTime<Utc> = timing.timestamp.into();
-                    datetime.format("%d/%m/%Y %T").to_string()
-                })
-                .collect::<Series>(),
-        );
+    let mut fall_state = vec![];
 
-        // for timing in timings {
-        //     let frame = replayer
-        //         .get_recording_indices_mut()
-        //         .get_mut(instance_name)
-        //         .map(|index| {
-        //             index
-        //                 .find_latest_frame_up_to(timing.timestamp)
-        //                 .expect("failed to find latest frame")
-        //         })
-        //         .expect(&unknown_indices_error_message);
-        //
-        //     if let Some(frame) = frame {
-        //         replayer
-        //             .replay(instance_name, frame.timing.timestamp, &frame.data)
-        //             .expect("failed to replay frame");
-        //
-        //         let (_, database) = &*receiver.borrow_and_mark_as_seen();
-        //
-        //         let output_file = output_folder.join(format!(
-        //             "{}.png",
-        //             frame
-        //                 .timing
-        //                 .timestamp
-        //                 .duration_since(UNIX_EPOCH)
-        //                 .unwrap()
-        //                 .as_secs()
-        //         ));
-        //
-        //         database
-        //             .main_outputs
-        //             .image
-        //             .save_to_ycbcr_444_file(output_file)
-        //             .expect("failed to write file");
-        //     }
-        // }
+    for timing in timings {
+        let frame = replayer
+            .get_recording_indices_mut()
+            .get_mut(instance_name)
+            .map(|index| {
+                index
+                    .find_latest_frame_up_to(timing.timestamp)
+                    .expect("failed to find latest frame")
+            })
+            .expect(&unknown_indices_error_message);
+
+        if let Some(frame) = frame {
+            replayer
+                .replay(instance_name, frame.timing.timestamp, &frame.data)
+                .expect("failed to replay frame");
+
+            let (_, database) = &*control_receiver.borrow_and_mark_as_seen();
+
+            match database.main_outputs.fall_state {
+                FallState::Upright => fall_state.push("upright"),
+                FallState::Falling {
+                    start_time: _,
+                    direction,
+                } => match direction {
+                    Direction::Forward { side } => match side {
+                        Side::Left => fall_state.push("falling forward left"),
+                        Side::Right => fall_state.push("falling forward right"),
+                    },
+                    Direction::Backward { side } => match side {
+                        Side::Left => fall_state.push("falling backward left"),
+                        Side::Right => fall_state.push("falling backward right"),
+                    },
+                },
+                FallState::Fallen { kind } => match kind {
+                    Kind::FacingDown => fall_state.push("fallen down"),
+                    Kind::FacingUp => fall_state.push("fallen up"),
+                    Kind::Sitting => fall_state.push("sitting"),
+                },
+                FallState::StandingUp {
+                    start_time: _,
+                    kind,
+                } => match kind {
+                    Kind::FacingDown => fall_state.push("standing up facing down"),
+                    Kind::FacingUp => fall_state.push("standing up facing up"),
+                    Kind::Sitting => fall_state.push("standing up sitting"),
+                },
+            }
+        }
     }
 
-    let mut file = std::fs::File::create("test.csv").unwrap();
+    let fall_state_series = Series::new("Fall State", fall_state);
+
+    let mut control_dataframe = df![
+        "timestamps" => timings_series,
+        "fall state " => fall_state_series]
+    .unwrap();
+
+    let mut file =
+        std::fs::File::create(output_folder.join(format!("{}.csv", instance_name))).unwrap();
     CsvWriter::new(&mut file)
-        .finish(&mut export_dataframe)
+        .finish(&mut control_dataframe)
         .unwrap();
 
     Ok(())

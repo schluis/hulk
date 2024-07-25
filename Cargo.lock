@@ -3143,42 +3143,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hulk_extract"
-version = "0.1.0"
-dependencies = [
- "audio",
- "ball_filter",
- "bincode",
- "buffered_watch",
- "calibration",
- "chrono",
- "code_generation",
- "color-eyre",
- "control",
- "coordinate_systems",
- "energy_optimization",
- "framework",
- "geometry",
- "hardware",
- "hulk_manifest",
- "ittapi",
- "linear_algebra",
- "nalgebra",
- "parameters",
- "path_serde",
- "polars",
- "projection",
- "serde",
- "source_analyzer",
- "spl_network",
- "spl_network_messages",
- "tokio",
- "types",
- "vision",
- "walking_engine",
-]
-
-[[package]]
 name = "hulk_imagine"
 version = "0.1.0"
 dependencies = [
@@ -3283,6 +3247,42 @@ dependencies = [
  "spl_network_messages",
  "tokio",
  "tokio-util",
+ "types",
+ "vision",
+ "walking_engine",
+]
+
+[[package]]
+name = "hulk_statistics"
+version = "0.1.0"
+dependencies = [
+ "audio",
+ "ball_filter",
+ "bincode",
+ "buffered_watch",
+ "calibration",
+ "chrono",
+ "code_generation",
+ "color-eyre",
+ "control",
+ "coordinate_systems",
+ "energy_optimization",
+ "framework",
+ "geometry",
+ "hardware",
+ "hulk_manifest",
+ "ittapi",
+ "linear_algebra",
+ "nalgebra",
+ "parameters",
+ "path_serde",
+ "polars",
+ "projection",
+ "serde",
+ "source_analyzer",
+ "spl_network",
+ "spl_network_messages",
+ "tokio",
  "types",
  "vision",
  "walking_engine",
