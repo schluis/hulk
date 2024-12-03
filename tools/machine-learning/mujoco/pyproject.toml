@@ -12,9 +12,10 @@ dependencies = [
     "numpy>=2.1.2",
     "scipy>=1.14.1",
     "moviepy>=1.0.3",
-    "stable-baselines3>=2.3.2",
     "wandb>=0.18.5",
     "tensorboard>=2.18.0",
+    "sbx-rl>=0.15.0",
+    "rl-zoo3>=2.3.0",
 ]
 
 [tool.ruff]
