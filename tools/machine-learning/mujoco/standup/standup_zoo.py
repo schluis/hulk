@@ -1,8 +1,16 @@
+import os
+import sys
+
+# from pathlib import Path
 import gymnasium as gym
 import rl_zoo3
 import rl_zoo3.train
 from rl_zoo3.train import train
 from sbx import DDPG, DQN, PPO, SAC, TD3, TQC, CrossQ
+
+# import nao_env
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 rl_zoo3.ALGOS["ddpg"] = DDPG
 rl_zoo3.ALGOS["dqn"] = DQN

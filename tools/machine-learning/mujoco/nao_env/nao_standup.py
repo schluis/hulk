@@ -32,7 +32,7 @@ class NaoStandup(MujocoEnv, utils.EzPickle):
 
         MujocoEnv.__init__(
             self,
-            str(Path.cwd().joinpath("model", "scene.xml")),
+            str(Path(__file__).parent.parent.joinpath("model", "scene.xml")),
             5,
             observation_space=observation_space,
             default_camera_config=DEFAULT_CAMERA_CONFIG,
