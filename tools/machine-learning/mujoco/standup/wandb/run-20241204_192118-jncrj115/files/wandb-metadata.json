@@ -1,0 +1,42 @@
+{
+  "os": "Linux-6.11.10-300.fc41.x86_64-x86_64-with-glibc2.40",
+  "python": "3.10.15",
+  "startedAt": "2024-12-04T18:21:18.742062Z",
+  "args": [
+    "--env",
+    "NaoStandup-v1",
+    "--algo",
+    "ppo",
+    "--conf-file",
+    "hyperparameters/ppo.yml",
+    "--track",
+    "--wandb-project-name",
+    "nao_standup_zoo"
+  ],
+  "program": "/home/schluis/hulk-worktree/hulk/tools/machine-learning/mujoco/standup/standup_zoo.py",
+  "codePath": "tools/machine-learning/mujoco/standup/standup_zoo.py",
+  "git": {
+    "commit": "02af63f8ecf42c0e3408bbf7a12faeebe5c3384d"
+  },
+  "email": "schluis@posteo.de",
+  "root": "/home/schluis/hulk-worktree/hulk/tools/machine-learning/mujoco/standup",
+  "host": "fedora",
+  "username": "schluis",
+  "executable": "/home/schluis/hulk-worktree/hulk/tools/machine-learning/mujoco/.venv/bin/python3",
+  "codePathLocal": "standup_zoo.py",
+  "cpu_count": 6,
+  "cpu_count_logical": 12,
+  "disk": {
+    "/": {
+      "total": "487022657536",
+      "used": "186169884672"
+    }
+  },
+  "memory": {
+    "total": "15515451392"
+  },
+  "cpu": {
+    "count": 6,
+    "countLogical": 12
+  }
+}

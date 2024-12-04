@@ -1,0 +1,130 @@
+_wandb:
+    value:
+        cli_version: 0.18.7
+        code_path: code/tools/machine-learning/mujoco/standup/standup_zoo.py
+        m: []
+        python_version: 3.10.15
+        t:
+            "1":
+                - 1
+                - 12
+                - 35
+                - 45
+                - 49
+                - 55
+            "2":
+                - 1
+                - 12
+                - 35
+                - 45
+                - 49
+                - 55
+            "3":
+                - 13
+                - 15
+                - 16
+                - 23
+                - 35
+                - 55
+            "4": 3.10.15
+            "5": 0.18.7
+            "8":
+                - 5
+            "12": 0.18.7
+            "13": linux-x86_64
+algo:
+    value: ppo
+conf_file:
+    value: hyperparameters/ppo.yml
+device:
+    value: auto
+env:
+    value: NaoStandup-v1
+env_kwargs:
+    value: null
+eval_env_kwargs:
+    value: null
+eval_episodes:
+    value: 5
+eval_freq:
+    value: 25000
+gym_packages:
+    value: []
+hyperparams:
+    value: null
+log_folder:
+    value: logs
+log_interval:
+    value: -1
+max_total_trials:
+    value: null
+n_eval_envs:
+    value: 1
+n_evaluations:
+    value: null
+n_jobs:
+    value: 1
+n_startup_trials:
+    value: 10
+n_timesteps:
+    value: -1
+n_trials:
+    value: 500
+no_optim_plots:
+    value: false
+num_threads:
+    value: -1
+optimization_log_path:
+    value: null
+optimize_hyperparameters:
+    value: false
+progress:
+    value: false
+pruner:
+    value: median
+sampler:
+    value: tpe
+save_freq:
+    value: -1
+save_replay_buffer:
+    value: false
+saved_hyperparams:
+    value:
+        clip_range: 0.2
+        ent_coef: 0
+        gae_lambda: 0.95
+        gamma: 0.9
+        learning_rate: 0.001
+        n_envs: 4
+        n_epochs: 10
+        n_steps: 1024
+        n_timesteps: 100000
+        policy: MlpPolicy
+        sde_sample_freq: 4
+        use_sde: true
+seed:
+    value: 527178712
+storage:
+    value: null
+study_name:
+    value: null
+tensorboard_log:
+    value: ""
+track:
+    value: true
+trained_agent:
+    value: ""
+truncate_last_trajectory:
+    value: true
+uuid:
+    value: false
+vec_env:
+    value: dummy
+verbose:
+    value: 1
+wandb_entity:
+    value: null
+wandb_project_name:
+    value: nao_standup_zoo
+wandb_tags:
+    value: []
