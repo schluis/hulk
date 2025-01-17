@@ -1,0 +1,75 @@
+[project]
+name = "genesis"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "genesis-world>=0.2.1",
+    "pynput>=1.7.7",
+    "torch>=2.5.1",
+]
+
+[tool.uv]
+dev-dependencies = ["neovim>=0.3.1", "pytest>=8.3.3", "ruff>=0.7.3"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 80
+fix = true
+
+[tool.ruff.lint]
+select = [
+  # flake8-2020
+  "YTT",
+  # flake8-bandit
+  "S",
+  # flake8-bugbear
+  "B",
+  # flake8-builtins
+  "A",
+  # flake8-annotations
+  "ANN",
+  # flake8-unused-arguments
+  "ARG",
+  # numpy-specific-rules
+  "NPY",
+  # flake8-comprehensions
+  "C4",
+  # flake8-return
+  "RET",
+  # flake8-commas
+  "COM",
+  # flake8-boolean-trap
+  "FBT",
+  # flake8-debugger
+  "T10",
+  # flake8-simplify
+  "SIM",
+  # isort
+  "I",
+  # mccabe
+  "C90",
+  # pycodestyle
+  "E",
+  "W",
+  # pyflakes
+  "F",
+  # pygrep-hooks
+  "PGH",
+  # pyupgrade
+  "UP",
+  # ruff
+  "RUF",
+  # tryceratops
+  "TRY",
+]
+ignore = [
+  # DoNotAssignLambda
+  "E731",
+  # any-type
+  "ANN401",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S603"]
