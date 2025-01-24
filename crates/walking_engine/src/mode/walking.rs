@@ -28,18 +28,19 @@ impl Walking {
     ) -> Self {
         let (backward_acceleration, forward_acceleration) = if last_requested_step.forward > 0.0 {
             (
-                -last_requested_step.forward,
-                context.parameters.max_forward_acceleration,
-            )
-        } else if last_requested_step.forward == 0.0 {
-            (
-                -context.parameters.max_forward_acceleration,
+                f32::min(
+                    -last_requested_step.forward,
+                    -context.parameters.max_forward_acceleration,
+                ),
                 context.parameters.max_forward_acceleration,
             )
         } else {
             (
                 -context.parameters.max_forward_acceleration,
-                -last_requested_step.forward,
+                f32::max(
+                    last_requested_step.forward,
+                    contex.parameters.max_forward_acceleration,
+                ),
             )
         };
 
