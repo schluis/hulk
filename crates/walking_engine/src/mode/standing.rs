@@ -135,61 +135,97 @@ fn motor_commands_from(prediction: &[f32], stiffness: f32) -> MotorCommands<Body
 }
 
 fn load_into_scratchpad(scratchpad: &mut [f32], sensor_data: &SensorData) {
-    scratchpad[0] = sensor_data
-        .inertial_measurement_unit
-        .linear_acceleration
-        .inner
-        .x;
-    scratchpad[1] = sensor_data
-        .inertial_measurement_unit
-        .linear_acceleration
-        .inner
-        .y;
-    scratchpad[2] = sensor_data
-        .inertial_measurement_unit
-        .linear_acceleration
-        .inner
-        .z;
-    scratchpad[3] = sensor_data
-        .inertial_measurement_unit
-        .angular_velocity
-        .inner
-        .x;
-    scratchpad[4] = sensor_data
-        .inertial_measurement_unit
-        .angular_velocity
-        .inner
-        .y;
-    scratchpad[5] = sensor_data
-        .inertial_measurement_unit
-        .angular_velocity
-        .inner
-        .z;
-    scratchpad[6] = sensor_data.positions.head.yaw;
-    scratchpad[7] = sensor_data.positions.head.pitch;
-    scratchpad[8] = sensor_data.positions.left_leg.hip_yaw_pitch;
-    scratchpad[9] = sensor_data.positions.left_leg.hip_roll;
-    scratchpad[10] = sensor_data.positions.left_leg.hip_pitch;
-    scratchpad[11] = sensor_data.positions.left_leg.knee_pitch;
-    scratchpad[12] = sensor_data.positions.left_leg.ankle_pitch;
-    scratchpad[13] = sensor_data.positions.left_leg.ankle_roll;
-    scratchpad[14] = sensor_data.positions.right_leg.hip_roll;
-    scratchpad[15] = sensor_data.positions.right_leg.hip_pitch;
-    scratchpad[16] = sensor_data.positions.right_leg.knee_pitch;
-    scratchpad[17] = sensor_data.positions.right_leg.ankle_pitch;
-    scratchpad[18] = sensor_data.positions.right_leg.ankle_roll;
-    scratchpad[19] = sensor_data.positions.left_arm.shoulder_pitch;
-    scratchpad[20] = sensor_data.positions.left_arm.shoulder_roll;
-    scratchpad[21] = sensor_data.positions.left_arm.elbow_yaw;
-    scratchpad[22] = sensor_data.positions.left_arm.elbow_roll;
-    scratchpad[23] = sensor_data.positions.left_arm.wrist_yaw;
-    scratchpad[24] = sensor_data.positions.right_arm.shoulder_pitch;
-    scratchpad[25] = sensor_data.positions.right_arm.shoulder_roll;
-    scratchpad[26] = sensor_data.positions.right_arm.elbow_yaw;
-    scratchpad[27] = sensor_data.positions.right_arm.elbow_roll;
-    scratchpad[28] = sensor_data.positions.right_arm.wrist_yaw;
-    scratchpad[29] = sensor_data.force_sensitive_resistors.left.mean();
-    scratchpad[30] = sensor_data.force_sensitive_resistors.right.mean();
+    scratchpad.copy_from_slice(&[
+        sensor_data.positions.head.yaw,
+        sensor_data.positions.head.pitch,
+        sensor_data.positions.left_leg.hip_yaw_pitch,
+        sensor_data.positions.left_leg.hip_roll,
+        sensor_data.positions.left_leg.hip_pitch,
+        sensor_data.positions.left_leg.knee_pitch,
+        sensor_data.positions.left_leg.ankle_pitch,
+        sensor_data.positions.left_leg.ankle_roll,
+        sensor_data.positions.right_leg.hip_roll,
+        sensor_data.positions.right_leg.hip_pitch,
+        sensor_data.positions.right_leg.knee_pitch,
+        sensor_data.positions.right_leg.ankle_pitch,
+        sensor_data.positions.right_leg.ankle_roll,
+        sensor_data.positions.left_arm.shoulder_pitch,
+        sensor_data.positions.left_arm.shoulder_roll,
+        sensor_data.positions.left_arm.elbow_yaw,
+        sensor_data.positions.left_arm.elbow_roll,
+        sensor_data.positions.left_arm.wrist_yaw,
+        sensor_data.positions.right_arm.shoulder_pitch,
+        sensor_data.positions.right_arm.shoulder_roll,
+        sensor_data.positions.right_arm.elbow_yaw,
+        sensor_data.positions.right_arm.elbow_roll,
+        sensor_data.positions.right_arm.wrist_yaw,
+        sensor_data
+            .inertial_measurement_unit
+            .angular_velocity
+            .inner
+            .x,
+        sensor_data
+            .inertial_measurement_unit
+            .angular_velocity
+            .inner
+            .y,
+        sensor_data
+            .inertial_measurement_unit
+            .angular_velocity
+            .inner
+            .z,
+        sensor_data
+            .inertial_measurement_unit
+            .linear_acceleration
+            .inner
+            .x,
+        sensor_data
+            .inertial_measurement_unit
+            .linear_acceleration
+            .inner
+            .y,
+        sensor_data
+            .inertial_measurement_unit
+            .linear_acceleration
+            .inner
+            .z,
+        sensor_data.force_sensitive_resistors.left.mean(),
+        sensor_data.force_sensitive_resistors.right.mean(),
+    ]);
+
+    // scratchpad.copy_from_slice(&[
+    //     2.17833254e-06,
+    //     1.46821881e-04,
+    //     2.00733336e-03,
+    //     4.31524352e-03,
+    //     -3.08132262e-01,
+    //     8.53828172e-01,
+    //     -5.39959373e-01,
+    //     -4.25303940e-03,
+    //     -4.24714955e-03,
+    //     -3.08359738e-01,
+    //     8.53640055e-01,
+    //     -5.39560976e-01,
+    //     4.20299377e-03,
+    //     1.57084739e+00,
+    //     9.45262874e-02,
+    //     -1.56998563e+00,
+    //     -3.49070734e-02,
+    //     -2.48942127e-06,
+    //     1.57089481e+00,
+    //     -9.45336957e-02,
+    //     1.56998560e+00,
+    //     3.49013771e-02,
+    //     2.47832502e-06,
+    //     -7.84287842e-03,
+    //     -2.97802196e-03,
+    //     1.15524255e-03,
+    //     -1.02747153e+00,
+    //     1.24009788e-01,
+    //     1.04023793e+01,
+    //     5.77711950e-01,
+    //     4.75285076e-01,
+    // ]);
 
     assert_eq!(
         scratchpad.len(),

@@ -49,6 +49,9 @@ def main(*, throw_tomatoes: bool, load_policy: str | None) -> None:
         start_time = time.time()
         viewer.camera.lookat[:] = env.data.site("Robot").xpos
         observation, reward, _terminated, _truncated, infos = env.step(action)
+
+        print(observation)
+
         if model:
             action, _ = model.predict(observation, deterministic=True)
 
