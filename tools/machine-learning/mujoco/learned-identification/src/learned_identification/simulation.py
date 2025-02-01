@@ -11,6 +11,7 @@ def simulate_recording(
     spec: mj.MjSpec,
     recorded_actuator_positions: npt.NDArray[np.float64],
     *,
+    positions: Sequence[str],
     sensors: Sequence[str],
     initial_keyframe: int = 0,
     camera_distance: float = 1.0,

@@ -6,7 +6,7 @@ import optuna
 from learned_identification.optimization import objective
 from learned_identification.recording import (
     load_recorded_actuator_positions,
-    load_recorded_sensors,
+    load_recorded_positions,
 )
 
 SENSORS = [
@@ -50,7 +50,7 @@ def render_trial(
         spec,
         recording_path,
     )
-    recorded_sensors = load_recorded_sensors(
+    recorded_sensors = load_recorded_positions(
         spec,
         recording_path,
     )

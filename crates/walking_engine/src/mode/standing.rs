@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use openvino::{ElementType, Tensor};
 use path_serde::{PathDeserialize, PathIntrospect, PathSerialize};
 use serde::{Deserialize, Serialize};
@@ -63,6 +65,8 @@ impl WalkTransition for Standing {
 
 impl Standing {
     pub fn compute_commands(&self, context: &mut Context) -> MotorCommands<BodyJoints> {
+        let now = SystemTime::now();
+
         let mut tensor = Tensor::new(
             ElementType::F32,
             &context.network.get_input().unwrap().get_shape().unwrap(),
@@ -77,6 +81,9 @@ impl Standing {
 
         let prediction = infer_request.get_output_tensor_by_index(0).unwrap();
         let prediction = prediction.get_data::<f32>().unwrap();
+
+        let duration = SystemTime::now().duration_since(now).unwrap();
+        println!("{}", duration.as_micros());
 
         motor_commands_from(prediction, 0.15)
 
@@ -193,7 +200,7 @@ fn load_into_scratchpad(scratchpad: &mut [f32], sensor_data: &SensorData) {
         sensor_data.force_sensitive_resistors.right.mean(),
     ]);
 
-    // scratchpad.copy_from_slice(&[
+    // scratchpad.copy_from_slice(&[ // sensor_data from mujoco
     //     2.17833254e-06,
     //     1.46821881e-04,
     //     2.00733336e-03,

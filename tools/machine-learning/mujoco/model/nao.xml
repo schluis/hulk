@@ -1,6 +1,6 @@
 <mujoco model="NaoV6H25">
   <compiler meshdir="meshes" texturedir="textures" />
-  <option timestep="0.003" integrator="RK4" />
+  <option timestep="0.012" integrator="RK4" />
 
   <default>
     <geom type="mesh" solref=".004 1" />
