@@ -45,6 +45,10 @@ impl Foot {
     pub fn sum(&self) -> f32 {
         self.front_left + self.front_right + self.rear_left + self.rear_right
     }
+
+    pub fn mean(&self) -> f32 {
+        (self.front_left + self.front_right + self.rear_left + self.rear_right) / 4.0
+    }
 }
 
 #[derive(

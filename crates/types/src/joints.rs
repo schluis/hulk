@@ -76,6 +76,47 @@ impl<T> Joints<T> {
         }
     }
 
+    // pub fn from_network(x: &[T]) -> Self {
+    //     Self {
+    //         head: HeadJoints {
+    //             yaw: Default::default(),
+    //             pitch: 0.0f32,
+    //         },
+    //         left_arm: ArmJoints {
+    //             shoulder_pitch: x[13],
+    //             shoulder_roll: x[14],
+    //             elbow_yaw: x[15],
+    //             elbow_roll: x[16],
+    //             wrist_yaw: x[17],
+    //             hand: 0.0f32,
+    //         },
+    //         right_arm: ArmJoints {
+    //             shoulder_pitch: x[18],
+    //             shoulder_roll: x[19],
+    //             elbow_yaw: x[20],
+    //             elbow_roll: x[21],
+    //             wrist_yaw: x[22],
+    //             hand: 0.0f32,
+    //         },
+    //         left_leg: LegJoints {
+    //             ankle_pitch: x[5],
+    //             ankle_roll: x[6],
+    //             hip_pitch: x[2],
+    //             hip_roll: x[1],
+    //             hip_yaw_pitch: x[0],
+    //             knee_pitch: x[3],
+    //         },
+    //         right_leg: LegJoints {
+    //             ankle_pitch: x[11],
+    //             ankle_roll: x[12],
+    //             hip_pitch: x[9],
+    //             hip_roll: x[8],
+    //             hip_yaw_pitch: x[7],
+    //             knee_pitch: x[10],
+    //         },
+    //     }
+    // }
+
     pub fn enumerate(self) -> <Joints<(JointsName, T)> as IntoIterator>::IntoIter {
         Joints {
             head: HeadJoints {

@@ -118,10 +118,10 @@ impl DispatchingInterpolator {
             self.interpolator = TimedSpline::try_new_transition_timed(
                 context.last_actuated_motor_commands.positions,
                 target_position,
-                Duration::from_secs_f32(1.0),
+                Duration::from_secs_f32(2.0),
             )?
             .into();
-            self.stiffnesses = Joints::fill(0.8);
+            self.stiffnesses = Joints::fill(0.1);
         }
 
         self.interpolator

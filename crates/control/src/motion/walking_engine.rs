@@ -1,12 +1,17 @@
 use std::f32::consts::FRAC_PI_2;
 
-use color_eyre::Result;
+use color_eyre::{
+    eyre::{bail, eyre, Context as EyreContext, ContextCompat},
+    Result,
+};
 use context_attribute::context;
 use coordinate_systems::{Field, Ground, Robot, UpcomingSupport, Walk};
 use filtering::low_pass_filter::LowPassFilter;
-use framework::{AdditionalOutput, MainOutput};
+use framework::{deserialize_not_implemented, AdditionalOutput, MainOutput};
+use hardware::PathsInterface;
 use kinematics::forward;
 use linear_algebra::{vector, Isometry2, Isometry3, Orientation3, Point2, Point3, Vector3};
+use openvino::{CompiledModel, Core, DeviceType, InferenceError::GeneralError};
 use serde::{Deserialize, Serialize};
 use types::{
     cycle_time::CycleTime,
@@ -20,16 +25,20 @@ use types::{
 };
 use walking_engine::{kick_steps::KickSteps, mode::Mode, parameters::Parameters, Context, Engine};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct WalkingEngine {
     engine: Engine,
     last_actuated_joints: BodyJoints,
     filtered_gyro: LowPassFilter<nalgebra::Vector3<f32>>,
+
+    #[serde(skip, default = "deserialize_not_implemented")]
+    network: CompiledModel,
 }
 
 #[context]
 pub struct CreationContext {
     parameters: Parameter<Parameters, "walking_engine">,
+    hardware_interface: HardwareInterface,
 }
 
 #[context]
@@ -65,8 +74,48 @@ pub struct MainOutputs {
     pub walk_motor_commands: MainOutput<MotorCommands<BodyJoints<f32>>>,
 }
 
+const EXPECTED_OUTPUT_NAME: &str = "output";
+
 impl WalkingEngine {
-    pub fn new(context: CreationContext) -> Result<Self> {
+    pub fn new(context: CreationContext<impl PathsInterface>) -> Result<Self> {
+        let paths = context.hardware_interface.get_paths();
+        let neural_network_folder = paths.neural_networks;
+
+        let model_xml_name = "robust-dust-41-policy-ov.xml";
+
+        let model_path = neural_network_folder.join(model_xml_name);
+        let weights_path = neural_network_folder
+            .join(model_xml_name)
+            .with_extension("bin");
+
+        let mut core = Core::new()?;
+        let network = core
+            .read_model_from_file(
+                model_path
+                    .to_str()
+                    .wrap_err("failed to get detection model path")?,
+                weights_path
+                    .to_str()
+                    .wrap_err("failed to get detection weights path")?,
+            )
+            .map_err(|error| match error {
+                GeneralError => eyre!("{error}: possible incomplete OpenVino installation"),
+                _ => eyre!("{error}: failed to create detection network"),
+            })?;
+
+        let number_of_inputs = network
+            .get_inputs_len()
+            .wrap_err("failed to get number of inputs")?;
+        let output_name = network.get_output_by_index(0)?.get_name()?;
+        dbg!(&output_name);
+        dbg!(&number_of_inputs);
+        if number_of_inputs != 1 || output_name != EXPECTED_OUTPUT_NAME {
+            bail!(
+                "expected exactly one input and output name to be '{}'",
+                EXPECTED_OUTPUT_NAME
+            );
+        }
+
         Ok(Self {
             engine: Engine::default(),
             last_actuated_joints: Default::default(),
@@ -74,6 +123,7 @@ impl WalkingEngine {
                 nalgebra::Vector3::zeros(),
                 context.parameters.gyro_balancing.low_pass_factor,
             ),
+            network: core.compile_model(&network, DeviceType::CPU)?,
         })
     }
 
@@ -110,7 +160,7 @@ impl WalkingEngine {
             ),
         );
 
-        let context = Context {
+        let mut context = Context {
             parameters: cycle_context.parameters,
             kick_steps: cycle_context.kick_steps,
             cycle_time: cycle_context.cycle_time,
@@ -125,6 +175,8 @@ impl WalkingEngine {
             zero_moment_point: cycle_context.zero_moment_point,
             number_of_consecutive_cycles_zero_moment_point_outside_support_polygon: cycle_context
                 .number_of_consecutive_cycles_zero_moment_point_outside_support_polygon,
+            network: &mut self.network,
+            sensor_data: cycle_context.sensor_data,
         };
 
         match *cycle_context.walk_command {
@@ -139,7 +191,7 @@ impl WalkingEngine {
 
         self.engine.tick(&context);
 
-        let motor_commands = self.engine.compute_commands(&context);
+        let motor_commands = self.engine.compute_commands(&mut context);
 
         self.last_actuated_joints = motor_commands.positions;
 

@@ -6,13 +6,19 @@ use mode::{
     catching::Catching, kicking::Kicking, standing::Standing, starting::Starting,
     stopping::Stopping, walking::Walking, Mode,
 };
+use openvino::CompiledModel;
 use parameters::Parameters;
 use path_serde::{PathDeserialize, PathIntrospect, PathSerialize};
 use serde::{Deserialize, Serialize};
 use types::{
-    cycle_time::CycleTime, joints::body::BodyJoints, motion_command::KickVariant,
-    motor_commands::MotorCommands, obstacle_avoiding_arms::ArmCommands,
-    sensor_data::ForceSensitiveResistors, step::Step, support_foot::Side,
+    cycle_time::CycleTime,
+    joints::body::BodyJoints,
+    motion_command::KickVariant,
+    motor_commands::MotorCommands,
+    obstacle_avoiding_arms::ArmCommands,
+    sensor_data::{ForceSensitiveResistors, SensorData},
+    step::Step,
+    support_foot::Side,
 };
 
 mod anatomic_constraints;
@@ -47,6 +53,8 @@ pub struct Context<'a> {
     pub current_joints: BodyJoints,
     pub robot_to_walk: Isometry3<Robot, Walk>,
     pub obstacle_avoiding_arms: &'a ArmCommands,
+    pub network: &'a mut CompiledModel,
+    pub sensor_data: &'a SensorData,
 }
 
 pub trait WalkTransition {
@@ -85,7 +93,7 @@ impl Engine {
         self.mode.tick(context);
     }
 
-    pub fn compute_commands(&self, context: &Context) -> MotorCommands<BodyJoints> {
+    pub fn compute_commands(&self, context: &mut Context) -> MotorCommands<BodyJoints> {
         self.mode
             .compute_commands(context)
             .override_with_arms(context)

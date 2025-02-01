@@ -27,6 +27,7 @@ motionfile = { workspace = true }
 nalgebra = { workspace = true }
 ndarray = { workspace = true }
 num-traits = { workspace = true }
+openvino = { workspace = true }
 ordered-float = { workspace = true }
 path_serde = { workspace = true }
 projection = { workspace = true }
