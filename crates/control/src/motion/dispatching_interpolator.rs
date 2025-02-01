@@ -121,7 +121,7 @@ impl DispatchingInterpolator {
                 Duration::from_secs_f32(2.0),
             )?
             .into();
-            self.stiffnesses = Joints::fill(0.1);
+            self.stiffnesses = Joints::fill(0.15);
         }
 
         self.interpolator

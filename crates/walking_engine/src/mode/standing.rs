@@ -71,55 +71,14 @@ impl Standing {
 
         load_into_scratchpad(tensor.get_data_mut().unwrap(), context.sensor_data);
 
-        dbg!(tensor.get_data::<f32>().unwrap());
-
         let mut infer_request = context.network.create_infer_request().unwrap();
-
         infer_request.set_input_tensor(&tensor).unwrap();
         infer_request.infer().unwrap();
 
         let prediction = infer_request.get_output_tensor_by_index(0).unwrap();
-
         let prediction = prediction.get_data::<f32>().unwrap();
-        dbg!(prediction);
 
-        MotorCommands {
-            positions: BodyJoints {
-                left_arm: ArmJoints {
-                    shoulder_pitch: prediction[11],
-                    shoulder_roll: prediction[12],
-                    elbow_yaw: prediction[13],
-                    elbow_roll: prediction[14],
-                    wrist_yaw: prediction[15],
-                    hand: 0.0f32,
-                },
-                right_arm: ArmJoints {
-                    shoulder_pitch: prediction[16],
-                    shoulder_roll: prediction[17],
-                    elbow_yaw: prediction[18],
-                    elbow_roll: prediction[19],
-                    wrist_yaw: prediction[20],
-                    hand: 0.0f32,
-                },
-                left_leg: LegJoints {
-                    ankle_pitch: prediction[4],
-                    ankle_roll: prediction[5],
-                    hip_pitch: prediction[2],
-                    hip_roll: prediction[1],
-                    hip_yaw_pitch: prediction[0],
-                    knee_pitch: prediction[3],
-                },
-                right_leg: LegJoints {
-                    ankle_pitch: prediction[9],
-                    ankle_roll: prediction[10],
-                    hip_pitch: prediction[7],
-                    hip_roll: prediction[6],
-                    hip_yaw_pitch: prediction[0],
-                    knee_pitch: prediction[8],
-                },
-            },
-            stiffnesses: BodyJoints::fill(0.1),
-        }
+        motor_commands_from(prediction, 0.15)
 
         // let plan = StepPlan::stand(context);
         // let zero_step = StepState::new(plan);
@@ -131,6 +90,48 @@ impl Standing {
     }
 
     pub fn tick(&mut self, _context: &Context) {}
+}
+
+fn motor_commands_from(prediction: &[f32], stiffness: f32) -> MotorCommands<BodyJoints> {
+    assert!(stiffness <= 0.5, "please don't fry the motors");
+
+    MotorCommands {
+        positions: BodyJoints {
+            left_arm: ArmJoints {
+                shoulder_pitch: prediction[11],
+                shoulder_roll: prediction[12],
+                elbow_yaw: prediction[13],
+                elbow_roll: prediction[14],
+                wrist_yaw: prediction[15],
+                hand: 0.0f32,
+            },
+            right_arm: ArmJoints {
+                shoulder_pitch: prediction[16],
+                shoulder_roll: prediction[17],
+                elbow_yaw: prediction[18],
+                elbow_roll: prediction[19],
+                wrist_yaw: prediction[20],
+                hand: 0.0f32,
+            },
+            left_leg: LegJoints {
+                ankle_pitch: prediction[4],
+                ankle_roll: prediction[5],
+                hip_pitch: prediction[2],
+                hip_roll: prediction[1],
+                hip_yaw_pitch: prediction[0],
+                knee_pitch: prediction[3],
+            },
+            right_leg: LegJoints {
+                ankle_pitch: prediction[9],
+                ankle_roll: prediction[10],
+                hip_pitch: prediction[7],
+                hip_roll: prediction[6],
+                hip_yaw_pitch: prediction[0],
+                knee_pitch: prediction[8],
+            },
+        },
+        stiffnesses: BodyJoints::fill(stiffness),
+    }
 }
 
 fn load_into_scratchpad(scratchpad: &mut [f32], sensor_data: &SensorData) {
