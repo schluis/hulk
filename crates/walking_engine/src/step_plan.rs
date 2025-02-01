@@ -67,6 +67,19 @@ impl StepPlan {
             midpoint,
         }
     }
+
+    pub fn stand(context: &Context) -> Self {
+        let feet = Feet::end_from_request(context.parameters, Step::ZERO, Side::Left);
+
+        StepPlan {
+            step_duration: Duration::from_secs(1),
+            start_feet: feet,
+            end_feet: feet,
+            support_side: Side::Left,
+            foot_lift_apex: 0.0,
+            midpoint: 0.5,
+        }
+    }
 }
 
 fn interpolate_midpoint(

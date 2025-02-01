@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use path_serde::{PathDeserialize, PathIntrospect, PathSerialize};
 use serde::{Deserialize, Serialize};
 use types::{
@@ -8,8 +6,7 @@ use types::{
 };
 
 use crate::{
-    feet::Feet, step_plan::StepPlan, step_state::StepState, stiffness::Stiffness as _, Context,
-    WalkTransition,
+    step_plan::StepPlan, step_state::StepState, stiffness::Stiffness as _, Context, WalkTransition,
 };
 
 use super::{starting::Starting, Mode};
@@ -60,22 +57,10 @@ impl WalkTransition for Standing {
 
 impl Standing {
     pub fn compute_commands(&self, context: &Context) -> MotorCommands<BodyJoints> {
-        let feet = Feet::end_from_request(context.parameters, Step::ZERO, Side::Left);
+        let plan = StepPlan::stand(context);
+        let zero_step = StepState::new(plan);
 
-        let zero_step_state = StepState {
-            plan: StepPlan {
-                step_duration: Duration::from_secs(1),
-                start_feet: feet,
-                end_feet: feet,
-                support_side: Side::Left,
-                foot_lift_apex: 0.0,
-                midpoint: 0.5,
-            },
-            time_since_start: Duration::ZERO,
-            gyro_balancing: Default::default(),
-            foot_leveling: Default::default(),
-        };
-        zero_step_state.compute_joints(context).apply_stiffness(
+        zero_step.compute_joints(context).apply_stiffness(
             context.parameters.stiffnesses.leg_stiffness_stand,
             context.parameters.stiffnesses.arm_stiffness,
         )
