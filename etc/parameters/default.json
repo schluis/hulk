@@ -1387,7 +1387,7 @@
     },
     "remaining_amount_of_messages_to_stop_sending": 20,
     "silence_interval_between_messages": {
-      "nanos": 0,
+      "nanos": 500000000,
       "secs": 1
     },
     "spl_striker_message_receive_timeout": {

@@ -14,6 +14,7 @@ use spl_network_messages::{HulkMessage, PlayerNumber, VisualRefereeMessage};
 use types::{
     cycle_time::CycleTime,
     messages::{IncomingMessage, OutgoingMessage},
+    parameters::SplNetworkParameters,
     players::Players,
     pose_detection::VisualRefereeState,
     pose_kinds::PoseKind,
@@ -25,6 +26,7 @@ pub struct RefereePoseDetectionFilter {
     detected_above_arm_poses_queue: VecDeque<bool>,
     motion_in_standby_count: usize,
     visual_referee_state: VisualRefereeState,
+    last_transmitted_spl_message: Option<SystemTime>,
 }
 
 #[context]
@@ -54,6 +56,7 @@ pub struct CycleContext {
     player_referee_detection_times:
         AdditionalOutput<Players<Option<SystemTime>>, "player_referee_detection_times">,
     referee_pose_queue: AdditionalOutput<VecDeque<bool>, "referee_pose_queue">,
+    spl_network: Parameter<SplNetworkParameters, "spl_network">,
 }
 
 #[context]
@@ -73,6 +76,7 @@ impl RefereePoseDetectionFilter {
             detected_above_arm_poses_queue: VecDeque::with_capacity(
                 *context.referee_pose_queue_length,
             ),
+            last_transmitted_spl_message: None,
         })
     }
 
@@ -138,13 +142,41 @@ impl RefereePoseDetectionFilter {
         if detected_referee_pose_count >= *context.minimum_number_poses_before_message {
             self.detection_times[*context.player_number] = Some(context.cycle_time.start_time);
 
-            send_own_detection_message(context.hardware_interface.clone(), *context.player_number)?;
+            self.send_own_detection_message(
+                context.hardware_interface.clone(),
+                *context.player_number,
+                context,
+            )?;
         }
 
         Ok((
             detected_referee_pose_count >= *context.minimum_number_poses_before_message,
             did_detect_any_referee_this_cycle,
         ))
+    }
+    fn send_own_detection_message<T: NetworkInterface>(
+        &mut self,
+        hardware_interface: Arc<T>,
+        player_number: PlayerNumber,
+        context: &CycleContext<T>,
+    ) -> Result<()> {
+        if !self.is_silence_period_elapsed(context) {
+            return Ok(());
+        }
+
+        self.last_transmitted_spl_message = Some(context.cycle_time.start_time);
+
+        hardware_interface.write_to_network(OutgoingMessage::Spl(HulkMessage::VisualReferee(
+            VisualRefereeMessage { player_number },
+        )))
+    }
+
+    fn is_silence_period_elapsed(&self, context: &CycleContext<impl NetworkInterface>) -> bool {
+        is_cooldown_elapsed(
+            context.cycle_time.start_time,
+            self.last_transmitted_spl_message,
+            context.spl_network.silence_interval_between_messages,
+        )
     }
 }
 
@@ -207,11 +239,9 @@ fn unpack_own_detection_tree(
         .collect()
 }
 
-fn send_own_detection_message<T: NetworkInterface>(
-    hardware_interface: Arc<T>,
-    player_number: PlayerNumber,
-) -> Result<()> {
-    hardware_interface.write_to_network(OutgoingMessage::Spl(HulkMessage::VisualReferee(
-        VisualRefereeMessage { player_number },
-    )))
+fn is_cooldown_elapsed(now: SystemTime, last: Option<SystemTime>, cooldown: Duration) -> bool {
+    match last {
+        None => true,
+        Some(last_time) => now.duration_since(last_time).expect("time ran backwards") > cooldown,
+    }
 }
