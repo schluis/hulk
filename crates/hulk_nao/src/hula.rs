@@ -1,12 +1,10 @@
 use std::{io::Write, mem::size_of, os::unix::net::UnixStream, slice::from_raw_parts};
 
 use color_eyre::{eyre::Context, Result};
+use hula_types::JointsArray;
 use linear_algebra::IntoFramed;
 use nalgebra::{vector, Vector2, Vector3};
-use types::{
-    self,
-    joints::{arm::ArmJoints, head::HeadJoints, leg::LegJoints, Joints},
-};
+use types;
 
 use super::double_buffered_reader::{DoubleBufferedReader, SelectPoller};
 
@@ -157,112 +155,6 @@ impl From<SonarSensors> for types::sensor_data::SonarSensors {
         types::sensor_data::SonarSensors {
             left: from.left,
             right: from.right,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-#[repr(C)]
-pub struct JointsArray {
-    pub head_yaw: f32,
-    pub head_pitch: f32,
-    pub left_shoulder_pitch: f32,
-    pub left_shoulder_roll: f32,
-    pub left_elbow_yaw: f32,
-    pub left_elbow_roll: f32,
-    pub left_wrist_yaw: f32,
-    pub left_hip_yaw_pitch: f32,
-    pub left_hip_roll: f32,
-    pub left_hip_pitch: f32,
-    pub left_knee_pitch: f32,
-    pub left_ankle_pitch: f32,
-    pub left_ankle_roll: f32,
-    // pub right_hip_yaw_pitch: f32, TODO
-    pub right_hip_roll: f32,
-    pub right_hip_pitch: f32,
-    pub right_knee_pitch: f32,
-    pub right_ankle_pitch: f32,
-    pub right_ankle_roll: f32,
-    pub right_shoulder_pitch: f32,
-    pub right_shoulder_roll: f32,
-    pub right_elbow_yaw: f32,
-    pub right_elbow_roll: f32,
-    pub right_wrist_yaw: f32,
-    pub left_hand: f32,
-    pub right_hand: f32,
-}
-
-impl From<Joints<f32>> for JointsArray {
-    fn from(joints: Joints<f32>) -> Self {
-        Self {
-            head_yaw: joints.head.yaw,
-            head_pitch: joints.head.pitch,
-            left_shoulder_pitch: joints.left_arm.shoulder_pitch,
-            left_shoulder_roll: joints.left_arm.shoulder_roll,
-            left_elbow_yaw: joints.left_arm.elbow_yaw,
-            left_elbow_roll: joints.left_arm.elbow_roll,
-            left_wrist_yaw: joints.left_arm.wrist_yaw,
-            left_hip_yaw_pitch: joints.left_leg.hip_yaw_pitch,
-            left_hip_roll: joints.left_leg.hip_roll,
-            left_hip_pitch: joints.left_leg.hip_pitch,
-            left_knee_pitch: joints.left_leg.knee_pitch,
-            left_ankle_pitch: joints.left_leg.ankle_pitch,
-            left_ankle_roll: joints.left_leg.ankle_roll,
-            right_hip_roll: joints.right_leg.hip_roll,
-            right_hip_pitch: joints.right_leg.hip_pitch,
-            right_knee_pitch: joints.right_leg.knee_pitch,
-            right_ankle_pitch: joints.right_leg.ankle_pitch,
-            right_ankle_roll: joints.right_leg.ankle_roll,
-            right_shoulder_pitch: joints.right_arm.shoulder_pitch,
-            right_shoulder_roll: joints.right_arm.shoulder_roll,
-            right_elbow_yaw: joints.right_arm.elbow_yaw,
-            right_elbow_roll: joints.right_arm.elbow_roll,
-            right_wrist_yaw: joints.right_arm.wrist_yaw,
-            left_hand: joints.left_arm.hand,
-            right_hand: joints.right_arm.hand,
-        }
-    }
-}
-
-impl From<JointsArray> for Joints<f32> {
-    fn from(joints: JointsArray) -> Self {
-        Joints {
-            head: HeadJoints {
-                yaw: joints.head_yaw,
-                pitch: joints.head_pitch,
-            },
-            left_arm: ArmJoints {
-                shoulder_pitch: joints.left_shoulder_pitch,
-                shoulder_roll: joints.left_shoulder_roll,
-                elbow_yaw: joints.left_elbow_yaw,
-                elbow_roll: joints.left_elbow_roll,
-                wrist_yaw: joints.left_wrist_yaw,
-                hand: joints.left_hand,
-            },
-            right_arm: ArmJoints {
-                shoulder_pitch: joints.right_shoulder_pitch,
-                shoulder_roll: joints.right_shoulder_roll,
-                elbow_yaw: joints.right_elbow_yaw,
-                elbow_roll: joints.right_elbow_roll,
-                wrist_yaw: joints.right_wrist_yaw,
-                hand: joints.right_hand,
-            },
-            left_leg: LegJoints {
-                hip_yaw_pitch: joints.left_hip_yaw_pitch,
-                hip_roll: joints.left_hip_roll,
-                hip_pitch: joints.left_hip_pitch,
-                knee_pitch: joints.left_knee_pitch,
-                ankle_pitch: joints.left_ankle_pitch,
-                ankle_roll: joints.left_ankle_roll,
-            },
-            right_leg: LegJoints {
-                hip_yaw_pitch: joints.left_hip_yaw_pitch, //TODO
-                hip_roll: joints.right_hip_roll,
-                hip_pitch: joints.right_hip_pitch,
-                knee_pitch: joints.right_knee_pitch,
-                ankle_pitch: joints.right_ankle_pitch,
-                ankle_roll: joints.right_ankle_roll,
-            },
         }
     }
 }

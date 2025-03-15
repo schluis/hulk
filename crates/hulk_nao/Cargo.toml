@@ -35,3 +35,4 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 types = { workspace = true }
 watch = { workspace = true }
+hula_types = { workspace = true }
