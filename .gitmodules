@@ -1,0 +1,3 @@
+[submodule "tools/machine-learning/mujoco/loco-mujoco"]
+	path = tools/machine-learning/mujoco/loco-mujoco
+	url = git@github.com:robfiras/loco-mujoco.git

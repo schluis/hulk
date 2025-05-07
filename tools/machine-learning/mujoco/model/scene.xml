@@ -1,6 +1,6 @@
 <mujoco model="nao scene">
   <include file="nao.xml" />
-  <include file="tomato.xml" />
+  <!-- <include file="tomato.xml" /> -->
 
   <statistic center="0 0 0.2" extent="0.6" />
 

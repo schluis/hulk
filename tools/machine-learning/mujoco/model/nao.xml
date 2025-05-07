@@ -440,8 +440,8 @@
 
   <equality>
     <joint
-      joint1="hip_yaw_pitch"
-      joint2="right_hip_yaw_pitch"
+      joint1="left_leg.hip_yaw_pitch"
+      joint2="right_leg.hip_yaw_pitch"
       polycoef="0 1 0 0 0"
     />
   </equality>
@@ -501,7 +501,7 @@
     />
     <position
       name="hip_yaw_pitch"
-      joint="hip_yaw_pitch"
+      joint="left_leg.hip_yaw_pitch"
       ctrlrange="-1.145303 0.74081"
     />
     <position
@@ -529,11 +529,11 @@
       joint="left_leg.ankle_roll"
       ctrlrange="-0.397880  0.769001"
     />
-    <!--<position-->
-    <!--  name="hip_yaw_pitch"-->
-    <!--  joint="right_leg.hip_yaw_pitch"-->
-    <!--  ctrlrange="-1.145303 0.740810"-->
-    <!--/>-->
+    <!-- <position -->
+    <!--  name="hip_yaw_pitch" -->
+    <!--  joint="right_leg.hip_yaw_pitch" -->
+    <!--  ctrlrange="-1.145303 0.740810" -->
+    <!-- /> -->
     <position
       name="right_leg.hip_roll"
       joint="right_leg.hip_roll"
@@ -579,7 +579,7 @@
     <jointpos name="right_arm.elbow_yaw" joint="right_arm.elbow_yaw" />
     <jointpos name="right_arm.elbow_roll" joint="right_arm.elbow_roll" />
     <jointpos name="right_arm.wrist_yaw" joint="right_arm.wrist_yaw" />
-    <jointpos name="hip_yaw_pitch" joint="hip_yaw_pitch" />
+    <jointpos name="hip_yaw_pitch" joint="left_leg.hip_yaw_pitch" />
     <jointpos name="left_leg.hip_roll" joint="left_leg.hip_roll" />
     <jointpos name="left_leg.hip_pitch" joint="left_leg.hip_pitch" />
     <jointpos name="left_leg.knee_pitch" joint="left_leg.knee_pitch" />

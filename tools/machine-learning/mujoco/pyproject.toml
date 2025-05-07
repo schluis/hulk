@@ -28,6 +28,7 @@ dependencies = [
   "throwing",
   "transforms",
   "walking-engine",
+  "neovim>=0.3.1",
 ]
 
 [tool.uv.sources]
