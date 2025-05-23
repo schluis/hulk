@@ -456,7 +456,7 @@
     "max_forward_acceleration": 0.01,
     "max_base_inside_turn": 0.1,
     "max_inside_turn_increase": 4,
-    "max_foot_speed": 0.2,
+    "max_foot_speed": 0.4,
     "max_step_duration": { "nanos": 0, "secs": 2 },
     "max_support_foot_lift_speed": 0.025,
     "min_step_duration": { "nanos": 100000000, "secs": 0 },
