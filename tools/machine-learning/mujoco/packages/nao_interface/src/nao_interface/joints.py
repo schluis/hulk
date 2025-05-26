@@ -344,12 +344,12 @@ class JointsView[T]:
         self.setter("hip_yaw_pitch", value)
 
     def set_from_joints(self, joints: Joints[T]) -> None:
-        self.head.set_from_joints(joints.head)
-        self.left_arm.set_from_joints(joints.left_arm)
-        self.right_arm.set_from_joints(joints.right_arm)
+        self.head.set_from_joints(joints["head"])
+        self.left_arm.set_from_joints(joints["left_arm"])
+        self.right_arm.set_from_joints(joints["right_arm"])
         self.hip_yaw_pitch = joints.hip_yaw_pitch
-        self.left_leg.set_from_joints(joints.left_leg)
-        self.right_leg.set_from_joints(joints.right_leg)
+        self.left_leg.set_from_joints(joints["left_leg"])
+        self.right_leg.set_from_joints(joints["right_leg"])
 
     def set_from_dict(self, values: dict) -> None:
         for k, v in values.items():
