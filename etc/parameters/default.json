@@ -454,7 +454,7 @@
       "pitch_scale": 0.087,
       "roll_factor": 0.5,
       "roll_scale": 0.087,
-      "start_reduce_to_zero": 10.75
+      "start_reduce_to_zero": 0.75
     },
     "max_rotation_speed": 50000.0,
     "max_forward_acceleration": 0.01,
@@ -463,7 +463,7 @@
     "max_foot_speed": 0.3,
     "max_step_duration": { "nanos": 0, "secs": 2 },
     "max_support_foot_lift_speed": 0.025,
-    "min_step_duration": { "nanos": 50000000, "secs": 0 },
+    "min_step_duration": { "nanos": 200000000, "secs": 0 },
     "sole_pressure_threshold": 0.2,
     "starting_step": {
       "foot_lift_apex": 0.009,
