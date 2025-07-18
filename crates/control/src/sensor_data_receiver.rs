@@ -51,7 +51,7 @@ pub struct CycleContext {
     maximum_temperature: AdditionalOutput<f32, "maximum_temperature">,
     total_current: AdditionalOutput<f32, "total_current">,
 
-    roll_pitch_calibrated: AdditionalOutput<bool, "roll_pitch_calibrated">,
+    imu_calibrated: AdditionalOutput<bool, "sensor_data_receiver.imu_calibrated">,
 }
 
 #[context]
@@ -137,19 +137,46 @@ impl SensorDataReceiver {
         }
 
         if let State::Calibrated { calibration } = self.calibration_state {
-            let mut roll_pitch_orientation = Orientation3::<Robot>::from_euler_angles(
+            let mut roll_pitch = Orientation3::<Robot>::from_euler_angles(
                 -sensor_data.inertial_measurement_unit.roll_pitch.x(),
                 -sensor_data.inertial_measurement_unit.roll_pitch.y(),
                 0.0,
             )
             .mirror();
 
-            roll_pitch_orientation.inner = calibration * roll_pitch_orientation.inner;
+            roll_pitch.inner = calibration * roll_pitch.inner;
 
-            let (roll, pitch, _) = roll_pitch_orientation.euler_angles();
+            let (roll, pitch, _) = roll_pitch.euler_angles();
 
             sensor_data.inertial_measurement_unit.roll_pitch.inner.x = roll;
             sensor_data.inertial_measurement_unit.roll_pitch.inner.y = pitch;
+
+            let mut angular_velocity = Orientation3::<Robot>::from_euler_angles(
+                -sensor_data.inertial_measurement_unit.angular_velocity.x(),
+                -sensor_data.inertial_measurement_unit.angular_velocity.y(),
+                -sensor_data.inertial_measurement_unit.angular_velocity.z(),
+            )
+            .mirror();
+
+            angular_velocity.inner = calibration * angular_velocity.inner;
+
+            let (roll, pitch, yaw) = angular_velocity.euler_angles();
+
+            sensor_data
+                .inertial_measurement_unit
+                .angular_velocity
+                .inner
+                .x = roll;
+            sensor_data
+                .inertial_measurement_unit
+                .angular_velocity
+                .inner
+                .y = pitch;
+            sensor_data
+                .inertial_measurement_unit
+                .angular_velocity
+                .inner
+                .z = yaw;
         }
 
         sensor_data.positions = sensor_data.positions - (*context.joint_calibration_offsets);
@@ -174,7 +201,7 @@ impl SensorDataReceiver {
             .fill_if_subscribed(|| sensor_data.currents.into_iter().sum());
 
         context
-            .roll_pitch_calibrated
+            .imu_calibrated
             .fill_if_subscribed(|| matches!(self.calibration_state, State::Calibrated { .. }));
 
         self.last_cycle_start = now;
