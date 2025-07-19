@@ -349,7 +349,7 @@
       },
       "foot_offset_left": [0.0, 0.052, 0.0],
       "foot_offset_right": [0.0, -0.052, 0.0],
-      "step_duration": { "nanos": 235000000, "secs": 0 },
+      "step_duration": { "nanos": 226000000, "secs": 0 },
       "step_duration_increase": {
         "forward": 0.005,
         "left": 0.013,
@@ -396,7 +396,7 @@
     },
     "dynamic_interpolation_speed": {
       "active_range": [-0.1445, -0.0573],
-      "max_reduction": 0.7,
+      "max_reduction": 0.6,
       "slip_reduction": 1.0,
       "xy_offset_stop_weight": 0.15
     },
@@ -417,7 +417,7 @@
       "max": [0.04, 0.02]
     },
     "max_rotation_speed": 50000.0,
-    "max_forward_acceleration": 0.01,
+    "max_forward_acceleration": 0.008,
     "max_base_inside_turn": 0.1,
     "max_inside_turn_increase": 4,
     "max_foot_speed": 0.6,
