@@ -5481,6 +5481,7 @@ dependencies = [
  "color-eyre",
  "controller_handler",
  "detection",
+ "fall_detection",
  "fall_down_state_receiver",
  "field_mark_association",
  "game_controller_filter",

@@ -10,13 +10,13 @@ use na::Matrix2;
 use nalgebra as na;
 use serde::{Deserialize, Serialize};
 
-use booster::{FallDownState, FallDownStateType};
 use coordinate_systems::{Field, Ground, Odometry};
 use linear_algebra::{IntoFramed, Isometry2, Point2, Pose2, point};
 use projection::{Projection, camera_matrix::CameraMatrix};
 use ros_z::{prelude::*, qos::QosDurability, time::Time};
 use ros_z_streams::CreateFutureMapBuilder;
 use tokio::task::block_in_place;
+use types::fall_detection::FallDetection;
 use types::{
     field_dimensions::FieldDimensions,
     multivariate_normal_distribution::MultivariateNormalDistribution,
@@ -122,8 +122,12 @@ async fn run(ctx: Arc<Context>) -> Result<()> {
         .subscriber::<Isometry2<Ground, Field>>("ground_to_field")
         .build()
         .await?;
-    let fall_down_state_cache = node
-        .subscriber::<FallDownState>("inputs/fall_down_state")
+    let fall_detection_cache = node
+        .subscriber::<FallDetection>(types::fall_detection::FALL_DETECTION_TOPIC)
+        .qos(ros_z::qos::QosProfile {
+            reliability: ros_z::qos::QosReliability::BestEffort,
+            ..Default::default()
+        })
         .cache(10)
         .build()
         .await?;
@@ -160,14 +164,14 @@ async fn run(ctx: Arc<Context>) -> Result<()> {
                 .get_latest()
                 .map(|state| *state)
                 .unwrap_or_default();
-            let fall_down_state = fall_down_state_cache.get_latest();
+            let fall_detection = fall_detection_cache.get_latest();
             filter.output(
                 now,
                 settings,
                 dimensions.as_deref(),
                 ground_to_field.as_ref(),
                 primary_state,
-                fall_down_state.as_deref(),
+                fall_detection.as_deref(),
                 obstacle_filter_hypotheses_pub.has_subscribers(),
             )
         };
@@ -309,7 +313,7 @@ impl ObstacleFilter {
 
     #[expect(
         clippy::too_many_arguments,
-        reason = "keep clock, geometry, robot state and diagnostic demand explicit"
+        reason = "Keep expiry time, geometry inputs and diagnostic demand explicit at publication"
     )]
     fn output(
         &mut self,
@@ -318,7 +322,7 @@ impl ObstacleFilter {
         field_dimensions: Option<&FieldDimensions>,
         ground_to_field: Option<&Isometry2<Ground, Field>>,
         primary_state: PrimaryState,
-        fall_down_state: Option<&FallDownState>,
+        fall_detection: Option<&FallDetection>,
         include_hypotheses: bool,
     ) -> ObstacleFilterOutput {
         if let (Some(time), Some(dimensions)) = (self.current_frame_time(now), field_dimensions) {
@@ -328,7 +332,7 @@ impl ObstacleFilter {
                 dimensions,
                 ground_to_field,
                 primary_state,
-                fall_down_state,
+                fall_detection,
             );
             ObstacleFilterOutput {
                 time,
@@ -336,7 +340,7 @@ impl ObstacleFilter {
                 obstacles,
             }
         } else {
-            self.maintain(now, parameters, primary_state, fall_down_state);
+            self.maintain(now, parameters, primary_state, fall_detection);
             ObstacleFilterOutput {
                 // No stale coordinates are relabelled as current: both lists
                 // are empty, while internal tracks can still age normally.
@@ -440,9 +444,9 @@ impl ObstacleFilter {
         field_dimensions: &FieldDimensions,
         ground_to_field: Option<&Isometry2<Ground, Field>>,
         primary_state: PrimaryState,
-        fall_down_state: Option<&FallDownState>,
+        fall_detection: Option<&FallDetection>,
     ) -> Vec<Obstacle> {
-        self.maintain(now, parameters, primary_state, fall_down_state);
+        self.maintain(now, parameters, primary_state, fall_detection);
 
         let obstacles = self
             .hypotheses
@@ -584,7 +588,7 @@ impl ObstacleFilter {
         now: Time,
         parameters: &ObstacleFilterParameters,
         primary_state: PrimaryState,
-        fall_down_state: Option<&FallDownState>,
+        fall_detection: Option<&FallDetection>,
     ) {
         self.prune_hypotheses(now, parameters.hypothesis_timeout);
         let became_unpenalized = self.last_primary_state == PrimaryState::Penalized
@@ -593,8 +597,7 @@ impl ObstacleFilter {
         if became_unpenalized {
             self.hypotheses.clear();
         }
-        if fall_down_state.is_some_and(|state| state.fall_down_state == FallDownStateType::IsReady)
-        {
+        if !fall_detection.is_some_and(|state| state.is_upright(now)) {
             self.hypotheses
                 .retain(|hypothesis| hypothesis.obstacle_kind != ObstacleKind::Unknown);
         }
