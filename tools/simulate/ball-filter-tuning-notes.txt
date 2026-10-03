@@ -1102,3 +1102,43 @@ Scope correction and replacement robotics PR (2026-10-03)
   server hulk-agent-board added without changing prior settings; this session
   uses logs/hulk_board_client.py. Registration token stored privately outside
   repository under ~/.local/state/hulk-agent-board (never publish the token).
+
+2026-10-03 PR2921 new adversarial review and ownership boundary
+- Board peer CobaltCave reported four NEW findings, distinct from fixed PR2917.
+- Confirmed/reproduced FutureMap recv cancellation:20ms caller heartbeat resets
+  old50ms timer indefinitely. Regression failed before, passes with timer stored
+  across calls and reset only after completed tick. Dev ddd1e942c.
+- Same-exposure accepted Robot boxes now veto clear visibility before navigation
+  obstacles mature. Projected disk intersection includes partial occlusion;
+  malformed geometry is Unknown. Ground obstacles still compensate odometry;
+  navigation maturity unchanged. Protects visible/near decay and competition,
+  preserves real matched ball measurements. Dev3acde261c;95 unit tests pass.
+- Explored20ms filter percept heartbeat; live-node regression demonstrated normal
+ 250ms retention/expiry even under total silence. REVERTED: expiry belongs in the
+  visual selector. User explicitly declined selector changes; do not move this
+  lifecycle into ball_filter to evade scope. Dev45d269af3 reverted bye3934d02d.
+- KNOWN BLOCKER: detector silence can retain visual target indefinitely; late old
+  positive delivery can revive it. Consumer-clock expiry/admission fix remains
+  unimplemented. Proposed reviewable patch logs/proposed-visual-expiry.patch and
+  integration reproduction logs/proposed-visual-expiry-integration-test.rs.
+  Existing kick/selector files unchanged. No new100ms policy.
+- Robotics PR branch split into8 coherent commits and rebased onto latest main
+ 9174e6b26. HEADb30ea678f: fusioncf15cf3de, occlusion42e4dd8ab, recorderb30ea678f.
+  Backup checkpoint/ball-filter-robotics-before-review-fixes retains original
+ 5a0526d47.115 tests+3doctests, strict library clippy, full hulk_ros_z check and
+  fmt pass on final head (logs/review-production-*-final.log). An exploratory
+  all-target clippy found pre-existing field_reassign_with_default test-fixture
+  lints; library check is clean. No behavior/selector/simulator/Twix PR diff.
+- Recorder topics were already present in dev but omitted from robotics port.
+  Added9 missing input/context/output topics to production recorder config.
+- Robot43 first-half inventory lacks field_dimensions, update_schedule, selected
+  obstacles/prior and ball_filter/ball_position: cannot retrospectively claim
+  exact live replay or truth-labelled near error. Keep actual archived hesitation
+  analysis and 1/2/3-frame gap regressions; future games need new recorder config.
+- Outside-filter simulator follow-up: synthetic detections currently emit balls,
+  while opponents are modelled as Ground obstacles/physical occluders. They do not
+  emit same-exposure Robot boxes. Unit regressions cover the new robot-box path;
+  fresh simulator optimization alone does not validate robot detector maturity.
+- Old supervisor568792 temporarily SIGSTOPped during fixes; remote search stays
+  active. Resume via fresh same-session supervisor after rebuilding simulator,
+  force new capture generation before optimizer replacement, retain all history.
