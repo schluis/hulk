@@ -12,7 +12,7 @@ export LD_LIBRARY_PATH="$MUJOCO_DOWNLOAD_DIR/mujoco-3.9.0/lib${LD_LIBRARY_PATH:+
 # The motion stack loads ONNX Runtime dynamically. Resolve it before opening the UI.
 needs_onnx_runtime=true
 for argument in "$@"; do
-    case "$argument" in --no-robotics|--watch-ball-tuning|--help|-h) needs_onnx_runtime=false ;; esac
+    case "$argument" in --no-robotics|--watch-ball-tuning|--check-ball-approach|--help|-h) needs_onnx_runtime=false ;; esac
 done
 if $needs_onnx_runtime && [[ -z "${ORT_DYLIB_PATH:-}" ]]; then
     for candidate in /usr/lib/libonnxruntime.so /usr/lib64/libonnxruntime.so /usr/lib/x86_64-linux-gnu/libonnxruntime.so; do

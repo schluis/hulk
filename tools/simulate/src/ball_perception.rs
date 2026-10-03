@@ -13,10 +13,16 @@ use projection::{Projection, camera_matrix::CameraMatrix};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use rand_distr::{Distribution, StandardNormal};
-use ros_z::{prelude::*, time::Time};
+use ros_z::{
+    prelude::*,
+    time::{Clock, Time},
+};
 use ros_z_streams::{AnnouncingPublisher, CreateAnnouncingPublisher};
 use serde::{Deserialize, Serialize};
-use tokio::{runtime::Handle, task::JoinHandle};
+use tokio::{
+    runtime::Handle,
+    task::{JoinHandle, JoinSet},
+};
 use types::{
     ball_position::BallPosition,
     bounding_box::BoundingBox,
@@ -29,6 +35,13 @@ use types::{
 pub struct Parameters {
     /// Logical seconds between camera frames, independent of rendering speed.
     pub frame_period: f64,
+    /// Exposure-to-detector-delivery delay; announcements still happen at exposure.
+    pub delivery_delay_seconds: f64,
+    /// Uniform delay variation on either side of delivery_delay_seconds.
+    pub delivery_jitter_seconds: f64,
+    /// Deterministic missed-frame bursts after eight visible close-ball frames.
+    /// Empty disables this challenge. Physical balls and ground truth are retained.
+    pub close_dropout_pattern: Vec<u32>,
     /// Independent standard deviation of bounding-box center x/y, in pixels.
     pub center_noise_pixels: f32,
     /// Fixed detector-center bias per recording, in pixels.
@@ -53,6 +66,9 @@ impl Default for Parameters {
     fn default() -> Self {
         Self {
             frame_period: 0.04,
+            delivery_delay_seconds: 0.0,
+            delivery_jitter_seconds: 0.0,
+            close_dropout_pattern: Vec::new(),
             center_noise_pixels: 2.0,
             center_bias_pixels: [0.0; 2],
             dropout_probability: 0.0,
@@ -69,6 +85,24 @@ impl Default for Parameters {
 
 impl Parameters {
     pub fn validate(&self) -> Result<(), String> {
+        if !self.delivery_delay_seconds.is_finite()
+            || !self.delivery_jitter_seconds.is_finite()
+            || self.delivery_jitter_seconds < 0.0
+            || self.delivery_delay_seconds < self.delivery_jitter_seconds
+            || self.delivery_delay_seconds + self.delivery_jitter_seconds > 0.5
+        {
+            return Err(
+                "detector delay must satisfy 0 <= jitter <= delay and delay+jitter <= 0.5 seconds"
+                    .into(),
+            );
+        }
+        if self
+            .close_dropout_pattern
+            .iter()
+            .any(|frames| !(1..=8).contains(frames))
+        {
+            return Err("close dropout lengths must be between one and eight frames".into());
+        }
         if !self.frame_period.is_finite() || self.frame_period < 0.002 {
             return Err(
                 "ball_perception.frame_period must be finite and at least 0.002 seconds".into(),
@@ -171,6 +205,7 @@ pub struct Detector {
     false_remaining: u32,
     false_center: Point2<Pixel>,
     false_anchor: Option<Point2<Field>>,
+    close_dropouts: crate::ball_approach::BriefDropouts,
 }
 
 /// Upright physical occluder in the same ground frame as the camera and balls.
@@ -223,6 +258,7 @@ impl Detector {
             false_remaining: 0,
             false_center: Point2::origin(),
             false_anchor: None,
+            close_dropouts: Default::default(),
         }
     }
 
@@ -266,7 +302,20 @@ impl Detector {
         {
             self.dropout_remaining = parameters.dropout_burst_frames;
         }
-        let drop_frame = self.dropout_remaining > 0
+        let close_visible = balls.iter().any(|ball| {
+            ball.xy().coords().norm() <= 1.0
+                && camera
+                    .ground_with_z_to_pixel(ball.xy(), ball.z())
+                    .is_ok_and(|pixel| in_image(camera, pixel))
+                && !obstacles
+                    .iter()
+                    .any(|obstacle| occludes(camera, *ball, obstacle))
+        });
+        let scheduled_drop = self
+            .close_dropouts
+            .step(close_visible, &parameters.close_dropout_pattern);
+        let drop_frame = scheduled_drop
+            || self.dropout_remaining > 0
             || (parameters.dropout_probability > 0.0
                 && self.rng.random::<f32>() < parameters.dropout_probability);
         self.dropout_remaining = self.dropout_remaining.saturating_sub(1);
@@ -517,13 +566,17 @@ type TruthHistory = Arc<Mutex<BTreeMap<Time, TruthFrame>>>;
 pub struct PerceptionIo {
     runtime: Handle,
     detector: Detector,
-    detections: AnnouncingPublisher<TimeWrapper<Vec<Object<RobocupObjectLabel>>>>,
+    detections: Arc<AnnouncingPublisher<TimeWrapper<Vec<Object<RobocupObjectLabel>>>>>,
     truth: Publisher<TimeWrapper<Vec<Point3<Ground>>>>,
     field_truth: Publisher<TimeWrapper<Vec<Point3<Field>>>>,
-    false_detections: Publisher<TimeWrapper<Vec<FalseDetectionMarker>>>,
+    false_detections: Arc<Publisher<TimeWrapper<Vec<FalseDetectionMarker>>>>,
     history: TruthHistory,
     metrics_task: JoinHandle<()>,
     last_frame: Option<Time>,
+    clock: Clock,
+    deliveries: JoinSet<Result<()>>,
+    delivery_rng: ChaCha8Rng,
+    delivery_seed: u64,
 }
 
 impl PerceptionIo {
@@ -607,13 +660,17 @@ impl PerceptionIo {
         Ok(Self {
             runtime: runtime.clone(),
             detector: Detector::new(42),
-            detections,
+            detections: Arc::new(detections),
             truth,
             field_truth,
-            false_detections,
+            false_detections: Arc::new(false_detections),
             history,
             metrics_task,
             last_frame: None,
+            clock: node.clock().clone(),
+            deliveries: JoinSet::new(),
+            delivery_rng: ChaCha8Rng::seed_from_u64(42 ^ 0xd311_0e12_u64),
+            delivery_seed: 42,
         })
     }
 
@@ -648,6 +705,9 @@ impl PerceptionIo {
         parameters: &Parameters,
         obstacles: &[Occluder],
     ) -> Result<()> {
+        while let Some(result) = self.deliveries.try_join_next() {
+            result??;
+        }
         // Keep exact ground truth for delayed filter outputs, before announcing either input.
         {
             let mut history = self.history.lock().expect("truth history lock poisoned");
@@ -702,29 +762,78 @@ impl PerceptionIo {
                     parameters,
                 );
                 let false_markers = frame.false_markers;
-                self.detections
-                    .announce(time)
-                    .await?
-                    .publish(&TimeWrapper {
-                        time,
-                        inner: frame.detections,
-                    })
-                    .await?;
-                if !false_markers.is_empty() {
-                    self.false_detections
-                        .publish_with_source_time(
-                            &TimeWrapper {
-                                time,
-                                inner: false_markers,
-                            },
-                            time,
-                        )
+                if self.delivery_seed != parameters.seed {
+                    self.delivery_seed = parameters.seed;
+                    self.delivery_rng =
+                        ChaCha8Rng::seed_from_u64(parameters.seed ^ 0xd311_0e12_u64);
+                }
+                let jitter = if parameters.delivery_jitter_seconds > 0.0 {
+                    self.delivery_rng.random_range(
+                        -parameters.delivery_jitter_seconds..=parameters.delivery_jitter_seconds,
+                    )
+                } else {
+                    0.0
+                };
+                let due =
+                    time + Duration::from_secs_f64(parameters.delivery_delay_seconds + jitter);
+                let payload = TimeWrapper {
+                    time,
+                    inner: frame.detections,
+                };
+                if due == time {
+                    self.detections
+                        .announce(time)
+                        .await?
+                        .publish(&payload)
                         .await?;
+                    if !false_markers.is_empty() {
+                        self.false_detections
+                            .publish_with_source_time(
+                                &TimeWrapper {
+                                    time,
+                                    inner: false_markers,
+                                },
+                                time,
+                            )
+                            .await?;
+                    }
+                } else {
+                    let detections = self.detections.clone();
+                    let markers = self.false_detections.clone();
+                    let clock = self.clock.clone();
+                    let (announced, ready) = tokio::sync::oneshot::channel();
+                    self.deliveries.spawn_on(
+                        async move {
+                            let pending = detections.announce(time).await?;
+                            let _ = announced.send(());
+                            clock.sleep_until(due).await;
+                            pending.publish(&payload).await?;
+                            if !false_markers.is_empty() {
+                                markers
+                                    .publish_with_source_time(
+                                        &TimeWrapper {
+                                            time,
+                                            inner: false_markers,
+                                        },
+                                        time,
+                                    )
+                                    .await?;
+                            }
+                            Ok(())
+                        },
+                        &self.runtime,
+                    );
+                    // Register the exposure before later odometry can commit its timestamp.
+                    ready.await?;
                 }
                 self.last_frame = Some(time);
             }
             Ok(())
         })
+    }
+
+    pub fn brief_dropout_counts(&self) -> &[u64; 8] {
+        &self.detector.close_dropouts.bursts
     }
 }
 
@@ -1210,6 +1319,31 @@ mod tests {
     #[test]
     fn rejects_invalid_noise_configuration() {
         assert!(Parameters::default().validate().is_ok());
+        for (delay, jitter) in [
+            (f64::NAN, 0.0),
+            (-0.1, 0.0),
+            (0.02, 0.03),
+            (0.5, 0.01),
+            (0.05, f64::INFINITY),
+        ] {
+            assert!(
+                Parameters {
+                    delivery_delay_seconds: delay,
+                    delivery_jitter_seconds: jitter,
+                    ..clean()
+                }
+                .validate()
+                .is_err()
+            );
+        }
+        assert!(
+            Parameters {
+                close_dropout_pattern: vec![0],
+                ..clean()
+            }
+            .validate()
+            .is_err()
+        );
         for value in [-1.0, f32::NAN, f32::INFINITY] {
             assert!(
                 Parameters {
@@ -1240,6 +1374,15 @@ mod tests {
 
     #[test]
     fn production_filter_consumes_announcements_and_metrics_match_capture_time() {
+        check_production_filter_delivery(0.0);
+    }
+
+    #[test]
+    fn delayed_detector_payloads_keep_exposure_geometry_in_production_filter() {
+        check_production_filter_delivery(0.05);
+    }
+
+    fn check_production_filter_delivery(delay: f64) {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let clock = Clock::logical(Time::zero());
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -1352,7 +1495,17 @@ mod tests {
             );
             // Register truth before the filter can receive either input at this time.
             perception
-                .publish(time, ground_to_field, &camera, vec![ball], 0.105, &clean())
+                .publish(
+                    time,
+                    ground_to_field,
+                    &camera,
+                    vec![ball],
+                    0.105,
+                    &Parameters {
+                        delivery_delay_seconds: delay,
+                        ..clean()
+                    },
+                )
                 .unwrap();
             runtime.block_on(async {
                 pose_pub

@@ -22,6 +22,8 @@ use crate::{
     },
 };
 
+mod approach_regression;
+mod ball_approach;
 mod ball_perception;
 mod ball_tuning;
 mod behavior_inputs;
@@ -69,6 +71,9 @@ struct Args {
     /// Capture the six labelled ROS-Z recordings without running parameter search.
     #[arg(long, value_name = "NEW_DIRECTORY", conflicts_with_all = ["tune_ball_filter", "remote_ball_tuning", "no_robotics", "router", "robot", "parameter_root", "ball_perception"])]
     capture_ball_tuning: Option<PathBuf>,
+    /// Check brief close-ball visibility gaps through production perception and behavior; exits nonzero on interrupted approach.
+    #[arg(long, value_name = "NEW_DIRECTORY", conflicts_with_all = ["tune_ball_filter", "capture_ball_tuning", "remote_ball_tuning", "watch_ball_tuning", "ball_perception", "no_robotics", "router", "robot", "parameter_root", "robotics_parameter_layer"])]
+    check_ball_approach: Option<PathBuf>,
     /// Effective ball-filter parameters for a fresh recording generation.
     #[arg(long, requires = "capture_ball_tuning")]
     capture_ball_parameters: Option<PathBuf>,
@@ -110,6 +115,9 @@ struct Args {
 fn main() -> Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
+    if let Some(output) = &args.check_ball_approach {
+        return approach_regression::run(output, &args.robotics_parameter_root, &args.location);
+    }
     let opponents = types::ball_filter_tuning::OpponentParameters {
         count: args.tuning_opponents,
         width: args.tuning_opponent_width,

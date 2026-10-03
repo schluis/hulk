@@ -192,10 +192,11 @@ pub fn run() -> Result<()> {
         });
         Ok::<_, color_eyre::Report>((context, task))
     })?;
-    let parameters: SimulatorParameters = json5::from_str(&std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/parameters/simulator.json5"
-    ))?)?;
+    // A long-running optimizer can launch its original executable after a rebuild.
+    // Its defaults must match that executable's schema, not newer checkout files.
+    // Live scene parameters arrive from the matching optimizer above.
+    let parameters: SimulatorParameters =
+        json5::from_str(include_str!("../../parameters/simulator.json5"))?;
     let mut app = App::new();
     app.insert_resource(ViewerData(data))
         .insert_resource(CurrentSimulatorParameters {

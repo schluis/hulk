@@ -41,7 +41,7 @@ use types::{
 
 const EPISODE_SECONDS: f64 = 40.0;
 
-const TOPICS: &[&str] = &[
+pub(crate) const TOPICS: &[&str] = &[
     "detected_objects",
     "detected_objects/announce",
     "inputs/odometry",
@@ -75,6 +75,9 @@ const TOPICS: &[&str] = &[
     "filtered_game_controller_state",
     "primary_state",
     "behavior/motion_command",
+    "behavior/blackboard",
+    "behavior/trace",
+    "fall_detection/status",
 ];
 
 /// Cargo can replace the on-disk executable while an optimizer keeps running.
@@ -842,6 +845,10 @@ fn record(
         root.join("tools/simulate/parameters/simulator.json5"),
     )?)?;
     parameters.ball_perception.seed = seed;
+    // Measured game detector latency is about 52ms, before behavior sampling.
+    parameters.ball_perception.delivery_delay_seconds = 0.05;
+    parameters.ball_perception.delivery_jitter_seconds = 0.015;
+    parameters.ball_perception.close_dropout_pattern = vec![1, 2, 3];
     parameters.opponents = opponents;
     if !seed.is_multiple_of(2) {
         let noise = &mut parameters.ball_perception;
@@ -939,6 +946,7 @@ fn record(
             obstacles_pub,
         ))
     })?;
+    let approach = runtime.block_on(crate::ball_approach::Observer::new(io.node()))?;
     io.input_game.game_state = FilteredGameState::Playing {
         ball_is_free: true,
         kick_off: false,
@@ -1411,6 +1419,7 @@ fn record(
     );
     progress.send_modify(|state| state.elapsed_seconds = EPISODE_SECONDS);
     // Allow the fusion safety lag and transport queues to drain without more sensors.
+    let approach = approach.snapshot();
     clock.advance(Duration::from_millis(100))?;
     std::thread::sleep(Duration::from_millis(300));
     let written = runtime.block_on(recording.finish())?;
@@ -1429,11 +1438,21 @@ fn record(
         "simultaneous_motion_seconds": simultaneous_motion_seconds,
         "peak_ball_speed_metres_per_second": peak_ball_speed,
         "fast_ball_seconds": fast_ball_seconds,
+        "brief_dropout_bursts_by_frames": io.ball_perception.as_ref().map(|perception| perception.brief_dropout_counts()),
+        "approach_status": approach.status(),
+        "approach": approach,
     });
     write_checkpoint(
         &path.with_extension("coverage.json"),
         &serde_json::to_vec_pretty(&coverage)?,
     )?;
+    eprintln!(
+        "Approach: {}; {} close-ball Kick -> Stand transitions, {:.2}s Stand, {:.2}s Stand after kick with visual age <=100ms",
+        approach.status(),
+        approach.kick_to_stand,
+        approach.stand_seconds,
+        approach.stand_after_kick_with_visual_under_100ms_seconds
+    );
     eprintln!(
         "Contest coverage: {opponent_kicks} opponent kicks, {occluded_kicks} blocked by opponents ({occluded_in_view_kicks} in camera view); {contest_seconds:.2}s contested, {occluded_in_view_seconds:.2}s occluded in view"
     );
