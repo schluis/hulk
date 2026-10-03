@@ -8,7 +8,7 @@
   near_visible_missed_detection_distance: 1.0,
   maximum_obstacle_time_difference: { secs: 0, nanos: 100000000 },
   hidden_validity_exponential_decay_factor: 0.9997000098228456,
-  hidden_validity_decay_rate: 0.01,
+  hidden_validity_decay_rate: 0.0,
   visible_missed_validity_decay_rate: 1.0,
   near_visible_missed_validity_decay_rate: 20.0,
   competing_hypothesis_validity_decay_rate: 0.5,
