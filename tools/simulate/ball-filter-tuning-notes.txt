@@ -794,3 +794,9 @@ Pregame delivery, robotics-only scope (2026-10-03 09:28 UTC)
 - Full-branch evaluation helper checkpoint072e0c2dc preserves capture-baseline
   strict verification separately from current evaluation defaults. It is excluded
   from robotics PR. Concurrent opencode effort-statistics changes remain untouched.
+- Final robotics branch commit d4ffb70d5 adds two documented argument-count lint
+  expectations after CI flagged explicit sensor input signatures. Pushed. Narrowed
+  branch substantive commit a88f174d9 passed CI: 1,260 tests, 2 skipped. Formatting
+  and robot compile check pass. Final lint-only CI rerun in progress at09:30UTC.
+- Final commit Clippy and formatting checks now pass; final CI test/build rerun
+  remains pending at09:30:53UTC. Prior substantive commit passed1,260tests.
