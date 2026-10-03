@@ -270,6 +270,26 @@ pub struct BallFilterParameters {
     pub velocity_decay_factor: f32,
     pub noise: BallFilterNoise,
     pub maximum_matching_cost: f32,
+    /// Optional physical association gate in metres. Zero preserves legacy
+    /// covariance-only association; positive values reject distant percepts.
+    #[serde(default)]
+    pub maximum_matching_distance: f32,
+    /// Maximum ratio between observed and projected ball radii, in either
+    /// direction. Values <= 1 disable this optional ground-ball geometry gate.
+    #[serde(default)]
+    pub maximum_detection_radius_ratio: f32,
+    /// Ranking penalty per square metre of position covariance trace. Does not
+    /// change output eligibility, stored confidence, or hypothesis retention.
+    #[serde(default)]
+    pub hypothesis_uncertainty_weight: f32,
+    /// Bounded uncertainty penalty for choosing between feasible associations.
+    /// Zero preserves legacy assignment; does not change the matching gate.
+    #[serde(default)]
+    pub association_uncertainty_weight: f32,
+    /// Position-standard-deviation margin for clear missed-detection evidence.
+    /// Zero preserves center-only visibility. Uncertain visibility pauses misses.
+    #[serde(default)]
+    pub visibility_uncertainty_scale: f32,
     /// Legacy compatibility field; rejected associations no longer penalize track validity.
     pub maximum_matching_cost_validity_penalty_factor: f32,
 }
@@ -304,6 +324,11 @@ impl Default for BallFilterParameters {
             velocity_decay_factor: Default::default(),
             noise: Default::default(),
             maximum_matching_cost: Default::default(),
+            maximum_matching_distance: Default::default(),
+            maximum_detection_radius_ratio: Default::default(),
+            hypothesis_uncertainty_weight: Default::default(),
+            association_uncertainty_weight: Default::default(),
+            visibility_uncertainty_scale: Default::default(),
             maximum_matching_cost_validity_penalty_factor: Default::default(),
         }
     }

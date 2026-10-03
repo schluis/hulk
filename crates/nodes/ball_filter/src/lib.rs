@@ -389,18 +389,44 @@ fn advance_all_hypotheses(
 
     // Association depends on position/covariance, not confidence, so solve
     // before applying decay to distinguish a matched track from a clear miss.
-    let match_matrix =
+    let mut match_matrix =
         mahalanobis_matrix_of_hypotheses_and_percepts(&ball_filter.hypotheses, ball_percepts);
+    // Uncertainty grows during occlusion. It must not authorize an arbitrarily
+    // distant false percept to update a retained track when this gate is enabled.
+    if filter_parameters.maximum_matching_distance.is_finite()
+        && filter_parameters.maximum_matching_distance > 0.0
+    {
+        let maximum_squared = filter_parameters.maximum_matching_distance.powi(2);
+        for ((hypothesis, percept), cost) in match_matrix.indexed_iter_mut() {
+            let residual = ball_percepts[percept].percept_in_ground.mean
+                - ball_filter.hypotheses[hypothesis]
+                    .position()
+                    .position
+                    .inner
+                    .coords;
+            if residual.norm_squared() > maximum_squared {
+                *cost = f32::NEG_INFINITY;
+            }
+        }
+    }
     let assignment = if ball_percepts.is_empty() {
         None
     } else {
+        let mut assignment_scores =
+            gated_assignment_scores(&match_matrix, filter_parameters.maximum_matching_cost);
+        let uncertainty_weight = filter_parameters.association_uncertainty_weight;
+        if uncertainty_weight.is_finite() && uncertainty_weight > 0.0 {
+            for (row, hypothesis) in ball_filter.hypotheses.iter().enumerate() {
+                let variance = hypothesis.position_covariance().trace().max(0.0);
+                let penalty = uncertainty_weight.min(1.0) * variance / (1.0 + variance);
+                for column in 0..ball_percepts.len() {
+                    assignment_scores[(row, column)] -= penalty;
+                }
+            }
+        }
         Some(
             assignment_solver
-                .solve(
-                    gated_assignment_scores(&match_matrix, filter_parameters.maximum_matching_cost)
-                        .view(),
-                    Objective::Maximize,
-                )
+                .solve(assignment_scores.view(), Objective::Maximize)
                 .wrap_err("failed to solve ball assignment")?,
         )
     };
@@ -421,12 +447,13 @@ fn advance_all_hypotheses(
         );
         let visibility = if percept_index.is_none() && validity_decay::enabled(filter_parameters) {
             camera_matrix.map_or(negative_evidence::Visibility::Unknown, |camera| {
-                negative_evidence::classify_with_detections(
-                    &hypothesis.position(),
+                hypothesis_visibility(
+                    hypothesis,
                     camera,
                     field_dimensions.ball_radius,
                     obstacles,
                     detections,
+                    filter_parameters,
                 )
             })
         } else {
@@ -482,12 +509,13 @@ fn advance_all_hypotheses(
             }
             let position = hypothesis.position();
             let clearly_visible = camera_matrix.is_some_and(|camera| {
-                negative_evidence::classify_with_detections(
-                    &position,
+                hypothesis_visibility(
+                    hypothesis,
                     camera,
                     field_dimensions.ball_radius,
                     obstacles,
                     detections,
+                    filter_parameters,
                 ) == negative_evidence::Visibility::Visible
             });
             let evidence = hypothesis
@@ -702,6 +730,19 @@ fn project_detected_balls(
                 if !detected_ball_radius.is_finite() || detected_ball_radius <= 0.0 {
                     return None;
                 }
+                let maximum_ratio = parameters.maximum_detection_radius_ratio;
+                if maximum_ratio.is_finite() && maximum_ratio > 1.0 {
+                    let expected = camera_matrix
+                        .get_pixel_radius(ball_radius, area.center())
+                        .ok()?;
+                    if !expected.is_finite()
+                        || expected <= 0.0
+                        || detected_ball_radius > maximum_ratio * expected
+                        || expected > maximum_ratio * detected_ball_radius
+                    {
+                        return None;
+                    }
+                }
 
                 let circle = Circle {
                     center: area.center(),
@@ -747,6 +788,53 @@ fn project_detected_balls(
     )
 }
 
+fn hypothesis_visibility(
+    hypothesis: &BallHypothesis,
+    camera: &CameraMatrix,
+    ball_radius: f32,
+    obstacles: Option<&[Obstacle]>,
+    detections: &[Object<RobocupObjectLabel>],
+    parameters: &BallFilterParameters,
+) -> negative_evidence::Visibility {
+    use negative_evidence::Visibility;
+    let mut ball = hypothesis.position();
+    let center = negative_evidence::classify_with_detections(
+        &ball,
+        camera,
+        ball_radius,
+        obstacles,
+        detections,
+    );
+    let scale = parameters.visibility_uncertainty_scale;
+    if center != Visibility::Visible || !scale.is_finite() || scale <= 0.0 {
+        return center;
+    }
+    let covariance = hypothesis.position_covariance();
+    if !covariance.iter().all(|x| x.is_finite()) {
+        return Visibility::Unknown;
+    }
+    // The axis-aligned rectangle encloses the scaled covariance ellipse.
+    // Requiring its corners to be visible prevents a confident clear miss when
+    // plausible locations extend outside the camera or into known occlusion.
+    let x = scale * covariance[(0, 0)].max(0.0).sqrt();
+    let y = scale * covariance[(1, 1)].max(0.0).sqrt();
+    let position = ball.position;
+    for (dx, dy) in [(-x, -y), (-x, y), (x, -y), (x, y)] {
+        ball.position = position + linear_algebra::vector![dx, dy];
+        if negative_evidence::classify_with_detections(
+            &ball,
+            camera,
+            ball_radius,
+            obstacles,
+            detections,
+        ) != Visibility::Visible
+        {
+            return Visibility::Unknown;
+        }
+    }
+    center
+}
+
 fn decide_validity_decay_for_hypothesis(
     hypothesis: &BallHypothesis,
     camera_matrix: Option<&CameraMatrix>,
@@ -760,12 +848,13 @@ fn decide_validity_decay_for_hypothesis(
         if !negative_evidence::enabled(configuration) {
             is_visible_to_camera(&ball, camera_matrix, ball_radius)
         } else {
-            negative_evidence::classify_with_detections(
-                &ball,
+            hypothesis_visibility(
+                hypothesis,
                 camera_matrix,
                 ball_radius,
                 obstacles,
                 detections,
+                configuration,
             ) == negative_evidence::Visibility::Visible
         }
     });
@@ -935,6 +1024,33 @@ mod tests {
     }
 
     #[test]
+    fn optional_radius_gate_accepts_size_uncertainty_and_rejects_inconsistent_boxes() {
+        let camera = horizontal_test_camera();
+        let radius = FieldDimensions::SPL_2025.ball_radius;
+        let mut parameters = BallFilterParameters {
+            maximum_detection_radius_ratio: 2.0,
+            ..Default::default()
+        };
+        parameters.noise.detection_noise.inner.fill(0.05);
+        for distance in [0.8, 2.0, 6.0] {
+            let center = camera
+                .ground_with_z_to_pixel(point![distance, 0.0], radius)
+                .unwrap();
+            let expected = camera.get_pixel_radius(radius, center).unwrap();
+            for scale in [0.2, 0.75, 1.0, 1.5, 3.0] {
+                let mut detection = test_ball_detection(center);
+                let offset = linear_algebra::vector![expected * scale, expected * scale];
+                detection.bounding_box.area.min = center - offset;
+                detection.bounding_box.area.max = center + offset;
+                let output =
+                    project_detected_balls(Some(&[detection]), Some(&camera), &parameters, radius)
+                        .unwrap();
+                assert_eq!(output.len(), usize::from((0.5..=2.0).contains(&scale)));
+            }
+        }
+    }
+
+    #[test]
     fn malformed_boxes_and_nonfinite_projection_noise_are_rejected() {
         let camera = horizontal_test_camera();
         let radius = FieldDimensions::SPL_2025.ball_radius;
@@ -1005,6 +1121,134 @@ mod tests {
             ..camera
         };
         assert!(!is_visible_to_camera(&ball, &shorter_camera, 0.105));
+    }
+
+    #[test]
+    fn uncertain_position_cannot_certify_a_clear_camera_miss() {
+        let camera = horizontal_test_camera();
+        let radius = FieldDimensions::SPL_2025.ball_radius;
+        let mut parameters = BallFilterParameters {
+            visibility_uncertainty_scale: 1.0,
+            ..Default::default()
+        };
+        let mut hypothesis = BallHypothesis::new(
+            MultivariateNormalDistribution {
+                mean: nalgebra::vector![2.0, 0.0, 0.0, 0.0],
+                covariance: Matrix4::identity() * 0.0001,
+            },
+            Time::zero(),
+        );
+        assert_eq!(
+            hypothesis_visibility(&hypothesis, &camera, radius, Some(&[]), &[], &parameters),
+            negative_evidence::Visibility::Visible
+        );
+        if let BallMode::Moving(state) = &mut hypothesis.mode {
+            state.covariance *= 100_000.0;
+        }
+        assert_eq!(
+            hypothesis_visibility(&hypothesis, &camera, radius, Some(&[]), &[], &parameters),
+            negative_evidence::Visibility::Unknown
+        );
+        parameters.visibility_uncertainty_scale = 0.0;
+        assert_eq!(
+            hypothesis_visibility(&hypothesis, &camera, radius, Some(&[]), &[], &parameters),
+            negative_evidence::Visibility::Visible
+        );
+    }
+
+    #[test]
+    fn uncertainty_tie_break_does_not_let_a_diffuse_track_steal_a_precise_match() {
+        for (weight, matched_index) in [(0.0, 0), (1.0, 1)] {
+            let parameters = BallFilterParameters {
+                maximum_matching_cost: 1.0,
+                association_uncertainty_weight: weight,
+                hidden_validity_exponential_decay_factor: 1.0,
+                ..Default::default()
+            };
+            let make = |x, variance| {
+                BallHypothesis::new(
+                    MultivariateNormalDistribution {
+                        mean: nalgebra::vector![x, 0.0, 0.0, 0.0],
+                        covariance: Matrix4::identity() * variance,
+                    },
+                    Time::zero(),
+                )
+            };
+            let mut filter = BallFilter {
+                hypotheses: vec![make(0.0, 100.0), make(1.02, 0.01)],
+            };
+            let percept = BallPercept {
+                percept_in_ground: MultivariateNormalDistribution {
+                    mean: vector![1.0, 0.0],
+                    covariance: Matrix2::identity() * 0.001,
+                },
+                image_location: Circle::new(point![0.0, 0.0], 1.0),
+            };
+            let time = Time::from_nanos(40_000_000);
+            advance_all_hypotheses(
+                &mut filter,
+                &mut AssignmentSolver::default(),
+                time,
+                &[percept],
+                None,
+                None,
+                &[],
+                &parameters,
+                &FieldDimensions::SPL_2025,
+            )
+            .unwrap();
+            assert_eq!(filter.hypotheses.len(), 2);
+            assert_eq!(filter.hypotheses[matched_index].last_seen, time);
+            assert_eq!(filter.hypotheses[1 - matched_index].last_seen, Time::zero());
+        }
+    }
+
+    #[test]
+    fn distant_percept_cannot_capture_an_uncertain_track_with_distance_gate() {
+        for (distance_gate, expected_tracks) in [(0.0, 1), (0.3, 2), (2.0, 1)] {
+            let parameters = BallFilterParameters {
+                hidden_validity_exponential_decay_factor: 1.0,
+                maximum_matching_cost: 1.0,
+                maximum_matching_distance: distance_gate,
+                ..Default::default()
+            };
+            let mut parent = BallHypothesis::new(
+                MultivariateNormalDistribution {
+                    mean: nalgebra::Vector4::zeros(),
+                    covariance: Matrix4::identity() * 100.0,
+                },
+                Time::from_nanos(40_000_000),
+            );
+            parent.validity = 10.0;
+            let mut filter = BallFilter {
+                hypotheses: vec![parent],
+            };
+            let percept = BallPercept {
+                percept_in_ground: MultivariateNormalDistribution {
+                    mean: vector![1.0, 0.0],
+                    covariance: Matrix2::identity() * 0.001,
+                },
+                image_location: Circle::new(point![0.0, 0.0], 1.0),
+            };
+            advance_all_hypotheses(
+                &mut filter,
+                &mut AssignmentSolver::default(),
+                Time::from_nanos(80_000_000),
+                &[percept],
+                None,
+                None,
+                &[],
+                &parameters,
+                &FieldDimensions::SPL_2025,
+            )
+            .unwrap();
+            assert_eq!(filter.hypotheses.len(), expected_tracks);
+            if expected_tracks == 2 {
+                assert_eq!(filter.hypotheses[0].position().position, point![0.0, 0.0]);
+                assert_eq!(filter.hypotheses[0].last_seen, Time::from_nanos(40_000_000));
+                assert_eq!(filter.hypotheses[1].position().position, point![1.0, 0.0]);
+            }
+        }
     }
 
     #[test]

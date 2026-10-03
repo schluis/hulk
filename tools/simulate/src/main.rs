@@ -79,6 +79,9 @@ struct Args {
     capture_ball_parameters: Option<PathBuf>,
     #[arg(long, default_value_t = 0, requires = "capture_ball_tuning")]
     capture_ball_seed_offset: u64,
+    /// JSON scenario recipe for distinct, coverage-checked capture families.
+    #[arg(long, requires = "capture_ball_tuning")]
+    capture_ball_scenario: Option<PathBuf>,
     /// Opponents in tuning recordings or the live tuning preview.
     #[arg(long, default_value_t = 2, value_parser = clap::value_parser!(u32).range(0..=8))]
     tuning_opponents: u32,
@@ -140,6 +143,7 @@ fn main() -> Result<()> {
             ball_tuning::TuningSource::RecordOnly {
                 parameters: args.capture_ball_parameters.as_deref(),
                 seed_offset: args.capture_ball_seed_offset,
+                scenario: args.capture_ball_scenario.as_deref(),
             },
             true,
             1,

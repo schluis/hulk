@@ -25,7 +25,7 @@ pub struct BallFilter {
 
 impl BallFilter {
     pub fn best_hypothesis(&self, validity_threshold: f32) -> Option<&BallHypothesis> {
-        self.select_hypothesis(validity_threshold, |_| 1.0)
+        self.select_hypothesis(validity_threshold, |_| 1.0, 0.0)
     }
 
     pub fn best_hypothesis_with_field_pose(
@@ -34,20 +34,25 @@ impl BallFilter {
         dimensions: &FieldDimensions,
         ground_to_field: Option<Isometry2<Ground, Field>>,
     ) -> Option<&BallHypothesis> {
-        self.select_hypothesis(parameters.validity_output_threshold, |hypothesis| {
-            crate::field_prior::confidence_weight(
-                hypothesis,
-                ground_to_field,
-                dimensions,
-                parameters,
-            )
-        })
+        self.select_hypothesis(
+            parameters.validity_output_threshold,
+            |hypothesis| {
+                crate::field_prior::confidence_weight(
+                    hypothesis,
+                    ground_to_field,
+                    dimensions,
+                    parameters,
+                )
+            },
+            parameters.hypothesis_uncertainty_weight,
+        )
     }
 
     fn select_hypothesis(
         &self,
         validity_threshold: f32,
         confidence_weight: impl Fn(&BallHypothesis) -> f32,
+        uncertainty_weight: f32,
     ) -> Option<&BallHypothesis> {
         let confirmation_confidence = 3.0_f32.max(validity_threshold);
         let candidates = self.hypotheses.iter().filter_map(|hypothesis| {
@@ -64,9 +69,31 @@ impl BallFilter {
         // Preserve accumulated confidence and the existing soft field prior in
         // normal competition. Global capping would let a confirmed false track
         // steal selection after a single missed image.
+        let rank = |hypothesis: &BallHypothesis, validity: f32| {
+            let weight = if uncertainty_weight.is_finite() {
+                uncertainty_weight.max(0.0)
+            } else {
+                0.0
+            };
+            validity / (1.0 + weight * hypothesis.position_covariance().trace().max(0.0))
+        };
+        let established_incumbent = uncertainty_weight.is_finite()
+            && uncertainty_weight > 0.0
+            && candidates
+                .clone()
+                .max_by(|(_, _, a), (_, _, b)| a.total_cmp(b))
+                .is_some_and(|(track, _, _)| track.validity >= confirmation_confidence);
         let (incumbent, incumbent_recovery_rank, _) = candidates
             .clone()
-            .max_by(|(_, _, validity_a), (_, _, validity_b)| validity_a.total_cmp(validity_b))?;
+            // A newborn's small covariance is not independent confirmation.
+            // Require the same support as stale-track recovery before it
+            // can displace an established track on uncertainty alone.
+            .filter(|(track, _, _)| {
+                !established_incumbent || track.validity >= confirmation_confidence
+            })
+            .max_by(|(a, _, validity_a), (b, _, validity_b)| {
+                rank(a, *validity_a).total_cmp(&rank(b, *validity_b))
+            })?;
         let recovered = candidates
             .filter(|(candidate, recovery_rank, _)| {
                 candidate.validity >= confirmation_confidence
@@ -236,6 +263,43 @@ mod tests {
             Matrix4::identity() * 0.2,
             factor,
         );
+    }
+
+    #[test]
+    fn uncertainty_ranking_preserves_eligibility_and_stored_confidence() {
+        let mut uncertain = track(4.0, 10.0, 100_000_000);
+        if let BallMode::Moving(state) = &mut uncertain.mode {
+            state.covariance *= 100.0;
+        }
+        let precise = track(0.5, 5.0, 100_000_000);
+        let filter = BallFilter {
+            hypotheses: vec![uncertain, precise],
+        };
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0)
+                .unwrap()
+                .validity,
+            10.0
+        );
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 1.0)
+                .unwrap()
+                .validity,
+            5.0
+        );
+        // Penalizing uncertainty cannot hide the only eligible track.
+        assert_eq!(
+            filter
+                .select_hypothesis(6.0, |_| 1.0, 1.0)
+                .unwrap()
+                .validity,
+            10.0
+        );
+        assert!(filter.select_hypothesis(11.0, |_| 1.0, 1.0).is_none());
+        assert_eq!(filter.hypotheses[0].validity, 10.0);
+        assert_eq!(filter.hypotheses[1].validity, 5.0);
     }
 
     #[test]

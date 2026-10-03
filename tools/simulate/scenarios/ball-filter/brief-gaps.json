@@ -1,0 +1,62 @@
+{
+  "family": "brief-gaps",
+  "ball_position": [
+    0.8,
+    0.1
+  ],
+  "robot_position": [
+    0,
+    0
+  ],
+  "robot_yaw": 0,
+  "perception": {
+    "frame_period": 0.04,
+    "delivery_delay_seconds": 0.05,
+    "delivery_jitter_seconds": 0.015,
+    "center_noise_pixels": 2.0,
+    "false_positive_probability": 0.04,
+    "seed": 42,
+    "close_dropout_pattern": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  "steps": [
+    {
+      "until": 8,
+      "name": "brief-gaps",
+      "ball_present": true,
+      "ball_impulse": null
+    },
+    {
+      "until": 18,
+      "name": "brief-gaps",
+      "ball_present": true,
+      "ball_impulse": [
+        0.03,
+        0.03
+      ]
+    },
+    {
+      "until": 30,
+      "name": "brief-gaps",
+      "ball_present": true,
+      "ball_impulse": [
+        -0.04,
+        -0.04
+      ]
+    },
+    {
+      "until": 40,
+      "name": "brief-gaps",
+      "ball_present": true,
+      "ball_impulse": null
+    }
+  ],
+  "minimum_coverage": {
+    "close_visible_seconds": 3.0
+  }
+}

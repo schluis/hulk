@@ -18,6 +18,13 @@ pub enum ReferenceFrame {
     Field,
 }
 
+#[derive(Clone, Copy, Debug, clap::ValueEnum, Serialize, Default)]
+pub enum SearchMethod {
+    #[default]
+    Coordinate,
+    DifferentialEvolution,
+}
+
 #[derive(Debug, Parser)]
 #[command(about = "Tune the production ball filter against labelled ros-z MCAP recordings")]
 pub struct Args {
@@ -47,9 +54,18 @@ pub struct Args {
     pub trials: usize,
     #[arg(long, default_value_t = 7)]
     pub seed: u64,
+    #[arg(long, value_enum, default_value = "coordinate")]
+    pub search_method: SearchMethod,
     /// Spatial loss scale: cap=p², missing=1.25p², false track=p². RMSE is uncapped.
     #[arg(long, default_value_t = 2.0)]
     pub penalty_metres: f64,
+    /// Export training-frame diagnostics for the selected candidate (never held-out frames).
+    #[arg(long)]
+    pub export_training_frames: bool,
+    /// Reject coordinate-search candidates cheaply on the first N training clips.
+    /// Passing candidates still require all training clips and aggregate guards.
+    #[arg(long, default_value_t = 0)]
+    pub screening_recordings: usize,
     #[arg(long)]
     pub output: PathBuf,
 }
@@ -65,6 +81,7 @@ struct Report<'a> {
     training_recordings: &'a [PathBuf],
     validation_recordings: &'a [PathBuf],
     seed: u64,
+    search_method: SearchMethod,
     trials: usize,
     rejected_candidates: usize,
     rejected_quality_candidates: usize,
@@ -79,6 +96,8 @@ struct Report<'a> {
     validation_improved: bool,
     training: Comparison,
     validation: Comparison,
+    training_per_recording: Vec<Comparison>,
+    validation_per_recording: Vec<Comparison>,
     baseline_parameters: &'a BallFilterParameters,
     /// Exact capture parameters used exclusively for strict live/replay verification.
     recording_parameters: &'a BallFilterParameters,
@@ -88,22 +107,28 @@ struct Report<'a> {
 }
 
 // Positive covariance entries use logarithmic bounds. Probabilities/thresholds use
-// linear bounds. Timeouts, output thresholds, geometry and confidence gates stay
+// linear bounds. Timeouts, output thresholds, field geometry and detector confidence stay
 // fixed. Optional confidence settings are searched only on enabled baselines.
-const BOUNDS: [(f64, f64, bool); 11] = [
+const BOUNDS: [(f64, f64, bool); 17] = [
     (0.02, 5.0, true),
     (1e-7, 0.03, true),
     (1e-7, 0.1, true),
     (1e-6, 0.1, true),
     (0.02, 20.0, true),
     (0.99, 1.0, false),
-    (0.0, 0.3, false),  // hidden confidence decay, per second
-    (0.0, 4.0, false),  // observable unmatched confidence decay, per second
-    (0.0, 2.0, false),  // unmatched competitor decay under a confirmed leader, per second
-    (0.0, 40.0, false), // additional close clear-view missed confidence decay, per second
-    (0.0, 1.0, false),  // fraction of bounded nearby-track spawn confidence
+    (0.0, 0.3, false),   // hidden confidence decay, per second
+    (0.0, 4.0, false),   // observable unmatched confidence decay, per second
+    (0.0, 2.0, false),   // unmatched competitor decay under a confirmed leader, per second
+    (0.0, 40.0, false),  // additional close clear-view missed confidence decay, per second
+    (0.0, 1.0, false),   // fraction of bounded nearby-track spawn confidence
+    (-5.0, 20.0, false), // log-density threshold for switching a moving track to rest
+    (0.0, 3.0, false),   // physical association gate, zero disables
+    (1.0, 8.0, false),   // projected/observed radius ratio, one disables
+    (0.0, 20.0, false),  // covariance penalty in selection only
+    (0.0, 1.0, false),   // uncertainty penalty between feasible associations
+    (0.0, 3.0, false),   // covariance margin for clear missed-detection evidence
 ];
-fn encode(parameters: &BallFilterParameters) -> [f64; 11] {
+fn encode(parameters: &BallFilterParameters) -> [f64; 17] {
     let values = [
         parameters.noise.detection_noise.x(),
         parameters.noise.process_noise_resting[0],
@@ -120,6 +145,12 @@ fn encode(parameters: &BallFilterParameters) -> [f64; 11] {
             .near_visible_missed_validity_decay_rate
             .unwrap_or(0.0),
         parameters.nearby_spawn_validity_factor.unwrap_or(0.0),
+        parameters.log_likelihood_of_zero_velocity_threshold,
+        parameters.maximum_matching_distance,
+        parameters.maximum_detection_radius_ratio.max(1.0),
+        parameters.hypothesis_uncertainty_weight,
+        parameters.association_uncertainty_weight,
+        parameters.visibility_uncertainty_scale,
     ];
     std::array::from_fn(|i| {
         let (lo, hi, log) = BOUNDS[i];
@@ -131,8 +162,8 @@ fn encode(parameters: &BallFilterParameters) -> [f64; 11] {
         }
     })
 }
-fn decode(base: &BallFilterParameters, values: [f64; 11]) -> BallFilterParameters {
-    let v: [f32; 11] = std::array::from_fn(|i| {
+fn decode(base: &BallFilterParameters, values: [f64; 17]) -> BallFilterParameters {
+    let v: [f32; 17] = std::array::from_fn(|i| {
         let (lo, hi, log) = BOUNDS[i];
         if log {
             (lo.ln() + values[i] * (hi.ln() - lo.ln())).exp() as f32
@@ -156,6 +187,12 @@ fn decode(base: &BallFilterParameters, values: [f64; 11]) -> BallFilterParameter
     p.near_visible_missed_validity_decay_rate =
         base.near_visible_missed_validity_decay_rate.map(|_| v[9]);
     p.nearby_spawn_validity_factor = base.nearby_spawn_validity_factor.map(|_| v[10]);
+    p.log_likelihood_of_zero_velocity_threshold = v[11];
+    p.maximum_matching_distance = v[12];
+    p.maximum_detection_radius_ratio = if v[13] <= 1.0 { 0.0 } else { v[13] };
+    p.hypothesis_uncertainty_weight = v[14];
+    p.association_uncertainty_weight = v[15];
+    p.visibility_uncertainty_scale = v[16];
     p
 }
 
@@ -188,6 +225,7 @@ fn active_dimensions(base: &BallFilterParameters) -> Vec<usize> {
         .chain(base.competing_hypothesis_validity_decay_rate.map(|_| 8))
         .chain(base.near_visible_missed_validity_decay_rate.map(|_| 9))
         .chain(base.nearby_spawn_validity_factor.map(|_| 10))
+        .chain([11, 12, 13, 14, 15, 16])
         .collect()
 }
 
@@ -284,11 +322,13 @@ pub fn run_with_progress(
     let mut best_values = encode(&best);
     let mut best_loss = base_train.loss;
     let mut best_metrics = (&base_train).into();
+    let mut exploration_values = None;
     if let Some(path) = &args.initial_parameters {
         let initial = json5::from_str(&std::fs::read_to_string(path)?)?;
         // Old runs may have optimized away track retention. Import only the
         // searched dimensions; every fixed parameter comes from this baseline.
         let initial = warm_start(&baseline, &initial);
+        exploration_values = Some(encode(&initial));
         let score = evaluate_candidate(&train, &initial, args.penalty_metres)?;
         if let Some(score) = score.filter(|score| score.loss.is_finite() && score.loss < best_loss)
         {
@@ -324,9 +364,50 @@ pub fn run_with_progress(
     };
     publish(&progress)?;
     let active_dimensions = active_dimensions(&baseline);
+    // Keep infeasible population members as exploration directions, ranked by
+    // their distance from the fixed training constraints. Only feasible members
+    // can become the published best. Held-out data never enters this population.
+    let mut population = vec![(best_values, 0.0, best_loss); 48];
     for trial in 0..args.trials {
         let mut values = best_values;
-        if trial < 2 * active_dimensions.len() {
+        if matches!(args.search_method, SearchMethod::DifferentialEvolution) {
+            if trial < population.len() {
+                if trial == 1 {
+                    values = exploration_values.unwrap_or(best_values);
+                } else if trial > 1 && trial % 4 == 0 {
+                    for &i in &active_dimensions {
+                        values[i] = rng.random();
+                    }
+                } else if trial > 1 {
+                    if trial % 2 == 0 {
+                        values = exploration_values.unwrap_or(best_values);
+                    }
+                    for _ in 0..rng.random_range(1..=4) {
+                        let i = active_dimensions[rng.random_range(0..active_dimensions.len())];
+                        values[i] = (values[i] + rng.random_range(-0.3..0.3)).clamp(0.0, 1.0);
+                    }
+                }
+            } else {
+                let target = trial % population.len();
+                values = population[target].0;
+                let mut donors = Vec::new();
+                while donors.len() < 3 {
+                    let donor = rng.random_range(0..population.len());
+                    if donor != target && !donors.contains(&donor) {
+                        donors.push(donor);
+                    }
+                }
+                let forced = active_dimensions[rng.random_range(0..active_dimensions.len())];
+                let factor = rng.random_range(0.4..0.95);
+                for &i in &active_dimensions {
+                    if i == forced || rng.random_bool(0.7) {
+                        values[i] = (population[donors[0]].0[i]
+                            + factor * (population[donors[1]].0[i] - population[donors[2]].0[i]))
+                            .clamp(0.0, 1.0);
+                    }
+                }
+            }
+        } else if trial < 2 * active_dimensions.len() {
             values[active_dimensions[trial / 2]] = (trial % 2) as f64;
         } else if trial % 8 == 0 {
             values = std::array::from_fn(|_| rng.random());
@@ -339,8 +420,46 @@ pub fn run_with_progress(
             }
         }
         let candidate = decode(&baseline, values);
-        let score = evaluate_candidate(&train, &candidate, args.penalty_metres)?;
+        let mut screened = true;
+        if matches!(args.search_method, SearchMethod::Coordinate) {
+            for (recording, base) in train
+                .iter()
+                .zip(&baseline_recordings)
+                .take(args.screening_recordings)
+            {
+                let score = evaluate_candidate(
+                    std::slice::from_ref(recording),
+                    &candidate,
+                    args.penalty_metres,
+                )?;
+                if score.is_none_or(|score| !preserves_baseline_quality(&score, base)) {
+                    screened = false;
+                    break;
+                }
+            }
+        }
+        let score = if screened {
+            evaluate_candidate(&train, &candidate, args.penalty_metres)?
+        } else {
+            None
+        };
         if let Some(score) = score.filter(|score| score.loss.is_finite()) {
+            if matches!(args.search_method, SearchMethod::DifferentialEvolution) {
+                let mut violation = scoring::quality_violation(&score, &base_train);
+                for (recording, base) in train.iter().zip(&baseline_recordings) {
+                    let one = evaluate(
+                        std::slice::from_ref(recording),
+                        &candidate,
+                        args.penalty_metres,
+                    )?;
+                    violation += scoring::quality_violation(&one, base);
+                }
+                let target = trial % population.len();
+                let old = population[target];
+                if trial < population.len() || (violation, score.loss) < (old.1, old.2) {
+                    population[target] = (values, violation, score.loss);
+                }
+            }
             if score.loss < best_loss {
                 if !preserves_baseline_quality(&score, &base_train)
                     || !preserves_each_recording(
@@ -366,6 +485,8 @@ pub fn run_with_progress(
                     );
                 }
             }
+        } else if !screened {
+            rejected_quality_candidates += 1;
         } else {
             rejected_candidates += 1;
             eprintln!(
@@ -389,15 +510,30 @@ pub fn run_with_progress(
     progress.validation_best = Some((&optimized_validation).into());
     publish(&progress)?;
     let validation_improved = optimized_validation.loss < base_validation.loss;
+    let comparisons = |recordings: &[Recording]| -> Result<Vec<Comparison>> {
+        recordings
+            .iter()
+            .map(|recording| {
+                let one = std::slice::from_ref(recording);
+                Ok(Comparison {
+                    baseline: evaluate(one, &baseline, args.penalty_metres)?,
+                    optimized: evaluate(one, &best, args.penalty_metres)?,
+                })
+            })
+            .collect()
+    };
     let report = Report {
+        training_per_recording: comparisons(&train)?,
+        validation_per_recording: comparisons(&validation)?,
         objective: scoring::OBJECTIVE,
         training_recordings: &args.train,
         validation_recordings: &args.validation,
         seed: args.seed,
+        search_method: args.search_method,
         trials: args.trials,
         rejected_candidates,
         rejected_quality_candidates,
-        continuity_policy: "Every training recording and the aggregate must not worsen baseline total missing time, close-range missing time, or longest missing gap, close-range RMSE, RMS equivalent spatial motion lag, or absolute mean spatial lag (floating-point roundoff only). Missing diagnostics cannot replace measured baseline diagnostics. Held-out data is evaluation only.",
+        continuity_policy: "Every training recording and the aggregate must not worsen baseline total missing time, close-range missing time, or longest missing gap, close-range RMSE, RMS equivalent spatial motion lag, mean absolute spatial lag, or false-track time (floating-point roundoff only). Missing diagnostics cannot replace measured baseline diagnostics. Held-out data is evaluation only.",
         retention_policy: "Only listed search dimensions may change, including warm starts. Hypothesis timeout, observable-miss timeout, near clear-miss timeout and distance, obstacle source-time tolerance, legacy per-frame confidence factors, good-localization gate, field-boundary margin and validity decay rate, maximum detection distance and output threshold remain at the evaluation baseline. Optional hidden/visible-missed/competing-hypothesis/near-visible-missed confidence rates are searched only when enabled in the baseline (hidden 0..0.3/s; visible-missed 0..4/s; competing 0..2/s; additional near-visible-missed 0..40/s). The optional nearby-spawn validity factor is searched from 0 to 1 only when enabled in the baseline; omitted legacy values keep legacy spawn confidence. Legacy None rates retain their prior behavior; omitted field margin, field decay rate and detection distance retain their zero legacy defaults, and an omitted good_localization retains true.",
         tuned_parameter_pointers: tuned_parameter_pointers(&baseline),
         penalty_metres: args.penalty_metres,
@@ -421,6 +557,15 @@ pub fn run_with_progress(
         optimized_parameters: &best,
     };
     std::fs::create_dir_all(&args.output)?;
+    if args.export_training_frames {
+        for (index, recording) in train.iter().enumerate() {
+            scoring::export_frames(
+                recording,
+                &best,
+                &args.output.join(format!("training-{index}.jsonl")),
+            )?;
+        }
+    }
     for (name, value) in [
         ("ball_filter.json5", serde_json::to_value(&best)?),
         ("report.json", serde_json::to_value(&report)?),
@@ -518,8 +663,8 @@ mod tests {
         assert!((imported.noise.detection_noise.x() - 1.5).abs() < 1e-6);
         for candidate in [
             imported,
-            decode(&baseline, [0.0; 11]),
-            decode(&baseline, [1.0; 11]),
+            decode(&baseline, [0.0; 17]),
+            decode(&baseline, [1.0; 17]),
         ] {
             let mut actual = serde_json::to_value(candidate).unwrap();
             let mut expected = serde_json::to_value(&baseline).unwrap();
@@ -543,8 +688,8 @@ mod tests {
             initial.good_localization = !enabled;
             for candidate in [
                 warm_start(&baseline, &initial),
-                decode(&baseline, [0.0; 11]),
-                decode(&baseline, [1.0; 11]),
+                decode(&baseline, [0.0; 17]),
+                decode(&baseline, [1.0; 17]),
             ] {
                 assert_eq!(candidate.good_localization, enabled);
             }
@@ -568,8 +713,8 @@ mod tests {
             initial.field_boundary_margin = 10.0;
             for candidate in [
                 warm_start(&baseline, &initial),
-                decode(&baseline, [0.0; 11]),
-                decode(&baseline, [1.0; 11]),
+                decode(&baseline, [0.0; 17]),
+                decode(&baseline, [1.0; 17]),
             ] {
                 assert_eq!(candidate.field_boundary_margin, margin);
             }
@@ -592,8 +737,8 @@ mod tests {
             "../../../etc/parameters/base/ball_filter.json5"
         ))
         .unwrap();
-        let low = decode(&base, [0.0; 11]);
-        let high = decode(&base, [1.0; 11]);
+        let low = decode(&base, [0.0; 17]);
+        let high = decode(&base, [1.0; 17]);
         assert_eq!(low.hidden_validity_decay_rate, Some(0.0));
         assert_eq!(low.visible_missed_validity_decay_rate, Some(0.0));
         assert_eq!(low.competing_hypothesis_validity_decay_rate, Some(0.0));
@@ -604,7 +749,7 @@ mod tests {
         assert_eq!(high.competing_hypothesis_validity_decay_rate, Some(2.0));
         assert_eq!(high.near_visible_missed_validity_decay_rate, Some(40.0));
         assert_eq!(high.nearby_spawn_validity_factor, Some(1.0));
-        assert_eq!(active_dimensions(&base), (0..11).collect::<Vec<_>>());
+        assert_eq!(active_dimensions(&base), (0..17).collect::<Vec<_>>());
         assert!(tuned_parameter_pointers(&base).contains(&"/hidden_validity_decay_rate"));
         assert!(tuned_parameter_pointers(&base).contains(&"/visible_missed_validity_decay_rate"));
         assert!(tuned_parameter_pointers(&base).contains(&"/nearby_spawn_validity_factor"));
@@ -615,21 +760,33 @@ mod tests {
         base.hidden_validity_decay_rate = None;
         assert_eq!(
             active_dimensions(&base),
-            vec![0, 1, 2, 3, 4, 5, 7, 8, 9, 10]
+            vec![0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
         );
         assert!(!tuned_parameter_pointers(&base).contains(&"/hidden_validity_decay_rate"));
         assert!(tuned_parameter_pointers(&base).contains(&"/visible_missed_validity_decay_rate"));
         for value in [0.0, 0.5, 1.0] {
-            assert_eq!(decode(&base, [value; 11]).hidden_validity_decay_rate, None);
+            assert_eq!(decode(&base, [value; 17]).hidden_validity_decay_rate, None);
         }
         base.visible_missed_validity_decay_rate = None;
-        assert_eq!(active_dimensions(&base), vec![0, 1, 2, 3, 4, 5, 8, 9, 10]);
+        assert_eq!(
+            active_dimensions(&base),
+            vec![0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+        );
         base.competing_hypothesis_validity_decay_rate = None;
-        assert_eq!(active_dimensions(&base), vec![0, 1, 2, 3, 4, 5, 9, 10]);
+        assert_eq!(
+            active_dimensions(&base),
+            vec![0, 1, 2, 3, 4, 5, 9, 10, 11, 12, 13, 14, 15, 16]
+        );
         base.near_visible_missed_validity_decay_rate = None;
-        assert_eq!(active_dimensions(&base), vec![0, 1, 2, 3, 4, 5, 10]);
+        assert_eq!(
+            active_dimensions(&base),
+            vec![0, 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16]
+        );
         base.nearby_spawn_validity_factor = None;
-        assert_eq!(active_dimensions(&base), (0..6).collect::<Vec<_>>());
+        assert_eq!(
+            active_dimensions(&base),
+            vec![0, 1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 16]
+        );
         assert!(!tuned_parameter_pointers(&base).contains(&"/visible_missed_validity_decay_rate"));
         let imported = warm_start(&base, &high);
         assert_eq!(imported.hidden_validity_decay_rate, None);

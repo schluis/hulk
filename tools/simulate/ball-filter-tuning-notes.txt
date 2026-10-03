@@ -1272,3 +1272,80 @@ Scope correction and replacement robotics PR (2026-10-03)
   training evaluation), scripts/ball_filter_optimization (suite lifecycle).
 - This is an implementation note only. Parameter search and recapture remain
   stopped; this checkpoint does not implement the expanded suite or restart them.
+
+2026-10-03 Server goal-mode continuation (in progress; no promotion)
+- New user authorization resumes optimization on this 32-CPU/64-GiB server.
+  User explicitly requested higher CPU utilization; replacement-worker controller
+  now sustains about 100% sampled CPU busy. Existing archived runs are preserved.
+  Work/evidence root: logs/ball-improvement-20261003. No board use or PR edits.
+- Exact historical six-clip replay succeeded. Those old clips remain diagnostic,
+  not fresh validation. Production parameter files have NOT been changed.
+- Added JSON capture recipes and --capture-ball-scenario: two training variants
+  and one held-out variant per family. Current accepted 24-clip suite comprises
+  retry-stationary-close, fresh-approach, fresh-fast-crossing, fresh-brief-gaps,
+  final-contested, final-long-occlusion, fresh-empty-false, fresh-sideline.
+  Paths are frozen in full-suite-inputs.json. Failed coverage attempts remain
+  archived and excluded. Sideline currently varies placement, not localization
+  calibration; localization wobble and realistic camera/detector errors remain.
+- Stationary recipe scripts walking/turning: ball travel zero, 27-39s close
+  visibility. Brief-gap captures have real 1-5-frame dropout bursts. All contested
+  variants include actual opponent kicks behind occluders. Long-occlusion recipe
+  moves a real cylinder at bounded speed; each accepted clip has about12s blocked
+  visibility, stationary truth retained, and two reacquisition opportunities.
+  Initial occluder routes accidentally contacted the ball in a rejected variant;
+  corrected initial placement keeps the sideways route clear of the ball.
+- scripts/ball_filter_scenario_suite captures/version-hashes recipes' recordings
+  and runs training-only selection with per-recording reports. Simulator remains
+  synthetic detections plus production kinematics/filter, not neural inference.
+- New experimental default-disabled filter parameters: physical association
+  distance; projected/detected radius-ratio gate; covariance-weighted selection;
+  uncertainty penalty between feasible associations; covariance margin for clear
+  missed-detection evidence. Existing moving-to-rest threshold is now searchable.
+  All are experimental until full-suite acceptance and independent evaluation.
+- v5 acceptance replaces abs(mean signed spatial lag) with mean(abs(spatial lag)).
+  Evidence: selection-only probe improved RMS lag .7266->.2478s and mean absolute
+  lag .2055->.1242s, improving every initial training clip, but signed mean worsened
+  .0522->.1164s because gross opposite-sign errors no longer cancelled. Signed mean
+  remains reported. v5 also guards false-track time; all old continuity and per-
+  recording close-RMSE/RMS-lag guards remain. No timeout/threshold relaxation.
+- Coordinate search and differential evolution are available. Population members
+  may explore infeasible training settings, but only exactly feasible candidates
+  become best. Coordinate screening rejects on representative training clips,
+  then requires all training recordings before accepting. Held-out data never
+  influences proposals, feasibility, warm starts, or winner selection.
+- Initial four-training-clip searches achieved40-50% lower close RMSE and >50%
+  less missing time, but full-suite evaluation rejected every promising subset
+  winner for contested/sideline continuity or fast-motion regressions. DO NOT
+  report those subset numbers as a completed improvement. Full-suite baseline
+  training loss2.578639, closeRMSE .424630m, missing73.700s across640s.
+- Current search controller: keep_busy_full.py, tmux ball-improvement-full-search;
+  its immutable binary is full-tuner. It still uses the earlier selection model
+  while newer confirmation/association/visibility variants are being evaluated.
+  Source changes after that binary must not be attributed to its reports.
+  STOP_FULL_SEARCH tells it to finish owned rounds without launching replacements.
+  Earlier subset/v4 controllers have stop files and finish cooperatively.
+- Tests at latest uncertainty checkpoint:100 ball_filter and32 tuner library
+  tests pass. Earlier simulator tests76 pass,1 existing ignored; rerun after
+  final recipe changes. Earlier strict library clippy passed; rerun after latest
+  filter changes. All artifacts and rejected candidates are retained.
+- Concurrent external edits add ball-filter-monitor.rs, tuner Cargo dependencies,
+  Cargo.lock, and README monitor documentation. Preserve them and do not stage
+  them into optimization checkpoints. One all-target test attempt encountered
+  that in-progress monitor's missing QosHistory import; library tests are clean.
+- Subsequent full-suite searches plateaued near loss2.57: not substantial.
+  Added confirmation protection to uncertainty-ranked selection, association-
+  uncertainty ranking among already feasible pairs, and covariance-aware clear
+  visibility. Tests now100 filter and33 tuner library tests pass. Each control
+  remains disabled for omitted legacy parameters and for the capture baseline.
+- Found a motion-metric timing artifact: Ground truth transformed by a preceding
+  (up to20ms older) ground_to_field pose credited two physically stationary clips
+  with26ms/42ms of fast ball motion. v6 uses independently timestamp-matched
+  simulation/ball_ground_truth_field for derivatives when standard simulator
+  labels are selected. Position and close-range scoring stay in exact Ground.
+  No held-out results were used to identify or select these scoring changes.
+- Current replacement controller is keep_busy_v6.py, tmux ball-improvement-v6,
+  immutable binary v6-tuner, all16 training recordings and8 reserved recordings.
+  STOP_V6_SEARCH drains it cooperatively. Earlier full controller has its stop
+  file; artifacts remain. Half of new workers use differential evolution with
+  baseline/local/experimental population seeds; half use screened coordinate
+  search. Experimental infeasible seeds cannot become accepted winners.

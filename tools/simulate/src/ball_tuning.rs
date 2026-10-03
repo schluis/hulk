@@ -110,6 +110,7 @@ pub enum TuningSource<'a> {
     RecordOnly {
         parameters: Option<&'a Path>,
         seed_offset: u64,
+        scenario: Option<&'a Path>,
     },
     Recordings(&'a Path),
     Remote(&'a Path),
@@ -142,11 +143,23 @@ pub fn run(
         TuningSource::RecordOnly {
             parameters,
             seed_offset,
+            ..
         } => (
             parameters.map(capture_parameter_override).transpose()?,
             seed_offset,
         ),
         _ => (None, 0),
+    };
+    let recipe = match source {
+        TuningSource::RecordOnly {
+            scenario: Some(path),
+            ..
+        } => {
+            let recipe: CaptureRecipe = serde_json::from_slice(&std::fs::read(path)?)?;
+            recipe.validate()?;
+            Some(recipe)
+        }
+        _ => None,
     };
     ensure!(
         seed_offset <= u64::MAX - 4250,
@@ -178,6 +191,12 @@ pub fn run(
         }
     }
     std::fs::create_dir_all(output)?;
+    if let Some(recipe) = &recipe {
+        std::fs::write(
+            output.join("capture-recipe.json"),
+            serde_json::to_vec_pretty(recipe)?,
+        )?;
+    }
     save_scenario(
         &output.join("scenario.json"),
         opponents,
@@ -224,7 +243,7 @@ pub fn run(
                 "Preparing recordings"
             }.into(),
             output_directory: output.display().to_string(),
-            recordings: 6,
+            recordings: if recipe.is_some() { 3 } else { 6 },
             duration_seconds: EPISODE_SECONDS,
             opponents,
             walking_speed_scale,
@@ -313,8 +332,16 @@ pub fn run(
     );
     let mut preview = None;
     let result = (|| -> Result<()> {
-        let training_seeds = [42, 43, 142, 143];
-        let validation_seeds = [4243, 4250];
+        let training_seeds: &[u64] = if recipe.is_some() {
+            &[42, 43]
+        } else {
+            &[42, 43, 142, 143]
+        };
+        let validation_seeds: &[u64] = if recipe.is_some() {
+            &[4243]
+        } else {
+            &[4243, 4250]
+        };
         let recordings_root = recordings.unwrap_or(output);
         let paths = |kind: &str, seeds: &[u64]| -> Vec<PathBuf> {
             seeds
@@ -353,6 +380,7 @@ pub fn run(
                     capture_parameters.as_ref(),
                     opponents,
                     walking_speed_scale,
+                    recipe.as_ref(),
                     None,
                     &shutdown,
                 )?;
@@ -410,7 +438,10 @@ pub fn run(
                     reference_frame: ball_filter_tuner::ReferenceFrame::Field,
                     trials,
                     seed: 7 + round,
+                    search_method: Default::default(),
                     penalty_metres: 2.0,
+                    export_training_frames: false,
+                    screening_recordings: 0,
                     output: checkpoint.clone(),
                 },
                 |search| {
@@ -636,6 +667,7 @@ impl LivePreview {
                     None,
                     opponents,
                     walking_speed_scale,
+                    None,
                     Some(&mut updates),
                     &stop,
                 );
@@ -805,6 +837,7 @@ fn record(
     capture_parameters: Option<&serde_json::Value>,
     opponents: OpponentParameters,
     walking_speed_scale: f32,
+    recipe: Option<&CaptureRecipe>,
     mut live: Option<&mut LiveUpdates>,
     stop: &AtomicBool,
 ) -> Result<()> {
@@ -859,6 +892,12 @@ fn record(
         noise.dropout_probability = 0.08;
         noise.dropout_burst_probability = 0.03;
         noise.dropout_burst_frames = 8;
+    }
+    if let Some(recipe) = recipe {
+        if let Some(noise) = &recipe.perception {
+            parameters.ball_perception = noise.clone();
+            parameters.ball_perception.seed = seed;
+        }
     }
     SimulatorParameters::validate(&parameters).map_err(|e| eyre!(e))?;
     let clock = Clock::logical(start_time);
@@ -969,7 +1008,10 @@ fn record(
             MjcfObject::new(root.join("tools/simulate/assets/k1_robot.xml"), "Trunk")
                 .with_free_joint("world_joint")
                 .grounded(),
-            Transform::default(),
+            recipe.map_or_else(Transform::default, |r| {
+                Transform::from_xyz(r.robot_position[0], 0.0, -r.robot_position[1])
+                    .with_rotation(Quat::from_rotation_y(r.robot_yaw))
+            }),
         ))
         .id();
     let variation = ScenarioVariation::new(seed);
@@ -977,11 +1019,14 @@ fn record(
     let mut balls = vec![spawn_ball(
         &mut app,
         &parameters,
-        [
-            if seed.is_multiple_of(2) { 3.8 } else { 4.2 },
-            0.65 * variation.side,
-            0.0,
-        ],
+        recipe.map_or(
+            [
+                if seed.is_multiple_of(2) { 3.8 } else { 4.2 },
+                0.65 * variation.side,
+                0.0,
+            ],
+            |r| [r.ball_position[0], r.ball_position[1] * variation.side, 0.0],
+        ),
     )];
     // Additional balls are an explicit, unscored live-preview stress test.
     ensure!(
@@ -1023,9 +1068,25 @@ fn record(
     challenge
         .avoid_initial_balls(&initial_balls)
         .map_err(|error| eyre!(error))?;
-    let obstacles: Vec<_> = challenge
-        .positions()
-        .into_iter()
+    let mut initial_obstacles = challenge.positions();
+    if let Some(r) = recipe.filter(|r| !r.occlusion_intervals.is_empty()) {
+        ensure!(
+            !initial_obstacles.is_empty(),
+            "scripted occlusion requires an opponent"
+        );
+        let ball = initial_balls[0];
+        let delta = [
+            ball[0] - f64::from(r.robot_position[0]),
+            ball[1] - f64::from(r.robot_position[1]),
+        ];
+        let length = delta[0].hypot(delta[1]).max(0.01);
+        let d = delta.map(|v| v / length);
+        initial_obstacles[0][0] = ball[0] - 0.65 * d[0] - 1.2 * d[1];
+        initial_obstacles[0][1] = ball[1] - 0.65 * d[1] + 1.2 * d[0];
+    }
+    let obstacles: Vec<_> = initial_obstacles
+        .iter()
+        .copied()
         .map(|position| {
             app.world_mut()
                 .spawn((
@@ -1082,6 +1143,14 @@ fn record(
     let mut occluded_in_view_kicks = 0_u64;
     let mut contest_seconds = 0.0;
     let mut occluded_in_view_seconds = 0.0;
+    let mut close_visible_seconds = 0.0;
+    let mut close_truth_seconds = 0.0;
+    let mut reacquisition_opportunities = 0_u64;
+    let mut previously_visible = false;
+    let mut hidden_seconds = 0.0;
+    let mut scripted_occluder_position = recipe
+        .filter(|r| !r.occlusion_intervals.is_empty())
+        .map(|_| initial_obstacles[0]);
 
     for frame in 0..2500 {
         ensure!(!stop.load(Ordering::Relaxed), "tuning stopped");
@@ -1122,9 +1191,31 @@ fn record(
             }
         }
         let seconds = frame as f64 * 0.016;
-        let phase = scenario_phase(seconds);
-        let step = &SCENARIO[phase];
+        let steps = recipe.map_or(SCENARIO.as_slice(), |r| r.steps.as_slice());
+        let phase = steps
+            .iter()
+            .position(|step| seconds < step.until)
+            .unwrap_or(steps.len() - 1);
+        let step = &steps[phase];
         if phase != last_phase {
+            if let Some([forward, lateral, turn]) = step.walking_velocity {
+                io.input_motion = MotionCommand::WalkWithVelocity {
+                    head: types::motion_command::HeadMotion::LookAt {
+                        target: recipe
+                            .and_then(|r| r.head_target)
+                            .map_or(linear_algebra::point![0.9, 0.0], |p| {
+                                linear_algebra::point![p[0], p[1]]
+                            }),
+                        height_above_ground: radius,
+                        image_region_target: Default::default(),
+                    },
+                    velocity: linear_algebra::vector![forward, lateral],
+                    angular_velocity: turn,
+                };
+                io.inject_current_motion()?;
+            } else if recipe.is_some() {
+                io.clear_injection()?;
+            }
             progress.send_modify(|state| {
                 state.phase = format!(
                     "{} / {} noise",
@@ -1139,7 +1230,7 @@ fn record(
             eprintln!("{}: {seconds:.1}s {}", path.display(), step.name);
             runtime.block_on(phase_pub.publish(&types::time_wrapper::TimeWrapper {
                 time: clock.now(),
-                inner: step.name.into(),
+                inner: step.name.to_string(),
             }))?;
             if !step.ball_present {
                 for entity in balls.drain(..) {
@@ -1218,7 +1309,37 @@ fn record(
                 ],
                 &ball_world_positions,
             );
-            let obstacle_positions = challenge_frame.positions;
+            let mut obstacle_positions = challenge_frame.positions;
+            if let Some(recipe) = recipe.filter(|r| !r.occlusion_intervals.is_empty()) {
+                ensure!(
+                    !obstacle_positions.is_empty(),
+                    "scripted occlusion requires an opponent"
+                );
+                if let Some(ball) = ball_world_positions.first() {
+                    let robot_xy = [
+                        f64::from(robot_pose.translation.x),
+                        f64::from(robot_pose.translation.y),
+                    ];
+                    let delta = [ball[0] - robot_xy[0], ball[1] - robot_xy[1]];
+                    let length = delta[0].hypot(delta[1]).max(0.01);
+                    let direction = delta.map(|v| v / length);
+                    let blocked = recipe
+                        .occlusion_intervals
+                        .iter()
+                        .any(|[start, end]| seconds >= *start && seconds < *end);
+                    let lateral = if blocked { 0.0 } else { 1.2 };
+                    let target = [
+                        ball[0] - 0.65 * direction[0] - lateral * direction[1],
+                        ball[1] - 0.65 * direction[1] + lateral * direction[0],
+                    ];
+                    let position = scripted_occluder_position.get_or_insert(obstacle_positions[0]);
+                    let step = [target[0] - position[0], target[1] - position[1]];
+                    let scale = (0.002 * 0.85 / step[0].hypot(step[1]).max(1e-9)).min(1.0);
+                    position[0] += step[0] * scale;
+                    position[1] += step[1] * scale;
+                    obstacle_positions[0] = *position;
+                }
+            }
             if challenge_frame.contesting {
                 contest_seconds += 0.002;
             }
@@ -1232,6 +1353,7 @@ fn record(
                 .collect();
             let camera = binding.observe(world.data()).camera_matrix;
             let mut blocked_in_view = false;
+            let mut visible = false;
             for (index, &position) in ball_world_positions.iter().enumerate() {
                 let ball = Point3::wrap(binding.point_in_ground(world.data(), position));
                 let in_view = camera
@@ -1241,11 +1363,17 @@ fn record(
                     .iter()
                     .any(|obstacle| crate::ball_perception::occludes(&camera, ball, obstacle));
                 blocked_in_view |= blocked && in_view;
-                if let Some(kick) = challenge_frame
-                    .kick
-                    .as_ref()
-                    .filter(|kick| kick.ball_index == index)
-                {
+                visible |= in_view && !blocked;
+                if ball.xy().coords().norm() <= 1.0 {
+                    close_truth_seconds += 0.002;
+                    if in_view && !blocked {
+                        close_visible_seconds += 0.002;
+                    }
+                }
+                if let Some(kick) = challenge_frame.kick.as_ref().filter(|kick| {
+                    kick.ball_index == index
+                        && recipe.is_none_or(|r| r.occlusion_intervals.is_empty())
+                }) {
                     opponent_kicks += 1;
                     occluded_kicks += u64::from(blocked);
                     occluded_in_view_kicks += u64::from(blocked && in_view);
@@ -1267,6 +1395,15 @@ fn record(
             if blocked_in_view {
                 occluded_in_view_seconds += 0.002;
             }
+            if visible {
+                if !previously_visible && hidden_seconds >= 0.12 {
+                    reacquisition_opportunities += 1;
+                }
+                hidden_seconds = 0.0;
+            } else if previously_visible || hidden_seconds > 0.0 {
+                hidden_seconds += 0.002;
+            }
+            previously_visible = visible;
             for (&entity, &position) in obstacles.iter().zip(&obstacle_positions) {
                 world
                     .set_object_pose(entity, crate::scene::tuning_obstacles::transform(position))
@@ -1409,14 +1546,16 @@ fn record(
             "Low autonomous motion coverage: walked {walk_distance:.3}m, simultaneous motion {simultaneous_motion_seconds:.2}s; retaining the recording"
         );
     }
-    ensure!(
-        ball_distance > 0.2,
-        "rolling ball only moved {ball_distance:.3}m"
-    );
-    ensure!(
-        peak_ball_speed > 2.5 && fast_ball_seconds > 0.5,
-        "fast kicks reached only {peak_ball_speed:.2}m/s with {fast_ball_seconds:.2}s above 2m/s"
-    );
+    if recipe.is_none() {
+        ensure!(
+            ball_distance > 0.2,
+            "rolling ball only moved {ball_distance:.3}m"
+        );
+        ensure!(
+            peak_ball_speed > 2.5 && fast_ball_seconds > 0.5,
+            "fast kicks reached only {peak_ball_speed:.2}m/s with {fast_ball_seconds:.2}s above 2m/s"
+        );
+    }
     progress.send_modify(|state| state.elapsed_seconds = EPISODE_SECONDS);
     // Allow the fusion safety lag and transport queues to drain without more sensors.
     let approach = approach.snapshot();
@@ -1425,6 +1564,10 @@ fn record(
     let written = runtime.block_on(recording.finish())?;
     let coverage = serde_json::json!({
         "seed": seed,
+        "family": recipe.map(|r| &r.family),
+        "close_visible_seconds": close_visible_seconds,
+        "close_truth_seconds": close_truth_seconds,
+        "reacquisition_opportunities": reacquisition_opportunities,
         "ball_count": ball_count,
         "walking_speed_scale": walking_speed_scale,
         "behavior_walking_speed": behavior_layer["walking"]["speed"],
@@ -1446,6 +1589,19 @@ fn record(
         &path.with_extension("coverage.json"),
         &serde_json::to_vec_pretty(&coverage)?,
     )?;
+    if let Some(recipe) = recipe {
+        for (metric, minimum) in &recipe.minimum_coverage {
+            let actual = coverage
+                .get(metric)
+                .and_then(serde_json::Value::as_f64)
+                .ok_or_else(|| eyre!("unknown numeric coverage metric {metric}"))?;
+            ensure!(
+                actual >= *minimum,
+                "{}: insufficient {metric}: {actual} < {minimum}",
+                recipe.family
+            );
+        }
+    }
     eprintln!(
         "Approach: {}; {} close-ball Kick -> Stand transitions, {:.2}s Stand, {:.2}s Stand after kick with visual age <=100ms",
         approach.status(),
@@ -1463,82 +1619,172 @@ fn record(
     Ok(())
 }
 
+/// Explicit recipes vary physics and detector conditions independently of RNG seeds.
+/// Coverage minima are checked after saving the recording and diagnostics, so a
+/// failed family remains inspectable but cannot silently enter the accepted suite.
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct CaptureRecipe {
+    family: String,
+    ball_position: [f64; 2],
+    #[serde(default)]
+    robot_position: [f32; 2],
+    #[serde(default)]
+    robot_yaw: f32,
+    #[serde(default)]
+    head_target: Option<[f32; 2]>,
+    /// Move the first physical cylinder into the line of sight at bounded speed.
+    /// Truth stays present; the filter receives ordinary obstacle measurements.
+    #[serde(default)]
+    occlusion_intervals: Vec<[f64; 2]>,
+    perception: Option<crate::ball_perception::Parameters>,
+    steps: Vec<ScenarioStep>,
+    #[serde(default)]
+    minimum_coverage: std::collections::BTreeMap<String, f64>,
+}
+
+impl CaptureRecipe {
+    fn validate(&self) -> Result<()> {
+        ensure!(
+            !self.family.trim().is_empty(),
+            "capture family must be named"
+        );
+        ensure!(
+            self.ball_position.iter().all(|x| x.is_finite())
+                && self.robot_position.iter().all(|x| x.is_finite())
+                && self.robot_yaw.is_finite()
+                && self
+                    .head_target
+                    .is_none_or(|p| p.iter().all(|x| x.is_finite())),
+            "nonfinite initial pose"
+        );
+        ensure!(
+            self.occlusion_intervals.iter().all(|[a, b]| a.is_finite()
+                && b.is_finite()
+                && *a >= 0.0
+                && b > a
+                && *b <= EPISODE_SECONDS),
+            "invalid occlusion interval"
+        );
+        let mut previous = 0.0;
+        for step in &self.steps {
+            ensure!(
+                step.until.is_finite() && step.until > previous && step.until <= EPISODE_SECONDS,
+                "scenario phase ends must increase within the 40-second episode"
+            );
+            ensure!(
+                step.ball_impulse
+                    .is_none_or(|v| v.iter().all(|x| x.is_finite())),
+                "nonfinite ball impulse"
+            );
+            ensure!(
+                step.walking_velocity
+                    .is_none_or(|v| v.iter().all(|x| x.is_finite())),
+                "nonfinite scripted walking velocity"
+            );
+            previous = step.until;
+        }
+        ensure!(
+            previous == EPISODE_SECONDS,
+            "scenario must cover the full 40-second episode"
+        );
+        ensure!(
+            self.minimum_coverage
+                .values()
+                .all(|x| x.is_finite() && *x >= 0.0),
+            "invalid coverage minimum"
+        );
+        if let Some(noise) = &self.perception {
+            noise.validate().map_err(|e| eyre!(e))?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
 struct ScenarioStep {
     until: f64,
-    name: &'static str,
+    name: std::borrow::Cow<'static, str>,
     ball_present: bool,
     ball_impulse: Option<[f64; 2]>,
+    /// Script body motion for isolated perception tests; None uses normal behavior.
+    #[serde(default)]
+    walking_velocity: Option<[f32; 3]>,
 }
 
 const SCENARIO: [ScenarioStep; 10] = [
     ScenarioStep {
         until: 3.0,
-        name: "playing / stationary ball",
+        name: std::borrow::Cow::Borrowed("playing / stationary ball"),
+        walking_velocity: None,
         ball_present: true,
         ball_impulse: None,
     },
     ScenarioStep {
         until: 9.0,
-        name: "playing / incoming diagonal ball",
+        name: std::borrow::Cow::Borrowed("playing / incoming diagonal ball"),
+        walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([-0.11, -0.27]),
     },
     ScenarioStep {
         until: 10.2,
-        name: "playing / fast cross-field kick",
+        name: std::borrow::Cow::Borrowed("playing / fast cross-field kick"),
+        walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([0.11, 1.53]),
     },
     ScenarioStep {
         until: 14.0,
-        name: "playing / fast ball redirected",
+        name: std::borrow::Cow::Borrowed("playing / fast ball redirected"),
+        walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([-0.20, -1.75]),
     },
     ScenarioStep {
         until: 18.0,
-        name: "playing / rolling ball nudged",
+        name: std::borrow::Cow::Borrowed("playing / rolling ball nudged"),
+        walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([-0.18, 0.07]),
     },
     ScenarioStep {
         until: 24.0,
-        name: "playing / ball redirected",
+        name: std::borrow::Cow::Borrowed("playing / ball redirected"),
+        walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([0.35, -0.20]),
     },
     ScenarioStep {
         until: 28.0,
-        name: "playing / lateral ball impulse",
+        name: std::borrow::Cow::Borrowed("playing / lateral ball impulse"),
+        walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([-0.30, 0.50]),
     },
     ScenarioStep {
         until: 34.0,
-        name: "playing / empty scene with false detections",
+        name: std::borrow::Cow::Borrowed("playing / empty scene with false detections"),
+        walking_velocity: None,
         ball_present: false,
         ball_impulse: None,
     },
     ScenarioStep {
         until: 35.2,
-        name: "playing / fast incoming ball reappears",
+        name: std::borrow::Cow::Borrowed("playing / fast incoming ball reappears"),
+        walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([0.0, -1.8]),
     },
     ScenarioStep {
         until: EPISODE_SECONDS,
-        name: "playing / reacquiring redirected ball",
+        name: std::borrow::Cow::Borrowed("playing / reacquiring redirected ball"),
+        walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([1.50, 0.90]),
     },
 ];
-
-fn scenario_phase(seconds: f64) -> usize {
-    SCENARIO
-        .iter()
-        .position(|step| seconds < step.until)
-        .unwrap_or(SCENARIO.len() - 1)
-}
 
 struct ScenarioVariation {
     speed: f64,
@@ -1608,6 +1854,25 @@ fn step_with_ball_impulse(world: &mut MujocoWorld, impulse: Option<BallImpulse>)
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn capture_recipes_cover_complete_episodes_and_validate_geometry() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("scenarios/ball-filter");
+        for entry in std::fs::read_dir(root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|extension| extension != "json") {
+                continue;
+            }
+            let mut recipe: CaptureRecipe =
+                serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+            recipe.validate().unwrap();
+            recipe.steps.last_mut().unwrap().until = 39.0;
+            assert!(recipe.validate().is_err());
+            recipe.steps.last_mut().unwrap().until = 40.0;
+            recipe.robot_yaw = f32::NAN;
+            assert!(recipe.validate().is_err());
+        }
+    }
+
     #[test]
     fn walking_scale_preserves_behavior_and_respects_parameter_layers() {
         let base = tempfile::tempdir().unwrap();

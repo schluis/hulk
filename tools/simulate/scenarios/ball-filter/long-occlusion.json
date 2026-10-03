@@ -1,0 +1,73 @@
+{
+  "family": "long-occlusion",
+  "ball_position": [
+    1.6,
+    0.1
+  ],
+  "robot_position": [
+    0,
+    0
+  ],
+  "robot_yaw": 0,
+  "perception": {
+    "frame_period": 0.04,
+    "delivery_delay_seconds": 0.05,
+    "delivery_jitter_seconds": 0.015,
+    "center_noise_pixels": 2.0,
+    "false_positive_probability": 0.04,
+    "seed": 42
+  },
+  "steps": [
+    {
+      "until": 10,
+      "name": "long-occlusion",
+      "ball_present": true,
+      "ball_impulse": null,
+      "walking_velocity": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "until": 25,
+      "name": "long-occlusion",
+      "ball_present": true,
+      "ball_impulse": null,
+      "walking_velocity": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "until": 40,
+      "name": "long-occlusion",
+      "ball_present": true,
+      "ball_impulse": null,
+      "walking_velocity": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "minimum_coverage": {
+    "occluded_in_view_seconds": 1.0,
+    "reacquisition_opportunities": 1.0
+  },
+  "head_target": [
+    1.6,
+    0
+  ],
+  "occlusion_intervals": [
+    [
+      7,
+      13
+    ],
+    [
+      21,
+      28
+    ]
+  ]
+}

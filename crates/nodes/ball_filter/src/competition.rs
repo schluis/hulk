@@ -113,12 +113,13 @@ pub fn apply(
         // real ball or a newly reacquired candidate. Raw validity is not a probability.
         if !matched.get(index).copied().unwrap_or(false)
             && camera.is_some_and(|camera| {
-                negative_evidence::classify_with_detections(
-                    &hypothesis.position(),
+                crate::hypothesis_visibility(
+                    hypothesis,
                     camera,
                     ball_radius,
                     obstacles,
                     detections,
+                    parameters,
                 ) == Visibility::Visible
             })
         {

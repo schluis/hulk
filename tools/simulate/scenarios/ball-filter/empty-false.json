@@ -1,0 +1,30 @@
+{
+  "family": "empty-false",
+  "ball_position": [
+    1.2,
+    0.2
+  ],
+  "robot_position": [
+    0,
+    0
+  ],
+  "robot_yaw": 0,
+  "perception": {
+    "frame_period": 0.04,
+    "delivery_delay_seconds": 0.05,
+    "delivery_jitter_seconds": 0.015,
+    "center_noise_pixels": 2.0,
+    "false_positive_probability": 0.16,
+    "seed": 42,
+    "false_positive_burst_frames": 15
+  },
+  "steps": [
+    {
+      "until": 40,
+      "name": "empty-false",
+      "ball_present": false,
+      "ball_impulse": null
+    }
+  ],
+  "minimum_coverage": {}
+}

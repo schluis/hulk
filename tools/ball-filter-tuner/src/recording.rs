@@ -56,6 +56,9 @@ pub struct Cycle {
     pub dimensions: FieldDimensions,
     /// None means unlabelled, Some(empty) explicitly means no ball.
     pub reference: Option<Reference>,
+    /// Independently timestamp-matched Field truth for motion derivatives.
+    /// Avoid differentiating Ground truth transformed with a stale field pose.
+    pub motion_reference: Option<Vec<Point3<Field>>>,
     pub ground_to_field: Option<Isometry2<Ground, Field>>,
     /// Actual live prior decision, independently recorded from scoring geometry.
     /// Legacy recordings have no prior diagnostic and replay with no field prior.
@@ -132,6 +135,7 @@ impl Recording {
         let mut cameras = BTreeMap::new();
         let mut detection_payloads = BTreeMap::new();
         let mut references = BTreeMap::new();
+        let mut motion_references = BTreeMap::new();
         let mut ground_to_field = BTreeMap::new();
         let mut field_prior_poses = BTreeMap::new();
         let mut selected_obstacles = BTreeMap::new();
@@ -150,6 +154,16 @@ impl Recording {
                 topic
             };
             let time = Time::from_nanos(i64::try_from(message.publish_time)?);
+            if topic == "simulation/ball_ground_truth_field"
+                && matches!(
+                    reference_topic,
+                    "simulation/ball_ground_truth" | "simulation/ball_ground_truth_field"
+                )
+            {
+                let value: TimeWrapper<Vec<Point3<Field>>> = decode(&message)?;
+                Reference::Field(value.inner.clone()).validate_for_optimization()?;
+                motion_references.insert(value.time, value.inner);
+            }
             match topic {
                 "inputs/odometry" => {
                     ensure!(
@@ -300,6 +314,7 @@ impl Recording {
                     .ok_or_else(|| eyre!("missing field_dimensions"))?
                     .1,
                 reference: references.get(&time).cloned(),
+                motion_reference: motion_references.get(&time).cloned(),
                 // Use a preceding pose with a bounded source-time age. Never apply
                 // an arbitrarily old transform to a fresh ball estimate.
                 ground_to_field: ground_to_field

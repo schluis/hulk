@@ -23,18 +23,20 @@ pub struct Objective {
     pub out_of_field_decay_metres: f64,
     pub close_range_loss: &'static str,
     pub close_range_weight: f64,
+    pub motion_reference: &'static str,
 }
 
 pub const OBJECTIVE: Objective = Objective {
-    version: "single_ball_close_accuracy_v4",
+    version: "single_ball_close_accuracy_v6",
     position_loss: "p^2 * d^2 / (p^2 + d^2); d = distance to the single labelled ball",
     missing_loss: "1.25 * p^2",
     false_track_loss: "p^2",
     normalization: "all-scene weighted mean plus close_range_weight times the separately normalized close-range mean; p = penalty_metres",
     reference_weight: "exp(-distance_outside_field_metres / out_of_field_decay_metres); distance outside Field rectangle expanded by ball radius; absent or unknown Field pose weight=1",
     out_of_field_decay_metres: OUT_OF_FIELD_DECAY_METRES,
-    close_range_loss: "Add a separately time-normalized spatial/missing loss for truth within 1 m in Ground, without field-boundary downweighting. Missing costs more than any finite position error. Close-range RMSE and RMS spatial motion lag may not worsen the training baseline, per recording and in aggregate.",
+    close_range_loss: "Add a separately time-normalized spatial/missing loss for truth within 1 m in Ground, without field-boundary downweighting. Missing costs more than any finite position error. Close-range RMSE, RMS and mean absolute spatial motion lag, continuity and false-track time may not worsen the training baseline, per recording and in aggregate. Signed mean lag is diagnostic only because opposing errors can cancel.",
     close_range_weight: CLOSE_RANGE_LOSS_WEIGHT,
+    motion_reference: "Use timestamp-matched simulation/ball_ground_truth_field for motion derivatives when standard simulator labels are selected; otherwise derive Field positions from the selected reference and recorded pose. Ground position/close-range scoring remains unchanged.",
 };
 
 #[derive(Default, Debug, Serialize)]
@@ -54,12 +56,17 @@ pub struct Score {
     pub close_range_present_seconds: f64,
     pub close_range_missing_seconds: f64,
     pub close_range_loss: Option<f64>,
+    /// Correct selected-output time; missing output contributes zero success.
+    pub close_range_within_10cm_seconds: f64,
+    pub close_range_within_20cm_seconds: f64,
     /// Signed along the ball's motion: negative means the estimate is behind.
     pub along_motion_error_metres: Option<f64>,
     /// Equivalent spatial lag, positive behind. Not measured processing latency.
     pub motion_lag_seconds: Option<f64>,
     /// RMS equivalent spatial lag: opposing lead/lag errors cannot cancel.
     pub motion_lag_rms_seconds: Option<f64>,
+    /// Mean absolute spatial lag; unlike abs(mean lag), lead/lag cannot cancel.
+    pub motion_lag_absolute_seconds: Option<f64>,
     pub moving_reference_seconds: f64,
     pub absent_seconds: f64,
     pub false_track_seconds: f64,
@@ -76,6 +83,8 @@ pub struct Score {
     motion_lag_integral: f64,
     #[serde(skip)]
     motion_lag_squared_integral: f64,
+    #[serde(skip)]
+    motion_lag_absolute_integral: f64,
     #[serde(skip)]
     close_loss_integral: f64,
     #[serde(skip)]
@@ -134,6 +143,10 @@ pub fn preserves_baseline_quality(candidate: &Score, baseline: &Score) -> bool {
     }
     preserves_baseline_continuity(candidate, baseline)
         && non_increasing(
+            Some(candidate.false_track_seconds),
+            Some(baseline.false_track_seconds),
+        )
+        && non_increasing(
             candidate.close_range_position_rmse_metres,
             baseline.close_range_position_rmse_metres,
         )
@@ -142,9 +155,54 @@ pub fn preserves_baseline_quality(candidate: &Score, baseline: &Score) -> bool {
             baseline.motion_lag_rms_seconds,
         )
         && non_increasing(
-            candidate.motion_lag_seconds.map(f64::abs),
-            baseline.motion_lag_seconds.map(f64::abs),
+            candidate.motion_lag_absolute_seconds,
+            baseline.motion_lag_absolute_seconds,
         )
+}
+
+/// Continuous distance to feasibility for population exploration, never used as
+/// an alternative acceptance criterion. Exact guards above still select winners.
+pub fn quality_violation(candidate: &Score, baseline: &Score) -> f64 {
+    let pairs = [
+        (
+            Some(candidate.missing_seconds),
+            Some(baseline.missing_seconds),
+        ),
+        (
+            Some(candidate.close_range_missing_seconds),
+            Some(baseline.close_range_missing_seconds),
+        ),
+        (
+            Some(candidate.false_track_seconds),
+            Some(baseline.false_track_seconds),
+        ),
+        (
+            Some(candidate.longest_missing_seconds),
+            Some(baseline.longest_missing_seconds),
+        ),
+        (
+            candidate.close_range_position_rmse_metres,
+            baseline.close_range_position_rmse_metres,
+        ),
+        (
+            candidate.motion_lag_rms_seconds,
+            baseline.motion_lag_rms_seconds,
+        ),
+        (
+            candidate.motion_lag_absolute_seconds,
+            baseline.motion_lag_absolute_seconds,
+        ),
+    ];
+    pairs
+        .into_iter()
+        .map(|(candidate, baseline)| match (candidate, baseline) {
+            (Some(c), Some(b)) if c.is_finite() && b.is_finite() => {
+                ((c - b) / b.max(0.02)).max(0.0)
+            }
+            (None, None) | (Some(_), None) => 0.0,
+            _ => f64::INFINITY,
+        })
+        .sum()
 }
 
 fn close_reference(cycle: &Cycle) -> Option<Point2<Ground>> {
@@ -252,12 +310,25 @@ impl Score {
             self.close_range_present_seconds += cycle.seconds;
             if let Some(squared) = close_squared {
                 self.close_range_squared_error += squared * cycle.seconds;
+                if squared <= 0.01 {
+                    self.close_range_within_10cm_seconds += cycle.seconds;
+                }
+                if squared <= 0.04 {
+                    self.close_range_within_20cm_seconds += cycle.seconds;
+                }
             } else {
                 self.close_range_missing_seconds += cycle.seconds;
             }
         }
         // Never infer identities between multiple balls. Field coordinates are
         // essential: differences in Ground include robot translation/rotation.
+        let single_field = match &cycle.motion_reference {
+            Some(points) => match points.as_slice() {
+                [point] => Some(point.xy()),
+                _ => None,
+            },
+            None => single_field,
+        };
         let Some(truth) = single_field else {
             *previous = None;
             return;
@@ -279,6 +350,7 @@ impl Score {
             self.along_motion_error_integral += along * cycle.seconds;
             self.motion_lag_integral += -along / f64::from(speed) * cycle.seconds;
             self.motion_lag_squared_integral += (along / f64::from(speed)).powi(2) * cycle.seconds;
+            self.motion_lag_absolute_integral += (along / f64::from(speed)).abs() * cycle.seconds;
             self.moving_reference_seconds += cycle.seconds;
         }
     }
@@ -460,6 +532,54 @@ pub fn evaluate(
     Ok(score)
 }
 
+pub fn export_frames(
+    recording: &Recording,
+    parameters: &BallFilterParameters,
+    path: &std::path::Path,
+) -> Result<()> {
+    use std::io::Write;
+    let mut writer = std::io::BufWriter::new(std::fs::File::create(path)?);
+    let mut tracker = Tracker::default();
+    for cycle in &recording.cycles {
+        let mut percepts = Vec::new();
+        for input in &cycle.inputs {
+            percepts.extend(tracker.advance_with_obstacles(
+                input.time,
+                input.odometry,
+                input.detections.as_deref(),
+                input.camera.as_ref(),
+                input.obstacles.as_ref(),
+                parameters,
+                &cycle.dimensions,
+            )?);
+        }
+        let estimate = tracker.finish_with_field_pose(
+            cycle.time,
+            parameters,
+            &cycle.dimensions,
+            cycle.field_prior_pose,
+        );
+        let truth = match &cycle.reference {
+            Some(Reference::Ground(points)) => points.first().map(|p| p.xy()),
+            Some(Reference::Field(points)) => points
+                .first()
+                .zip(cycle.ground_to_field)
+                .map(|(p, pose)| pose.inverse() * p.xy()),
+            None => None,
+        };
+        let row = serde_json::json!({
+            "time": cycle.time.as_nanos(), "seconds": cycle.seconds,
+            "truth": truth, "estimate": estimate,
+            "motion_truth": cycle.motion_reference,
+            "percepts": percepts, "hypotheses": tracker.filter.hypotheses,
+        });
+        serde_json::to_writer(&mut writer, &row)?;
+        writer.write_all(b"\n")?;
+    }
+    writer.flush()?;
+    Ok(())
+}
+
 impl Score {
     fn finish(&mut self) {
         let score = self;
@@ -479,6 +599,8 @@ impl Score {
             .then(|| score.motion_lag_integral / score.moving_reference_seconds);
         score.motion_lag_rms_seconds = (score.moving_reference_seconds > 0.0)
             .then(|| (score.motion_lag_squared_integral / score.moving_reference_seconds).sqrt());
+        score.motion_lag_absolute_seconds = (score.moving_reference_seconds > 0.0)
+            .then(|| score.motion_lag_absolute_integral / score.moving_reference_seconds);
     }
 }
 
@@ -504,9 +626,23 @@ mod tests {
         Score {
             close_range_position_rmse_metres: Some(0.42),
             motion_lag_seconds: Some(0.43),
+            motion_lag_absolute_seconds: Some(0.43),
             motion_lag_rms_seconds: Some(0.5),
             ..continuity_baseline()
         }
+    }
+
+    #[test]
+    fn cancelling_signed_errors_do_not_block_better_absolute_and_rms_lag() {
+        let mut baseline = accuracy_baseline();
+        baseline.motion_lag_seconds = Some(0.0);
+        let mut candidate = accuracy_baseline();
+        candidate.motion_lag_seconds = Some(0.1);
+        candidate.motion_lag_absolute_seconds = Some(0.1);
+        candidate.motion_lag_rms_seconds = Some(0.2);
+        assert!(preserves_baseline_quality(&candidate, &baseline));
+        candidate.false_track_seconds = baseline.false_track_seconds + 0.04;
+        assert!(!preserves_baseline_quality(&candidate, &baseline));
     }
 
     #[test]
@@ -520,7 +656,7 @@ mod tests {
             candidate.false_track_seconds = 0.0;
             match metric {
                 0 => candidate.close_range_position_rmse_metres = Some(1.10),
-                1 => candidate.motion_lag_seconds = Some(0.70),
+                1 => candidate.motion_lag_absolute_seconds = Some(0.70),
                 2 => candidate.motion_lag_rms_seconds = Some(0.70),
                 _ => unreachable!(),
             }
@@ -605,6 +741,32 @@ mod tests {
     }
 
     #[test]
+    fn stationary_field_truth_does_not_inherit_motion_from_pose_timing() {
+        let mut score = Score::default();
+        let mut previous = None;
+        for (time, robot) in [(0, 0.0), (50, 0.2), (100, -0.1)] {
+            let mut cycle = diagnostic_cycle(time, 1.0, robot);
+            // A stale pose changes the reconstructed world coordinate despite
+            // the physical ball remaining stationary in its timestamped label.
+            cycle.reference = Some(Reference::Ground(vec![linear_algebra::point![
+                1.0, 0.0, 0.1
+            ]]));
+            cycle.motion_reference = Some(vec![linear_algebra::point![1.0, 0.0, 0.1]]);
+            score.observe_diagnostics(
+                &cycle,
+                Some(BallPosition {
+                    position: point![1.0, 0.0],
+                    velocity: Vector2::zeros(),
+                    last_seen: cycle.time,
+                }),
+                &mut previous,
+            );
+        }
+        assert_eq!(score.moving_reference_seconds, 0.0);
+        assert!((score.close_range_present_seconds - 0.15).abs() < 1e-12);
+    }
+
+    #[test]
     fn rms_lag_prevents_opposing_errors_from_cancelling() {
         let mut score = Score::default();
         let mut previous = Some((Time::zero(), point![0.5, 0.0]));
@@ -684,6 +846,7 @@ mod tests {
             time: Time::from_nanos(time_ms * 1_000_000),
             dimensions: Default::default(),
             reference: Some(Reference::Field(vec![point![x, 0.0, 0.1]])),
+            motion_reference: None,
             ground_to_field: Some(Isometry2::from(linear_algebra::vector![robot_x, 0.0])),
             recorded_estimate: None,
             field_prior_pose: None,
