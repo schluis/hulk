@@ -311,6 +311,10 @@ impl ObstacleFilter {
             .filter(|time| *time <= now && now.duration_since(*time) <= MAXIMUM_OUTPUT_FRAME_AGE)
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Keep expiry time, geometry inputs and diagnostic demand explicit at publication"
+    )]
     fn output(
         &mut self,
         now: Time,
