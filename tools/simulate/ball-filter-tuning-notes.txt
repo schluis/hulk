@@ -830,3 +830,33 @@ Continued search / localization trust (2026-10-03)
 - PR2917 now also removes the dead fake_odometry crate/startup and Closes#2918
   (production cbe52c308; full-branch equivalent b2e1006d7). No fake/delta consumers
   remain. All history updates use rebase/cherry-pick, never merge commits.
+
+Game branch freeze (2026-10-03)
+- User explicitly froze codex/ball-filter-pregame-20261003 after 0cdd4ac5f.
+  Do not update that branch again without a new explicit request, including
+  follow-up fixes discovered by CI. Continue work only on the development branch.
+- User wants Twix optimization panel and 3D viewer opened when the new instance
+  is ready. Current replacement capture is retry-01, same seeds, walking 1.5x.
+
+Validated replacement capture (2026-10-03)
+- retry-01 contains six complete ROS-Z captures using the exact 0cdd4ac5f
+  baseline, original seed offset 1791021089, walking multiplier 1.5, two
+  opponents, and one ball. All capture audits pass; no falls or policy faults.
+- All 6000 detector exposures match percept and selected-obstacle diagnostics.
+  Eleven opponent kicks are occluded; nine are within the camera view.
+- Capture and detailed audit: logs/ball-pregame-search-1791021089/retry-01/.
+  fall-followup-notes.txt records an unproven kick-policy input discontinuity
+  hypothesis; investigating it needs motion/inference diagnostics beyond filter
+  scope. Do not weaken contest coverage to hide falls.
+- A single local validation round reproduced live output exactly while waiting
+  for remote SSH. Its candidate is NOT suitable for deployment: holdout loss
+  1.9027 -> 1.8227 but lag 0.257 -> 0.722 s and close RMSE 0.619 -> 1.286 m.
+  Training lag and close RMSE also regress. Current continuity guard constrains
+  missing time, not these errors; do not promote solely on aggregate loss.
+- Follow-up in tuner code: constrain training close accuracy and motion lag,
+  preserve held-out evaluation independence, and add correct-ball reacquisition
+  metrics. The current validation has only 1.9 s close-range exposure; expand
+  future capture coverage before trusting a close-range result.
+- Combined simulator/Twix and standalone simulator builds passed. Targeted tests:
+  248 Rust tests and 71 Python tests passed; formatting passed. Game branch is
+  frozen at 0cdd4ac5f with all eight CI checks passing.
