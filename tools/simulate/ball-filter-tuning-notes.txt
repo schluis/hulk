@@ -770,3 +770,27 @@ Base-parameter promotion audit (2026-10-03)
   to schluis and a short draft PR within 15 minutes. Prioritize verified parameter
   comparison and clean committed code; defer fresh viewer/32-worker handoff if
   necessary. Existing remote search and 1x live preview continue.
+
+Pregame delivery, robotics-only scope (2026-10-03 09:28 UTC)
+- User requested parameters/code within 15 minutes, then narrowed PR to robotics
+  code and parameters only. Full development branch is preserved. New branch
+  codex/ball-filter-pregame-20261003 is based directly on current main d4474cb5b.
+  Worktree: /tmp/hulk-ball-filter-pregame. Commit a88f174d9, pushed to schluis.
+- Draft PR https://github.com/HULKs/hulk/pull/2917 has exactly 19 robot/filter/
+  parameter files. Supersedes closed broad PR2916. No simulator, optimizer, Twix,
+  inherited motion rewrite, policy assets, or unrelated localization changes.
+  Port keeps main VisualKick and existing fall-down-state input. Ground-to-field
+  publication preserves source time. Main robot cargo check and formatting pass;
+  scoped unit tests still compiling in logs/ball-pregame-narrow-tests.log.
+- Selected parameter: hidden_validity_decay_rate0.01 ->0.0, all other current
+  defaults unchanged, including20s timeout. Existing6clips verify exactly against
+  capture parameters; all per-clip missing/close-missing/longest gaps non-regress.
+  Reused validation missing10.288->10.246s, lag0.565866->0.561914s, closeRMSE
+  unchanged0.963973m and false-track10.252s unchanged. This is a tiny retention
+  benefit, not a solved kicking accuracy result. No larger candidate passed.
+  Reports: logs/promotion-audit-20261003/recommended-{report,perclip}.json and
+  recommended-ball_filter.json. Data was reused during screening, not untouched
+  holdout. User will deploy the branch; no robot deployment was attempted.
+- Full-branch evaluation helper checkpoint072e0c2dc preserves capture-baseline
+  strict verification separately from current evaluation defaults. It is excluded
+  from robotics PR. Concurrent opencode effort-statistics changes remain untouched.
