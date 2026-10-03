@@ -9,6 +9,7 @@ use types::{ball_position::BallPosition, parameters::BallFilterParameters};
 
 pub const MISSING_PENALTY_MULTIPLIER: f64 = 1.25;
 pub const OUT_OF_FIELD_DECAY_METRES: f64 = 0.3;
+pub const CLOSE_RANGE_LOSS_WEIGHT: f64 = 4.0;
 
 /// Stored with every report so scores from different objectives are not confused.
 #[derive(Serialize)]
@@ -20,16 +21,20 @@ pub struct Objective {
     pub normalization: &'static str,
     pub reference_weight: &'static str,
     pub out_of_field_decay_metres: f64,
+    pub close_range_loss: &'static str,
+    pub close_range_weight: f64,
 }
 
 pub const OBJECTIVE: Objective = Objective {
-    version: "single_ball_distance_weighted_v3",
+    version: "single_ball_close_accuracy_v4",
     position_loss: "p^2 * d^2 / (p^2 + d^2); d = distance to the single labelled ball",
     missing_loss: "1.25 * p^2",
     false_track_loss: "p^2",
-    normalization: "weighted time integral divided by weighted_seconds; p = penalty_metres",
+    normalization: "all-scene weighted mean plus close_range_weight times the separately normalized close-range mean; p = penalty_metres",
     reference_weight: "exp(-distance_outside_field_metres / out_of_field_decay_metres); distance outside Field rectangle expanded by ball radius; absent or unknown Field pose weight=1",
     out_of_field_decay_metres: OUT_OF_FIELD_DECAY_METRES,
+    close_range_loss: "Add a separately time-normalized spatial/missing loss for truth within 1 m in Ground, without field-boundary downweighting. Missing costs more than any finite position error. Close-range RMSE and RMS spatial motion lag may not worsen the training baseline, per recording and in aggregate.",
+    close_range_weight: CLOSE_RANGE_LOSS_WEIGHT,
 };
 
 #[derive(Default, Debug, Serialize)]
@@ -48,10 +53,13 @@ pub struct Score {
     pub close_range_position_rmse_metres: Option<f64>,
     pub close_range_present_seconds: f64,
     pub close_range_missing_seconds: f64,
+    pub close_range_loss: Option<f64>,
     /// Signed along the ball's motion: negative means the estimate is behind.
     pub along_motion_error_metres: Option<f64>,
     /// Equivalent spatial lag, positive behind. Not measured processing latency.
     pub motion_lag_seconds: Option<f64>,
+    /// RMS equivalent spatial lag: opposing lead/lag errors cannot cancel.
+    pub motion_lag_rms_seconds: Option<f64>,
     pub moving_reference_seconds: f64,
     pub absent_seconds: f64,
     pub false_track_seconds: f64,
@@ -66,6 +74,12 @@ pub struct Score {
     along_motion_error_integral: f64,
     #[serde(skip)]
     motion_lag_integral: f64,
+    #[serde(skip)]
+    motion_lag_squared_integral: f64,
+    #[serde(skip)]
+    close_loss_integral: f64,
+    #[serde(skip)]
+    close_loss_seconds: f64,
 }
 
 /// Eligibility constraint, separate from the spatial objective. Compare against
@@ -101,6 +115,52 @@ pub fn preserves_baseline_continuity(candidate: &Score, baseline: &Score) -> boo
     })
 }
 
+/// A cheaper global fit cannot buy worse near-ball accuracy or motion tracking.
+/// Missing diagnostics are only acceptable when the baseline also lacks them.
+pub fn preserves_baseline_quality(candidate: &Score, baseline: &Score) -> bool {
+    fn non_increasing(candidate: Option<f64>, baseline: Option<f64>) -> bool {
+        match (candidate, baseline) {
+            (Some(candidate), Some(baseline)) => {
+                candidate.is_finite()
+                    && baseline.is_finite()
+                    && candidate >= 0.0
+                    && baseline >= 0.0
+                    && candidate <= baseline + 1024.0 * f64::EPSILON * baseline.max(1.0)
+            }
+            (None, None) => true,
+            (Some(candidate), None) => candidate.is_finite() && candidate >= 0.0,
+            (None, Some(_)) => false,
+        }
+    }
+    preserves_baseline_continuity(candidate, baseline)
+        && non_increasing(
+            candidate.close_range_position_rmse_metres,
+            baseline.close_range_position_rmse_metres,
+        )
+        && non_increasing(
+            candidate.motion_lag_rms_seconds,
+            baseline.motion_lag_rms_seconds,
+        )
+        && non_increasing(
+            candidate.motion_lag_seconds.map(f64::abs),
+            baseline.motion_lag_seconds.map(f64::abs),
+        )
+}
+
+fn close_reference(cycle: &Cycle) -> Option<Point2<Ground>> {
+    let truth = match cycle.reference.as_ref()? {
+        Reference::Ground(points) => match points.as_slice() {
+            [point] => point.xy(),
+            _ => return None,
+        },
+        Reference::Field(points) => match points.as_slice() {
+            [point] => cycle.ground_to_field?.inverse() * point.xy(),
+            _ => return None,
+        },
+    };
+    (truth.coords().norm_squared() <= 1.0).then_some(truth)
+}
+
 impl Score {
     fn observe_cycle(
         &mut self,
@@ -132,6 +192,17 @@ impl Score {
             // Only the optimization objective is weighted. Raw spatial errors,
             // missing durations and uninterrupted gap lengths remain unchanged.
             self.loss = loss_before + (self.loss - loss_before) * weight;
+        }
+        // Normalize this independently of far-ball/empty-scene duration. Sparse
+        // kick opportunities must not disappear in a long recording's average.
+        if let Some(truth) = close_reference(cycle) {
+            let cap = penalty.powi(2);
+            let loss = estimate.map_or(MISSING_PENALTY_MULTIPLIER * cap, |ball| {
+                let squared = f64::from((ball.position - truth).norm_squared());
+                cap * squared / (cap + squared)
+            });
+            self.close_loss_integral += cycle.seconds * loss;
+            self.close_loss_seconds += cycle.seconds;
         }
     }
 
@@ -207,6 +278,7 @@ impl Score {
             let along = f64::from((estimate.position - truth).dot(&velocity) / speed);
             self.along_motion_error_integral += along * cycle.seconds;
             self.motion_lag_integral += -along / f64::from(speed) * cycle.seconds;
+            self.motion_lag_squared_integral += (along / f64::from(speed)).powi(2) * cycle.seconds;
             self.moving_reference_seconds += cycle.seconds;
         }
     }
@@ -384,17 +456,30 @@ pub fn evaluate(
             score.observe_cycle(cycle, estimate, penalty);
         }
     }
-    score.loss /= score.weighted_seconds;
-    let matched = score.present_seconds - score.missing_seconds;
-    score.position_rmse_metres = (matched > 0.0).then(|| (score.squared_error / matched).sqrt());
-    let close_matched = score.close_range_present_seconds - score.close_range_missing_seconds;
-    score.close_range_position_rmse_metres =
-        (close_matched > 0.0).then(|| (score.close_range_squared_error / close_matched).sqrt());
-    score.along_motion_error_metres = (score.moving_reference_seconds > 0.0)
-        .then(|| score.along_motion_error_integral / score.moving_reference_seconds);
-    score.motion_lag_seconds = (score.moving_reference_seconds > 0.0)
-        .then(|| score.motion_lag_integral / score.moving_reference_seconds);
+    score.finish();
     Ok(score)
+}
+
+impl Score {
+    fn finish(&mut self) {
+        let score = self;
+        score.loss /= score.weighted_seconds;
+        score.close_range_loss = (score.close_loss_seconds > 0.0)
+            .then(|| score.close_loss_integral / score.close_loss_seconds);
+        score.loss += CLOSE_RANGE_LOSS_WEIGHT * score.close_range_loss.unwrap_or(0.0);
+        let matched = score.present_seconds - score.missing_seconds;
+        score.position_rmse_metres =
+            (matched > 0.0).then(|| (score.squared_error / matched).sqrt());
+        let close_matched = score.close_range_present_seconds - score.close_range_missing_seconds;
+        score.close_range_position_rmse_metres =
+            (close_matched > 0.0).then(|| (score.close_range_squared_error / close_matched).sqrt());
+        score.along_motion_error_metres = (score.moving_reference_seconds > 0.0)
+            .then(|| score.along_motion_error_integral / score.moving_reference_seconds);
+        score.motion_lag_seconds = (score.moving_reference_seconds > 0.0)
+            .then(|| score.motion_lag_integral / score.moving_reference_seconds);
+        score.motion_lag_rms_seconds = (score.moving_reference_seconds > 0.0)
+            .then(|| (score.motion_lag_squared_integral / score.moving_reference_seconds).sqrt());
+    }
 }
 
 #[cfg(test)]
@@ -413,6 +498,131 @@ mod tests {
             false_track_seconds: 3.0,
             ..Default::default()
         }
+    }
+
+    fn accuracy_baseline() -> Score {
+        Score {
+            close_range_position_rmse_metres: Some(0.42),
+            motion_lag_seconds: Some(0.43),
+            motion_lag_rms_seconds: Some(0.5),
+            ..continuity_baseline()
+        }
+    }
+
+    #[test]
+    fn lower_global_loss_cannot_buy_worse_close_accuracy_or_lag() {
+        let baseline = accuracy_baseline();
+        assert!(preserves_baseline_quality(&baseline, &baseline));
+        for metric in 0..3 {
+            let mut candidate = accuracy_baseline();
+            candidate.loss = 0.0;
+            candidate.missing_seconds = 0.0;
+            candidate.false_track_seconds = 0.0;
+            match metric {
+                0 => candidate.close_range_position_rmse_metres = Some(1.10),
+                1 => candidate.motion_lag_seconds = Some(0.70),
+                2 => candidate.motion_lag_rms_seconds = Some(0.70),
+                _ => unreachable!(),
+            }
+            assert!(!preserves_baseline_quality(&candidate, &baseline));
+        }
+        let mut candidate = accuracy_baseline();
+        candidate.close_range_position_rmse_metres = Some(0.10);
+        candidate.motion_lag_seconds = Some(0.1);
+        candidate.motion_lag_rms_seconds = Some(0.2);
+        assert!(preserves_baseline_quality(&candidate, &baseline));
+    }
+
+    #[test]
+    fn missing_or_invalid_accuracy_metrics_cannot_bypass_quality_guards() {
+        let baseline = accuracy_baseline();
+        for invalid in [None, Some(f64::NAN), Some(f64::INFINITY), Some(-0.01)] {
+            let mut candidate = accuracy_baseline();
+            candidate.close_range_position_rmse_metres = invalid;
+            assert!(!preserves_baseline_quality(&candidate, &baseline));
+            candidate = accuracy_baseline();
+            candidate.motion_lag_rms_seconds = invalid;
+            assert!(!preserves_baseline_quality(&candidate, &baseline));
+        }
+        // Recordings with no close/moving observations have no comparison to
+        // enforce. Acquiring a previously completely missing ball is allowed.
+        let absent = continuity_baseline();
+        assert!(preserves_baseline_quality(&absent, &absent));
+        assert!(preserves_baseline_quality(&baseline, &absent));
+    }
+
+    #[test]
+    fn long_far_ball_intervals_cannot_dilute_the_close_loss_component() {
+        let close = diagnostic_cycle(0, 0.5, 0.0);
+        let close_estimate = BallPosition {
+            position: point![0.7, 0.0],
+            velocity: Vector2::zeros(),
+            last_seen: Time::zero(),
+        };
+        let mut short = Score::default();
+        short.observe_cycle(&close, Some(close_estimate), 2.0);
+        short.finish();
+        let mut long = Score::default();
+        long.observe_cycle(&close, Some(close_estimate), 2.0);
+        let mut far = diagnostic_cycle(50, 3.0, 0.0);
+        far.seconds = 300.0;
+        long.observe_cycle(
+            &far,
+            Some(BallPosition {
+                position: point![3.0, 0.0],
+                velocity: Vector2::zeros(),
+                last_seen: Time::zero(),
+            }),
+            2.0,
+        );
+        long.finish();
+        assert_eq!(short.close_range_loss, long.close_range_loss);
+        assert!(long.loss >= CLOSE_RANGE_LOSS_WEIGHT * short.close_range_loss.unwrap());
+        let mut missing = Score::default();
+        missing.observe_cycle(&close, None, 2.0);
+        missing.finish();
+        assert!(missing.close_range_loss > short.close_range_loss);
+    }
+
+    #[test]
+    fn close_term_uses_truth_distance_and_survives_field_downweighting() {
+        let mut score = Score::default();
+        let far_truth = diagnostic_cycle(0, 3.0, 0.0);
+        score.observe_cycle(
+            &far_truth,
+            Some(BallPosition {
+                position: point![0.1, 0.0],
+                velocity: Vector2::zeros(),
+                last_seen: Time::zero(),
+            }),
+            2.0,
+        );
+        assert_eq!(score.close_loss_seconds, 0.0);
+        let outside = diagnostic_cycle(50, 10.5, 10.0);
+        score.observe_cycle(&outside, None, 2.0);
+        assert_eq!(score.close_loss_seconds, outside.seconds);
+        assert_eq!(score.close_loss_integral, outside.seconds * 5.0);
+    }
+
+    #[test]
+    fn rms_lag_prevents_opposing_errors_from_cancelling() {
+        let mut score = Score::default();
+        let mut previous = Some((Time::zero(), point![0.5, 0.0]));
+        for (time, truth, estimate) in [(50, 0.6, 0.4), (100, 0.7, 0.9)] {
+            score.observe_diagnostics(
+                &diagnostic_cycle(time, truth, 0.0),
+                Some(BallPosition {
+                    position: point![estimate, 0.0],
+                    velocity: Vector2::zeros(),
+                    last_seen: Time::zero(),
+                }),
+                &mut previous,
+            );
+        }
+        assert!((score.motion_lag_integral / score.moving_reference_seconds).abs() < 1e-6);
+        assert!(
+            (score.motion_lag_squared_integral / score.moving_reference_seconds).sqrt() > 0.099
+        );
     }
 
     #[test]

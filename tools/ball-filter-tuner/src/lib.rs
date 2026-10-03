@@ -6,7 +6,7 @@ use color_eyre::{Result, eyre::ensure};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use recording::Recording;
-use scoring::{Score, evaluate, preserves_baseline_continuity, verify};
+use scoring::{Score, evaluate, preserves_baseline_quality, verify};
 use serde::Serialize;
 use std::path::PathBuf;
 use types::{ball_filter_tuning::SearchProgress, parameters::BallFilterParameters};
@@ -67,7 +67,7 @@ struct Report<'a> {
     seed: u64,
     trials: usize,
     rejected_candidates: usize,
-    rejected_continuity_candidates: usize,
+    rejected_quality_candidates: usize,
     continuity_policy: &'static str,
     retention_policy: &'static str,
     tuned_parameter_pointers: Vec<&'static str>,
@@ -279,7 +279,7 @@ pub fn run_with_progress(
             )
         })
         .collect::<Result<Vec<_>>>()?;
-    let mut rejected_continuity_candidates = 0;
+    let mut rejected_quality_candidates = 0;
     let mut best = baseline.clone();
     let mut best_values = encode(&best);
     let mut best_loss = base_train.loss;
@@ -292,7 +292,7 @@ pub fn run_with_progress(
         let score = evaluate_candidate(&train, &initial, args.penalty_metres)?;
         if let Some(score) = score.filter(|score| score.loss.is_finite() && score.loss < best_loss)
         {
-            if preserves_baseline_continuity(&score, &base_train)
+            if preserves_baseline_quality(&score, &base_train)
                 && preserves_each_recording(
                     &train,
                     &initial,
@@ -305,7 +305,9 @@ pub fn run_with_progress(
                 best_loss = score.loss;
                 best_metrics = (&score).into();
             } else {
-                eprintln!("Warm start rejected: worsens baseline training continuity");
+                eprintln!(
+                    "Warm start rejected: worsens baseline training continuity, close accuracy or motion lag"
+                );
             }
         }
     }
@@ -340,7 +342,7 @@ pub fn run_with_progress(
         let score = evaluate_candidate(&train, &candidate, args.penalty_metres)?;
         if let Some(score) = score.filter(|score| score.loss.is_finite()) {
             if score.loss < best_loss {
-                if !preserves_baseline_continuity(&score, &base_train)
+                if !preserves_baseline_quality(&score, &base_train)
                     || !preserves_each_recording(
                         &train,
                         &candidate,
@@ -348,7 +350,7 @@ pub fn run_with_progress(
                         args.penalty_metres,
                     )?
                 {
-                    rejected_continuity_candidates += 1;
+                    rejected_quality_candidates += 1;
                 } else {
                     best_loss = score.loss;
                     best = candidate;
@@ -394,8 +396,8 @@ pub fn run_with_progress(
         seed: args.seed,
         trials: args.trials,
         rejected_candidates,
-        rejected_continuity_candidates,
-        continuity_policy: "Every training recording and the aggregate must not worsen baseline total missing time, close-range missing time, or longest missing gap (floating-point roundoff only). Held-out data is evaluation only.",
+        rejected_quality_candidates,
+        continuity_policy: "Every training recording and the aggregate must not worsen baseline total missing time, close-range missing time, or longest missing gap, close-range RMSE, RMS equivalent spatial motion lag, or absolute mean spatial lag (floating-point roundoff only). Missing diagnostics cannot replace measured baseline diagnostics. Held-out data is evaluation only.",
         retention_policy: "Only listed search dimensions may change, including warm starts. Hypothesis timeout, observable-miss timeout, near clear-miss timeout and distance, obstacle source-time tolerance, legacy per-frame confidence factors, good-localization gate, field-boundary margin and validity decay rate, maximum detection distance and output threshold remain at the evaluation baseline. Optional hidden/visible-missed/competing-hypothesis/near-visible-missed confidence rates are searched only when enabled in the baseline (hidden 0..0.3/s; visible-missed 0..4/s; competing 0..2/s; additional near-visible-missed 0..40/s). The optional nearby-spawn validity factor is searched from 0 to 1 only when enabled in the baseline; omitted legacy values keep legacy spawn confidence. Legacy None rates retain their prior behavior; omitted field margin, field decay rate and detection distance retain their zero legacy defaults, and an omitted good_localization retains true.",
         tuned_parameter_pointers: tuned_parameter_pointers(&baseline),
         penalty_metres: args.penalty_metres,
@@ -447,7 +449,7 @@ fn preserves_each_recording(
 ) -> Result<bool> {
     for (recording, baseline) in recordings.iter().zip(baseline_scores) {
         let score = evaluate(std::slice::from_ref(recording), parameters, penalty)?;
-        if !preserves_baseline_continuity(&score, baseline) {
+        if !preserves_baseline_quality(&score, baseline) {
             return Ok(false);
         }
     }

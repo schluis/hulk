@@ -369,7 +369,10 @@ of numerically unstable candidates rejected during search. Parameters
 are saved for review, not automatically applied to robot defaults.
 
 The search objective uses bounded position error, with a missing estimate costing
-more than any finite position error. Empty scenes still penalize false tracks,
+more than any finite position error. Truth within 1 metre of the robot additionally
+contributes four times its own time-normalized loss, without field-boundary
+downweighting. Long far-ball intervals cannot dilute this close-range component.
+Empty scenes still penalize false tracks,
 so aggregate loss alone can trade tracking continuity for earlier forgetting.
 The search therefore fixes hypothesis timeout, legacy per-frame confidence factors,
 output threshold, `visible_missed_detection_timeout` and
@@ -387,12 +390,15 @@ behavior: candidates cannot enable that rate, and the report and UI omit it from
 the searched parameters. Importing an older warm start without rates preserves
 the new capture baseline's rates.
 
-A candidate must also preserve baseline total missing time, close-range missing
-time and longest missing interval in **every training recording**, as well as
-in aggregate. Only floating-point roundoff is tolerated. Held-out recordings
-remain evaluation-only; these guards do not guarantee held-out continuity.
+A candidate must also preserve baseline close-range position RMSE, RMS spatial
+motion lag, absolute mean spatial motion lag, total missing time, close-range
+missing time and longest missing interval in **every training recording**, as
+well as in aggregate. Only floating-point roundoff is tolerated. RMS lag prevents
+opposing lead/lag errors from cancelling. Held-out recordings remain
+evaluation-only; these guards do not guarantee held-out accuracy or continuity.
 Reports identify this policy and count lower-loss candidates rejected for
-continuity regressions.
+quality regressions. Objective `single_ball_close_accuracy_v4` scores cannot be
+compared directly with earlier objective versions.
 
 The filter distinguishes a ball hidden behind a robot from a ball that should be
 visible but is repeatedly missing from detector results. With the current
