@@ -1780,6 +1780,62 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn capture_localization_gate_inherits_omissions_and_preserves_explicit_false() {
+        // Replay of an old file keeps its historical enabled prior. A fresh
+        // capture instead inherits current layers when the key was omitted.
+        for (current_gate, override_gate) in [(false, None), (true, Some(false))] {
+            let base = tempfile::tempdir().unwrap();
+            let overrides = tempfile::tempdir().unwrap();
+            let original: serde_json::Value = json5::from_str(include_str!(
+                "../../../etc/parameters/base/ball_filter.json5"
+            ))
+            .unwrap();
+            let mut current = original.clone();
+            current["good_localization"] = serde_json::json!(current_gate);
+            std::fs::write(
+                base.path().join("ball_filter.json5"),
+                serde_json::to_vec(&current).unwrap(),
+            )
+            .unwrap();
+            let mut historical = original;
+            historical
+                .as_object_mut()
+                .unwrap()
+                .remove("good_localization");
+            let legacy: BallFilterParameters = serde_json::from_value(historical.clone()).unwrap();
+            assert!(legacy.good_localization);
+            if let Some(enabled) = override_gate {
+                historical["good_localization"] = serde_json::json!(enabled);
+            }
+            let path = overrides.path().join("ball_filter.json5");
+            std::fs::write(&path, serde_json::to_vec(&historical).unwrap()).unwrap();
+            let retained = capture_parameter_override(&path).unwrap();
+            assert_eq!(
+                retained
+                    .get("good_localization")
+                    .and_then(|value| value.as_bool()),
+                override_gate,
+            );
+            std::fs::write(&path, serde_json::to_vec(&retained).unwrap()).unwrap();
+            let context = ContextBuilder::default()
+                .with_namespace("/capture_localization_gate_test")
+                .with_mode("peer")
+                .disable_multicast_scouting()
+                .with_connect_endpoints(std::iter::empty::<&str>())
+                .with_listen_endpoints(std::iter::empty::<&str>())
+                .with_parameter_layers([base.path().to_owned(), overrides.path().to_owned()])
+                .build()
+                .await
+                .unwrap();
+            let node = context.create_node("capture").build().await.unwrap();
+            let binding = node
+                .bind_parameter_as::<BallFilterParameters>("ball_filter")
+                .unwrap();
+            assert!(!binding.snapshot().typed().good_localization);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn live_best_updates_the_node_atomically_without_changing_baseline() {
         let baseline = tempfile::tempdir().unwrap();
         let live = tempfile::tempdir().unwrap();
