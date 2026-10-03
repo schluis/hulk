@@ -1349,3 +1349,5 @@ Scope correction and replacement robotics PR (2026-10-03)
   file; artifacts remain. Half of new workers use differential evolution with
   baseline/local/experimental population seeds; half use screened coordinate
   search. Experimental infeasible seeds cannot become accepted winners.
+
+2026-10-03: User approved per-recording accuracy trade-off: +0.01 m close RMSE and +0.04 s RMS/mean absolute spatial lag; retention and false-track guards remain exact. Objective v7 applies those margins only to individual clips; aggregate accuracy remains non-increasing. Final promotion still requires substantial overall improvement. New request: research published filtering methods, implement alternatives in separate worktrees, compare on common frozen recordings. No alternative has been promoted.

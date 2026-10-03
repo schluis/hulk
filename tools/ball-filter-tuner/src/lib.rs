@@ -6,7 +6,7 @@ use color_eyre::{Result, eyre::ensure};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use recording::Recording;
-use scoring::{Score, evaluate, preserves_baseline_quality, verify};
+use scoring::{Score, evaluate, preserves_baseline_quality, preserves_recording_quality, verify};
 use serde::Serialize;
 use std::path::PathBuf;
 use types::{ball_filter_tuning::SearchProgress, parameters::BallFilterParameters};
@@ -432,7 +432,7 @@ pub fn run_with_progress(
                     &candidate,
                     args.penalty_metres,
                 )?;
-                if score.is_none_or(|score| !preserves_baseline_quality(&score, base)) {
+                if score.is_none_or(|score| !preserves_recording_quality(&score, base)) {
                     screened = false;
                     break;
                 }
@@ -445,14 +445,14 @@ pub fn run_with_progress(
         };
         if let Some(score) = score.filter(|score| score.loss.is_finite()) {
             if matches!(args.search_method, SearchMethod::DifferentialEvolution) {
-                let mut violation = scoring::quality_violation(&score, &base_train);
+                let mut violation = scoring::quality_violation(&score, &base_train, false);
                 for (recording, base) in train.iter().zip(&baseline_recordings) {
                     let one = evaluate(
                         std::slice::from_ref(recording),
                         &candidate,
                         args.penalty_metres,
                     )?;
-                    violation += scoring::quality_violation(&one, base);
+                    violation += scoring::quality_violation(&one, base, true);
                 }
                 let target = trial % population.len();
                 let old = population[target];
@@ -594,7 +594,7 @@ fn preserves_each_recording(
 ) -> Result<bool> {
     for (recording, baseline) in recordings.iter().zip(baseline_scores) {
         let score = evaluate(std::slice::from_ref(recording), parameters, penalty)?;
-        if !preserves_baseline_quality(&score, baseline) {
+        if !preserves_recording_quality(&score, baseline) {
             return Ok(false);
         }
     }
