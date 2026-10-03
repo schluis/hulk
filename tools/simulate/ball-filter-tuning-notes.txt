@@ -800,3 +800,12 @@ Pregame delivery, robotics-only scope (2026-10-03 09:28 UTC)
   and robot compile check pass. Final lint-only CI rerun in progress at09:30UTC.
 - Final commit Clippy and formatting checks now pass; final CI test/build rerun
   remains pending at09:30:53UTC. Prior substantive commit passed1,260tests.
+
+Git workflow preference (2026-10-03)
+- User: always rebase, never merge. Repository pull.rebase is now true.
+- Replaced the development branch merge with a linear rebase onto main. Verified
+  the rebased committed tree is identical before updating the branch reference;
+  concurrent uncommitted edits were preserved. Original history is checkpointed
+  in codex/ball-filter-before-rebase-20261003.
+- Pregame PR2917 was already based directly on main, contains no merge commit,
+  and all eight CI checks now pass. Its deployment commit remains d4ffb70d5.
