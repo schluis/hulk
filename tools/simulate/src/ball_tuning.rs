@@ -1764,7 +1764,7 @@ mod tests {
             Duration::from_millis(120)
         );
         assert_eq!(snapshot.typed().near_visible_missed_detection_distance, 1.0);
-        assert_eq!(snapshot.typed().hidden_validity_decay_rate, Some(0.01));
+        assert_eq!(snapshot.typed().hidden_validity_decay_rate, Some(0.0));
         assert_eq!(
             snapshot.typed().visible_missed_validity_decay_rate,
             Some(1.0)
