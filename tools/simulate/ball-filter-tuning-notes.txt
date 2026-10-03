@@ -1232,3 +1232,43 @@ Scope correction and replacement robotics PR (2026-10-03)
   checkpoint; the commands are not a clean-checkout reproduction guarantee.
 - Luis subsequently requested no further board use. Coordination continues only
   inside this coding session. Parameter search remains stopped.
+
+2026-10-03 TODO: broaden optimization scenario coverage (Luis-approved plan)
+- Implement distinct scenario families before relying on further tuning results.
+  Current suite is four training and two validation recordings of the same
+  ten-phase scenario with variations. Start with 24 recordings: two training
+  variants and one held-out variant for each of these eight families:
+  1. Stationary close ball while our robot walks and turns: jitter/odometry error.
+  2. Approach, slow rolling and stopping: close-range position accuracy and lag.
+  3. Fast kicks across/past the robot: velocity tracking and rapid reacquisition.
+  4. Brief detection gaps of 1-5 frames: preserve established hypotheses.
+  5. Two opponents contesting and kicking: unseen direction changes in occlusion.
+  6. Longer occlusion or ball below camera: retain without false negative evidence.
+  7. Static false detections and empty scenes: false-track duration and selection.
+  8. Sideline play with localization wobble: avoid excessive boundary decay.
+- Vary trajectories, initial robot/ball/opponent positions, walking speed,
+  physical kick impulses, noise and delivery timing, not only random seeds.
+  Keep ordinary single-ball, in-field play dominant. Multiple balls remain a
+  separate stress suite with explicit truth association, not the main objective.
+- Record actual coverage and require it before accepting a named scenario:
+  close-visible time, simultaneous robot/ball motion, actual dropout bursts,
+  contested/occluded kicks, and reacquisition opportunities. A planned kick or
+  dropout is insufficient if it never occurs in the useful camera/ball context.
+  Example: generation10 train42 had zero brief_dropout_bursts_by_frames despite
+  other useful coverage. Preserve MCAP ROS-Z message compatibility and exact
+  baseline replay checks; metadata describes coverage, not replacement inputs.
+- Report metrics per family as well as aggregate: close-range position error and
+  lag, established-track missing time, reacquisition delay after the ball becomes
+  detectable, false output and wrong selected-track duration. Separate initial
+  acquisition from loss of an already observed ball. Retention and false positives
+  must remain visible alongside close accuracy; no promotion on a scalar alone.
+- Use a representative training subset to reject poor candidates cheaply, then
+  evaluate promising candidates on the full training suite before acceptance.
+  Keep fresh held-out recordings outside parameter selection. Existing generation10
+  validation clips have been inspected repeatedly and are diagnostic data, not
+  fresh independent acceptance evidence; reserve unseen scenarios for final checks.
+- Main implementation locations: tools/simulate/src/ball_tuning.rs (scenario
+  generation/coverage), tools/ball-filter-tuner (per-family evaluation and staged
+  training evaluation), scripts/ball_filter_optimization (suite lifecycle).
+- This is an implementation note only. Parameter search and recapture remain
+  stopped; this checkpoint does not implement the expanded suite or restart them.
