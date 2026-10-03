@@ -1068,3 +1068,16 @@ Scope correction and replacement robotics PR (2026-10-03)
   shares the producer process group and closes during scheduled recapture; an
   independently launched viewer can reconnect. Keep this separate from the fixed
   schema/defaults failure. Do not add simulator/Twix to robotics PR2921.
+
+2026-10-03 Close-range accuracy objective migration
+- User requires low close-range error. Old v3 training winner regressed near RMSE
+  from 0.422m to 1.10m; do not promote this as the next search baseline.
+- v4 adds four times separately normalized loss for truth within 1m, with full
+  weight even near/outside field; missing still costs more than finite error.
+- Per-training-recording and aggregate gates preserve near RMSE, RMS spatial lag,
+  absolute mean spatial lag and all previous continuity guards. Validation stays
+  evaluation-only. New scores cannot be compared with v3.
+- Migrate on generation6 recordings/baseline, preserve all old history. Supervisor
+ 508241 temporarily SIGSTOPped (receipt logs/close-accuracy-refresh-pause.json);
+  remote workers continue until cooperative handoff. Restore automatic recapture
+  using a fresh same-session supervisor after migration.
