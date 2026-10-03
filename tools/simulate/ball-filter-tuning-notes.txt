@@ -941,3 +941,28 @@ Static artifacts, confidence transfer and game replay (2026-10-03)
   checks now pass after narrow explicit-input argument-count expectations.
 - At11:33UTC root is releasing Cargo for Ole replay/Twix in its isolated cached
   target, and resuming the local refresh supervisor to record/activate newcode.
+
+Fresh generation active and game evidence downloaded (2026-10-03, 11:44UTC)
+- Supervisor332453 resumed; generation1 capture and audit passed all six clips.
+  All6000 exposures/percept diagnostics/selected obstacle snapshots align;
+  927 consecutive fixed-field artifact repeats include893 with changed pose.
+  Ten opponent kicks were occluded, eight in view; no falls/policy faults.
+  Exact baseline overlay includes field margin0.5, nearby transfer0.5, good=true.
+- Automatic handoff activated remote32 run20261003-133911-b595c277 at development
+  14d4b57b6. New live best contains margin0.5 and searched nearby transfer factor.
+  Root development commits pushed through14d4b57b6; game branch stays frozen.
+  Matching optimizer Twix/viewer opened (PIDs417268/417269). Source of truth for
+  later generations is retry-01/session/session.json, not these checkpoint PIDs.
+- User revised game scope to compare both halves. First used our branch, second
+  did not; another change is mentioned but clarification pending. Server includes
+  actual source snapshots. First half differs from frozen game worktree (ball
+  source/head-yaw fields, own/team retention). Do not decode with assumed structs.
+- Robot43 MCAPs saved under logs/game43-replay-20261003/{first-half,second-half}/;
+  complete transfers2.42GB/1.74GB with SHA256 receipts. Both missing valid MCAP
+  footer/index: recover into separate indexed copies, keep originals and quantify
+  unrecoverable tail. No game diagnosis yet. Ole replay build remains isolated.
+- Actual-source candidate mechanism: first-half kick authorization requires fresh
+  visual<=100ms. A missing/stale visual while already kicking falls back to Stand,
+  cancels SDK visual kick and needs>250ms to restart. Second permits model fallback.
+  Check real blackboard/trace/command/SDK timestamps before assigning causality;
+  raw vision delay may also cross100ms. Full predicates in game43 behavior-gates.txt.
