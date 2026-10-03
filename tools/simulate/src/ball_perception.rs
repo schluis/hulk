@@ -38,9 +38,10 @@ pub struct Parameters {
     /// Probability of starting a correlated run of missed true detections.
     pub dropout_burst_probability: f32,
     pub dropout_burst_frames: u32,
-    /// Frames for which an injected false detection persists near its initial pixel.
+    /// Frames for which a false detection persists at one fixed field location.
+    /// A value of one preserves independent uniformly sampled image outliers.
     pub false_positive_burst_frames: u32,
-    /// Probability of one additional uniformly distributed image detection per frame.
+    /// Probability of starting an additional false-detection burst per frame.
     pub false_positive_probability: f32,
     pub detection_confidence: f32,
     /// Pixel radius of the additional false detection.
@@ -115,6 +116,7 @@ pub enum FalseDetectionProjection {
 }
 
 /// Simulator-only provenance; never used as a production percept or reference ball.
+/// Correlated artifacts mark their fixed physical anchor, not their noisy image estimate.
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Message)]
 pub struct FalseDetectionMarker {
     pub position: Point3<Field>,
@@ -123,7 +125,7 @@ pub struct FalseDetectionMarker {
 
 struct DetectionFrame {
     detections: Vec<Object<RobocupObjectLabel>>,
-    false_pixels: Vec<Point2<Pixel>>,
+    false_markers: Vec<FalseDetectionMarker>,
 }
 
 fn false_detection_marker(
@@ -168,6 +170,7 @@ pub struct Detector {
     dropout_remaining: u32,
     false_remaining: u32,
     false_center: Point2<Pixel>,
+    false_anchor: Option<Point2<Field>>,
 }
 
 /// Upright physical occluder in the same ground frame as the camera and balls.
@@ -219,6 +222,7 @@ impl Detector {
             dropout_remaining: 0,
             false_remaining: 0,
             false_center: Point2::origin(),
+            false_anchor: None,
         }
     }
 
@@ -230,14 +234,24 @@ impl Detector {
         radius: f32,
         parameters: &Parameters,
     ) -> Vec<Object<RobocupObjectLabel>> {
-        self.detect_with_provenance(camera, balls, radius, parameters)
-            .detections
+        self.detect_with_provenance(
+            camera,
+            Isometry2::identity(),
+            balls,
+            &[],
+            radius,
+            parameters,
+        )
+        .detections
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn detect_with_provenance(
         &mut self,
         camera: &CameraMatrix,
+        ground_to_field: Isometry2<Ground, Field>,
         balls: &[Point3<Ground>],
+        obstacles: &[Occluder],
         radius: f32,
         parameters: &Parameters,
     ) -> DetectionFrame {
@@ -245,7 +259,7 @@ impl Detector {
             *self = Self::new(parameters.seed);
         }
         let mut detections = Vec::new();
-        let mut false_pixels = Vec::new();
+        let mut false_markers = Vec::new();
         if self.dropout_remaining == 0
             && parameters.dropout_burst_probability > 0.0
             && self.rng.random::<f32>() < parameters.dropout_burst_probability
@@ -256,7 +270,12 @@ impl Detector {
             || (parameters.dropout_probability > 0.0
                 && self.rng.random::<f32>() < parameters.dropout_probability);
         self.dropout_remaining = self.dropout_remaining.saturating_sub(1);
-        for ball in balls.iter().filter(|_| !drop_frame) {
+        for ball in balls.iter().filter(|ball| {
+            !drop_frame
+                && !obstacles
+                    .iter()
+                    .any(|obstacle| occludes(camera, **ball, obstacle))
+        }) {
             let Ok(center) = camera.ground_with_z_to_pixel(ball.xy(), ball.z()) else {
                 continue;
             };
@@ -287,24 +306,100 @@ impl Detector {
         if self.false_remaining == 0
             && self.rng.random::<f32>() < parameters.false_positive_probability
         {
-            self.false_center = point![
-                self.rng.random::<f32>() * camera.image_size.x(),
-                self.rng.random::<f32>() * camera.image_size.y()
-            ];
-            self.false_remaining = parameters.false_positive_burst_frames;
+            self.false_anchor = None;
+            if parameters.false_positive_burst_frames == 1 {
+                // Preserve independent image outliers, including above-horizon pixels.
+                self.false_center = point![
+                    self.rng.random::<f32>() * camera.image_size.x(),
+                    self.rng.random::<f32>() * camera.image_size.y()
+                ];
+                self.false_remaining = 1;
+            } else {
+                // A shadow or field marking stays put as the robot walks. Sample
+                // boundedly so an upward-looking camera cannot stall simulation.
+                for _ in 0..32 {
+                    let pixel = point![
+                        self.rng.random::<f32>() * camera.image_size.x(),
+                        self.rng.random::<f32>() * camera.image_size.y()
+                    ];
+                    let Ok(ground) = camera.pixel_to_ground_with_z(pixel, radius) else {
+                        continue;
+                    };
+                    if !ground.inner.coords.iter().all(|value| value.is_finite())
+                        || ground.inner.coords.norm() > 15.0
+                        || balls
+                            .iter()
+                            .any(|ball| (ball.xy() - ground).norm() < 2.0 * radius + 0.1)
+                    {
+                        continue;
+                    }
+                    let point = point![ground.x(), ground.y(), radius];
+                    if obstacles
+                        .iter()
+                        .any(|obstacle| occludes(camera, point, obstacle))
+                    {
+                        continue;
+                    }
+                    self.false_anchor = Some(ground_to_field * ground);
+                    self.false_remaining = parameters.false_positive_burst_frames;
+                    break;
+                }
+            }
         }
         if self.false_remaining > 0 {
-            false_pixels.push(self.false_center);
-            detections.push(detection(
-                self.false_center,
-                parameters.false_positive_radius,
-                parameters.detection_confidence,
-            ));
             self.false_remaining -= 1;
+            let emission = if let Some(anchor) = self.false_anchor {
+                let ground = ground_to_field.inverse() * anchor;
+                let point = point![ground.x(), ground.y(), radius];
+                let obscured = obstacles
+                    .iter()
+                    .any(|obstacle| occludes(camera, point, obstacle));
+                // If a real ball rolls through the artifact, do not emit a duplicate
+                // synthetic ball there. The anchor itself never follows that ball.
+                let overlaps_ball = balls
+                    .iter()
+                    .any(|ball| (ball.xy() - ground).norm() < 2.0 * radius + 0.1);
+                camera
+                    .ground_with_z_to_pixel(ground, radius)
+                    .ok()
+                    .filter(|center| in_image(camera, *center) && !obscured && !overlaps_ball)
+                    .and_then(|center| {
+                        let dx: f32 = StandardNormal.sample(&mut self.rng);
+                        let dy: f32 = StandardNormal.sample(&mut self.rng);
+                        let noisy = point![
+                            center.x()
+                                + dx * parameters.center_noise_pixels
+                                + parameters.center_bias_pixels[0],
+                            center.y()
+                                + dy * parameters.center_noise_pixels
+                                + parameters.center_bias_pixels[1]
+                        ];
+                        in_image(camera, noisy).then_some((
+                            noisy,
+                            FalseDetectionMarker {
+                                position: point![anchor.x(), anchor.y(), radius],
+                                projection: FalseDetectionProjection::GroundPlane,
+                            },
+                        ))
+                    })
+            } else {
+                Some((
+                    self.false_center,
+                    false_detection_marker(camera, ground_to_field, self.false_center, radius),
+                ))
+            };
+            if let Some((pixel, marker)) = emission {
+                false_markers.push(marker);
+                detections.push(detection(
+                    pixel,
+                    parameters.false_positive_radius,
+                    parameters.detection_confidence,
+                ));
+            }
         }
         DetectionFrame {
             detections,
-            false_pixels,
+            false_markers,
         }
     }
 }
@@ -598,23 +693,15 @@ impl PerceptionIo {
                 )
                 .await?;
             if frame_due {
-                let visible: Vec<_> = balls
-                    .iter()
-                    .copied()
-                    .filter(|ball| {
-                        !obstacles
-                            .iter()
-                            .any(|obstacle| occludes(camera, *ball, obstacle))
-                    })
-                    .collect();
-                let frame = self
-                    .detector
-                    .detect_with_provenance(camera, &visible, radius, parameters);
-                let false_markers: Vec<_> = frame
-                    .false_pixels
-                    .iter()
-                    .map(|&pixel| false_detection_marker(camera, ground_to_field, pixel, radius))
-                    .collect();
+                let frame = self.detector.detect_with_provenance(
+                    camera,
+                    ground_to_field,
+                    &balls,
+                    obstacles,
+                    radius,
+                    parameters,
+                );
+                let false_markers = frame.false_markers;
                 self.detections
                     .announce(time)
                     .await?
@@ -694,7 +781,9 @@ mod tests {
             let expected = ordinary.detect(&camera, &[point![2.0, 0.0, 0.105]], 0.105, &parameters);
             let actual = diagnostic.detect_with_provenance(
                 &camera,
+                Isometry2::identity(),
                 &[point![2.0, 0.0, 0.105]],
+                &[],
                 0.105,
                 &parameters,
             );
@@ -702,13 +791,12 @@ mod tests {
                 serde_json::to_value(&expected).unwrap(),
                 serde_json::to_value(&actual.detections).unwrap()
             );
-            for pixel in actual.false_pixels {
+            for marker in actual.false_markers {
                 count += 1;
-                assert_eq!(
-                    actual.detections.last().unwrap().bounding_box.area.center(),
-                    pixel
-                );
-                let marker = false_detection_marker(&camera, Isometry2::identity(), pixel, 0.105);
+                assert!(in_image(
+                    &camera,
+                    actual.detections.last().unwrap().bounding_box.area.center()
+                ));
                 assert!(
                     marker
                         .position
@@ -719,12 +807,189 @@ mod tests {
                 );
             }
         }
-        assert_eq!(
-            count, 200,
-            "every injected false frame must carry provenance"
+        assert!(
+            count > 100,
+            "static artifacts should remain visible in this fixed camera"
         );
         // Both streams consumed exactly the same RNG draws, including future frames.
         assert_eq!(ordinary.rng.random::<u64>(), diagnostic.rng.random::<u64>());
+    }
+
+    fn static_detector(anchor: Point2<Field>, frames: u32) -> Detector {
+        let mut detector = Detector::new(42);
+        detector.false_anchor = Some(anchor);
+        detector.false_remaining = frames;
+        detector
+    }
+
+    #[test]
+    fn correlated_false_detection_stays_in_field_when_robot_and_camera_move() {
+        let original = camera();
+        let mut rotated = original.clone();
+        rotated.robot_to_head =
+            Isometry3::wrap(nalgebra::Isometry3::rotation(nalgebra::Vector3::z() * 0.08));
+        rotated.compute_memoized();
+        let anchor = point![2.0, 0.0];
+        let mut detector = static_detector(anchor, 3);
+        let mut previous_pixel: Option<Point2<Pixel>> = None;
+        for (camera, pose) in [
+            (&original, Isometry2::identity()),
+            (&rotated, Isometry2::identity()),
+            (&rotated, Isometry2::from_parts(vector![0.2, 0.1], 0.1)),
+        ] {
+            let frame = detector.detect_with_provenance(camera, pose, &[], &[], 0.105, &clean());
+            assert_eq!(frame.detections.len(), 1);
+            assert_eq!(frame.false_markers.len(), 1);
+            let pixel = frame.detections[0].bounding_box.area.center();
+            let ground = camera.pixel_to_ground_with_z(pixel, 0.105).unwrap();
+            assert!((pose * ground - anchor).norm() < 1e-4);
+            assert_eq!(frame.false_markers[0].position.xy(), anchor);
+            if let Some(previous) = previous_pixel {
+                assert!(
+                    (pixel - previous).norm() > 1.0,
+                    "physical artifact must not stick to the image"
+                );
+            }
+            previous_pixel = Some(pixel);
+        }
+    }
+
+    #[test]
+    fn static_artifact_survives_hidden_frames_without_moving_or_emitting_markers() {
+        let camera = camera();
+        let anchor = point![2.0, 0.0];
+        let mut detector = static_detector(anchor, 4);
+        let parameters = Parameters {
+            dropout_probability: 1.0,
+            ..clean()
+        };
+        let blocker = Occluder {
+            center: point![1.0, 0.0, 0.5],
+            radius: 0.3,
+            height: 1.0,
+        };
+        let frame = detector.detect_with_provenance(
+            &camera,
+            Isometry2::identity(),
+            &[],
+            &[blocker],
+            0.105,
+            &parameters,
+        );
+        assert!(frame.detections.is_empty());
+        assert!(frame.false_markers.is_empty());
+        let away = Isometry2::from_parts(vector![0.0, 0.0], std::f32::consts::PI);
+        let frame = detector.detect_with_provenance(&camera, away, &[], &[], 0.105, &parameters);
+        assert!(frame.detections.is_empty());
+        assert!(frame.false_markers.is_empty());
+        // A real ball passing through the artifact does not make a second physical ball.
+        let frame = detector.detect_with_provenance(
+            &camera,
+            Isometry2::identity(),
+            &[point![2.0, 0.0, 0.105]],
+            &[],
+            0.105,
+            &parameters,
+        );
+        assert!(frame.detections.is_empty());
+        assert!(frame.false_markers.is_empty());
+        let frame = detector.detect_with_provenance(
+            &camera,
+            Isometry2::identity(),
+            &[],
+            &[],
+            0.105,
+            &parameters,
+        );
+        assert_eq!(frame.detections.len(), 1);
+        assert_eq!(frame.false_markers[0].position.xy(), anchor);
+        assert_eq!(detector.false_remaining, 0);
+        assert!(detector.detect(&camera, &[], 0.105, &parameters).is_empty());
+    }
+
+    #[test]
+    fn static_artifact_has_noisy_measurements_but_fixed_provenance() {
+        let camera = camera();
+        let anchor = point![2.0, 0.0];
+        let mut detector = static_detector(anchor, 200);
+        let parameters = Parameters {
+            center_noise_pixels: 2.0,
+            ..clean()
+        };
+        let expected_pixel = camera.ground_with_z_to_pixel(point![anchor.x(), anchor.y()], 0.105);
+        let expected_pixel = expected_pixel.unwrap();
+        let mut squared_error = 0.0;
+        for _ in 0..200 {
+            let frame = detector.detect_with_provenance(
+                &camera,
+                Isometry2::identity(),
+                &[],
+                &[],
+                0.105,
+                &parameters,
+            );
+            assert_eq!(frame.false_markers.len(), frame.detections.len());
+            assert_eq!(frame.detections.len(), 1);
+            assert_eq!(frame.false_markers[0].position.xy(), anchor);
+            squared_error +=
+                (frame.detections[0].bounding_box.area.center() - expected_pixel).norm_squared();
+        }
+        assert!((4.0..12.0).contains(&(squared_error / 200.0)));
+    }
+
+    #[test]
+    fn static_artifact_sampling_avoids_true_balls_even_when_they_are_missed() {
+        let camera = camera();
+        let parameters = Parameters {
+            false_positive_probability: 1.0,
+            false_positive_burst_frames: 3,
+            dropout_probability: 1.0,
+            ..clean()
+        };
+        let first = Detector::new(42).detect_with_provenance(
+            &camera,
+            Isometry2::identity(),
+            &[],
+            &[],
+            0.105,
+            &parameters,
+        );
+        let occupied = first.false_markers[0].position;
+        let second = Detector::new(42).detect_with_provenance(
+            &camera,
+            Isometry2::identity(),
+            &[point![occupied.x(), occupied.y(), occupied.z()]],
+            &[],
+            0.105,
+            &parameters,
+        );
+        assert_eq!(second.false_markers.len(), 1);
+        assert!((second.false_markers[0].position.xy() - occupied.xy()).norm() >= 0.31);
+    }
+
+    #[test]
+    fn independent_image_outliers_keep_the_original_seeded_sampling() {
+        let camera = camera();
+        let parameters = Parameters {
+            false_positive_probability: 1.0,
+            ..clean()
+        };
+        let mut expected_rng = ChaCha8Rng::seed_from_u64(42);
+        let _: f32 = expected_rng.random(); // Burst-start probability.
+        let expected = point![
+            expected_rng.random::<f32>() * 640.0,
+            expected_rng.random::<f32>() * 544.0
+        ];
+        let frame = Detector::new(42).detect_with_provenance(
+            &camera,
+            Isometry2::identity(),
+            &[],
+            &[],
+            0.105,
+            &parameters,
+        );
+        assert_eq!(frame.detections[0].bounding_box.area.center(), expected);
+        assert_eq!(frame.false_markers.len(), 1);
     }
 
     #[test]
