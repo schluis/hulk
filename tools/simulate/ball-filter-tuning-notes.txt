@@ -1168,3 +1168,67 @@ Scope correction and replacement robotics PR (2026-10-03)
   different recordings from generation8, so do not compare their raw errors as
   algorithm improvement/regression. Search remains continuous; no new robot base
   parameters promoted from these results. Low-close-error objective remains open.
+
+2026-10-03 Continued-observation comparison; parameter search stopped
+- Luis stopped parameter search and automatic recapture. Final controller receipt
+  logs/ball-filter-continuous-probe-d91e/final-stop-verification.json confirms
+  stopped, zero workers, and no search or recapture processes. This supersedes
+  earlier operational notes saying that search should continue or resume.
+- Fixed experiments use the six saved generation10 recordings and original
+  tuned/default parameter files. Baseline source is c07b354b07d9b699ad27acd2834a48604b1dee2a.
+  Later experiments reuse the validation clips diagnostically; they are no longer
+  independent acceptance evidence. No production filter or parameter promotion.
+- Retaining velocity improves the three initially accurate targets' predictions
+  at the end of a 600 ms imposed gap. The earlier single-exposure probe overstated the
+  significance of immediate reacquisition failure: in train43 the moving-noise
+  variant's 43 cm selected error becomes 6.2 cm at the next genuine detection,
+  40 ms later. Accurate selected output starts 56 ms after the first exposure;
+  a 200 ms accurate run is confirmed at 262 ms. All eight distinct recovery cases
+  from the three accurate origins confirm recovery under subsequent observations.
+- Complete replay tests a fixed experimental policy: at each natural transition
+  to Resting, retain the exact 4D state and use the existing resting position-noise
+  block from the NEXT prediction. Moving velocity noise, cross terms and damping
+  remain unchanged. This lineage policy persists through updates and merges;
+  unrelated spawns remain ordinary until their own trigger. It is not adaptive Q.
+- On reused validation clips, exact Ground close-ball success within 20 cm rises
+  73.905% -> 76.681%, within 10 cm 64.963% -> 65.590%; missing output falls
+  1.98 -> 1.42 s, close missing 0.96 -> 0.40 s. Close means truth distance <= 1 m;
+  missing output counts as failure on the shared 17.222 s close-truth denominator.
+  Output while the ball is absent remains 7.08 s. Training adds 0.08 s of such
+  false output (16.88 -> 16.96 s), with unchanged missing time.
+- The trade-off is real: close RMSE on identical published frames worsens
+  0.425016 -> 0.478759 m over 16.262 s, although correct time within 20 cm on
+  those frames improves by 0.158 s. The old validation4243 gap at 24.40-24.96 s
+  gains 0.56 s of output, 0.320 s within 20 cm and about 0.181 m RMS error.
+- The main RMSE regression occurs with no genuine detections in the inspected
+  3.0-4.6 s interval of validation4243. Both variants accept false-only input at
+  3.322 s. At 3.522 s the original selects a confirmed alternative; the candidate
+  has lost that alternative and only spawns a new validity-1 track, retaining its
+  older, more inaccurate incumbent. Both outputs are wrong. Why the competing
+  graph diverged earlier remains unresolved; do not claim a merge caused it.
+  Next focus: false association and track selection during observation gaps.
+- Validation: 102 filter + 32 tuner Rust tests, 11 Python metric tests, 89,924
+  archived original output checks, 44,962 unchanged default outputs, and 141 exact
+  common-state checks pass. All original detection payloads are restored after
+  the shared reacquisition exposure. Recovery scoring censors physical episode
+  changes, deduplicates repeated horizons, and reports observation silence.
+- Local evidence: logs/ball-filter-continuous-probe-d91e/report.txt and results/;
+  supporting analysis, exporter and adapter live in the sibling continuous-
+  evaluation-d91e, continuous-prediction-d91e and continuous-method-d91e folders.
+  Remote snapshot: ~/.cache/hulk-ball-filter-continuous-probe-d91e/source.
+  Executed exporter SHA256:
+  78bb49b551beb5405d8576d22c804aba393a60d8e6b034d027e6f0766b85bda6.
+  Executed adapter plus tests SHA256:
+  958934e4245ff3c91d9e942034668e82f9dad454bb9360e1103faa3d2416814c.
+- Rebuilding requires the recorded source state, not a newer checkout: the runner
+  packages current working-tree sources and overwrites its local overlay and remote
+  results. Preserve the historical artifacts before rebuilding. With those retained
+  local/remote artifacts and the recorded source state, the recipe is:
+  python3 logs/ball-filter-continuous-probe-d91e/run_remote.py
+  python3 logs/ball-filter-continuous-probe-d91e/fetch_results.py
+  python3 logs/ball-filter-continuous-evaluation-d91e/analyze.py --exports logs/ball-filter-continuous-probe-d91e/results
+  The analyzer alone can recheck retained outputs without rebuilding the filter.
+  These ignored experiment sources/data are not packaged by this documentation
+  checkpoint; the commands are not a clean-checkout reproduction guarantee.
+- Luis subsequently requested no further board use. Coordination continues only
+  inside this coding session. Parameter search remains stopped.
