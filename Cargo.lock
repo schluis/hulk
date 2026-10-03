@@ -880,6 +880,7 @@ dependencies = [
  "serde",
  "tokio",
  "types",
+ "visual_kick_ball_selector",
 ]
 
 [[package]]
