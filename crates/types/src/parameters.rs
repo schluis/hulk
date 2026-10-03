@@ -290,6 +290,9 @@ pub struct BallFilterParameters {
     /// Zero preserves center-only visibility. Uncertain visibility pauses misses.
     #[serde(default)]
     pub visibility_uncertainty_scale: f32,
+    /// Two-model interaction rate per second, zero disables.
+    #[serde(default)]
+    pub imm_transition_rate: f32,
     /// Legacy compatibility field; rejected associations no longer penalize track validity.
     pub maximum_matching_cost_validity_penalty_factor: f32,
 }
@@ -329,6 +332,7 @@ impl Default for BallFilterParameters {
             hypothesis_uncertainty_weight: Default::default(),
             association_uncertainty_weight: Default::default(),
             visibility_uncertainty_scale: Default::default(),
+            imm_transition_rate: Default::default(),
             maximum_matching_cost_validity_penalty_factor: Default::default(),
         }
     }

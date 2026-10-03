@@ -16,6 +16,7 @@ use types::{
 mod motion_evidence;
 pub use motion_evidence::MotionEvidence;
 
+pub mod imm;
 pub mod moving;
 pub mod resting;
 
@@ -27,6 +28,8 @@ pub enum BallMode {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Message)]
 pub struct BallHypothesis {
+    #[serde(default)]
+    pub imm: Option<imm::Imm>,
     pub mode: BallMode,
     pub last_seen: Time,
     /// Conservative interval of merged observation support through last_seen.
@@ -59,6 +62,7 @@ impl BallHypothesis {
             validity_decay_evidence: None,
             leadership_evidence: None,
             merge_observation_start: None,
+            imm: None,
         }
     }
 
@@ -93,6 +97,18 @@ impl BallHypothesis {
         resting_process_noise: Matrix2<f32>,
         log_likelihood_of_zero_velocity_threshold: f32,
     ) {
+        if let Some(imm) = &mut self.imm {
+            imm.predict(
+                delta_time,
+                last_to_current_odometry,
+                velocity_decay,
+                moving_process_noise,
+                resting_process_noise,
+            );
+            self.mode = BallMode::Moving(imm.combined());
+            self.motion_evidence = None;
+            return;
+        }
         match &mut self.mode {
             BallMode::Resting(resting) => {
                 if let Some(evidence) = &mut self.motion_evidence {
@@ -161,6 +177,11 @@ impl BallHypothesis {
         self.negative_evidence = None;
         self.validity_decay_evidence = None;
         self.validity += validity_bonus;
+        if let Some(imm) = &mut self.imm {
+            imm.update(measurement);
+            self.mode = BallMode::Moving(imm.combined());
+            return;
+        }
 
         match &mut self.mode {
             BallMode::Resting(resting) => {
@@ -257,6 +278,7 @@ impl BallHypothesis {
                 .min(other.merge_observation_start.unwrap_or(other.last_seen)),
         );
         self.mode = mode;
+        self.imm = None; // Reinitialize from the conservative merged state next prediction.
         self.validity = self.validity.max(other.validity);
         self.last_seen = self.last_seen.max(other.last_seen);
         self.negative_evidence = None;
@@ -364,6 +386,7 @@ mod tests {
             validity_decay_evidence: None,
             leadership_evidence: None,
             merge_observation_start: None,
+            imm: None,
         }
     }
 
