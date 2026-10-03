@@ -28,6 +28,9 @@ pub struct Args {
     pub validation: Vec<PathBuf>,
     #[arg(long, default_value = "etc/parameters/base/ball_filter.json5")]
     pub parameters: PathBuf,
+    /// Optional evaluation/search baseline; recordings are still verified using --parameters.
+    #[arg(long)]
+    pub evaluation_parameters: Option<PathBuf>,
     /// Warm-start the search without changing the baseline used to verify recordings.
     #[arg(long)]
     pub initial_parameters: Option<PathBuf>,
@@ -77,6 +80,9 @@ struct Report<'a> {
     training: Comparison,
     validation: Comparison,
     baseline_parameters: &'a BallFilterParameters,
+    /// Exact capture parameters used exclusively for strict live/replay verification.
+    recording_parameters: &'a BallFilterParameters,
+    evaluation_parameters_path: &'a Option<PathBuf>,
     initial_parameters: &'a BallFilterParameters,
     optimized_parameters: &'a BallFilterParameters,
 }
@@ -225,7 +231,7 @@ pub fn run_with_progress(
             );
         }
     }
-    let baseline: BallFilterParameters =
+    let recording_parameters: BallFilterParameters =
         json5::from_str(&std::fs::read_to_string(&args.parameters)?)?;
     let read = |paths: &[PathBuf]| -> Result<Vec<Recording>> {
         paths
@@ -243,12 +249,16 @@ pub fn run_with_progress(
     let train = read(&args.train)?;
     let validation = read(&args.validation)?;
     for recording in train.iter().chain(&validation) {
-        verify(recording, &baseline)?;
+        verify(recording, &recording_parameters)?;
     }
+    let baseline: BallFilterParameters = match &args.evaluation_parameters {
+        Some(path) => json5::from_str(&std::fs::read_to_string(path)?)?,
+        None => recording_parameters.clone(),
+    };
     let base_train = evaluate(&train, &baseline, args.penalty_metres)?;
     ensure!(base_train.loss.is_finite(), "training loss is not finite");
     eprintln!(
-        "MCAP replay matches live outputs. Baseline training loss: {:.6}",
+        "MCAP replay matches live outputs with capture parameters. Evaluation baseline training loss: {:.6}",
         base_train.loss
     );
     let baseline_recordings = train
@@ -395,6 +405,8 @@ pub fn run_with_progress(
             optimized: optimized_validation,
         },
         baseline_parameters: &baseline,
+        recording_parameters: &recording_parameters,
+        evaluation_parameters_path: &args.evaluation_parameters,
         initial_parameters: &initial_parameters,
         optimized_parameters: &best,
     };
