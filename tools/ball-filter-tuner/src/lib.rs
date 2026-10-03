@@ -388,7 +388,7 @@ pub fn run_with_progress(
         rejected_candidates,
         rejected_continuity_candidates,
         continuity_policy: "Every training recording and the aggregate must not worsen baseline total missing time, close-range missing time, or longest missing gap (floating-point roundoff only). Held-out data is evaluation only.",
-        retention_policy: "Only listed search dimensions may change, including warm starts. Hypothesis timeout, observable-miss timeout, near clear-miss timeout and distance, obstacle source-time tolerance, legacy per-frame confidence factors, field-boundary validity decay rate, maximum detection distance and output threshold remain at the capture baseline. Optional hidden/visible-missed/competing-hypothesis/near-visible-missed confidence rates are searched only when enabled in the baseline (hidden 0..0.3/s; visible-missed 0..4/s; competing 0..2/s; additional near-visible-missed 0..40/s). Legacy None rates retain their prior behavior; omitted field decay rate and detection distance retain their disabled legacy defaults.",
+        retention_policy: "Only listed search dimensions may change, including warm starts. Hypothesis timeout, observable-miss timeout, near clear-miss timeout and distance, obstacle source-time tolerance, legacy per-frame confidence factors, good-localization gate, field-boundary validity decay rate, maximum detection distance and output threshold remain at the evaluation baseline. Optional hidden/visible-missed/competing-hypothesis/near-visible-missed confidence rates are searched only when enabled in the baseline (hidden 0..0.3/s; visible-missed 0..4/s; competing 0..2/s; additional near-visible-missed 0..40/s). Legacy None rates retain their prior behavior; omitted field decay rate and detection distance retain their disabled legacy defaults, and an omitted good_localization retains true.",
         tuned_parameter_pointers: tuned_parameter_pointers(&baseline),
         penalty_metres: args.penalty_metres,
         namespace: &args.namespace,
@@ -485,6 +485,7 @@ mod tests {
         ))
         .unwrap();
         let mut old_best = baseline.clone();
+        old_best.good_localization = !baseline.good_localization;
         old_best.hypothesis_timeout = std::time::Duration::from_millis(2800);
         old_best.hidden_validity_exponential_decay_factor = 0.976;
         old_best.visible_validity_exponential_decay_factor = 0.8;
@@ -516,6 +517,31 @@ mod tests {
             }
             assert_eq!(actual, expected);
         }
+    }
+
+    #[test]
+    fn localization_gate_is_fixed_for_search_and_opposite_warm_starts() {
+        let mut baseline: BallFilterParameters = json5::from_str(include_str!(
+            "../../../etc/parameters/base/ball_filter.json5"
+        ))
+        .unwrap();
+        for enabled in [false, true] {
+            baseline.good_localization = enabled;
+            let mut initial = baseline.clone();
+            initial.good_localization = !enabled;
+            for candidate in [
+                warm_start(&baseline, &initial),
+                decode(&baseline, [0.0; 10]),
+                decode(&baseline, [1.0; 10]),
+            ] {
+                assert_eq!(candidate.good_localization, enabled);
+            }
+            assert!(!tuned_parameter_pointers(&baseline).contains(&"/good_localization"));
+        }
+        let mut legacy = serde_json::to_value(&baseline).unwrap();
+        legacy.as_object_mut().unwrap().remove("good_localization");
+        let legacy: BallFilterParameters = serde_json::from_value(legacy).unwrap();
+        assert!(legacy.good_localization);
     }
 
     #[test]

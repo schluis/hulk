@@ -809,3 +809,24 @@ Git workflow preference (2026-10-03)
   in codex/ball-filter-before-rebase-20261003.
 - Pregame PR2917 was already based directly on main, contains no merge commit,
   and all eight CI checks now pass. Its deployment commit remains d4ffb70d5.
+
+Continued search / localization trust (2026-10-03)
+- User requested continuing from the pregame values. Full branch base now matches
+  pregame hidden decay0.0; updated capture-inheritance regression. Existing19
+  remote workers remain healthy;32-worker paused handoff awaits fresh valid data.
+- First fresh capture used seed offset1791021089, walking2x, two opponents.
+  It failed at5.6s (fall), with zero walking-envelope errors; baseline matched.
+  Behavior requested Kick continuously4.760--5.600s, so an immediately cancelled
+  kick is not supported by the recording. IMU roll reached33deg, then pitch-44deg.
+  Full evidence: logs/ball-pregame-search-1791021089/fall-audit.json. Preservefailed
+  data; retry a lower walking speed but do not assume that proves the cause.
+- Follow-up outside filter scope: record motion/execution, inference status and
+  fall-detection status to diagnose actual kick phase/contact failures. Current
+  six-clip capture aborts falls rather than pretending they are valid tracking data.
+- User requested good_localization=true as explicit trust flag. Fieldpose topic
+  has no calibrated confidence value. Gate both field ranking and stored validity
+  decay; false must reset the integration clock. Camera/Ground tracking gates stay
+  active. Legacy serde and RustDefault use true. Add fixed-tuner/capture regressions.
+- PR2917 now also removes the dead fake_odometry crate/startup and Closes#2918
+  (production cbe52c308; full-branch equivalent b2e1006d7). No fake/delta consumers
+  remain. All history updates use rebase/cherry-pick, never merge commits.
