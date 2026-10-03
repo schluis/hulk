@@ -401,6 +401,7 @@ pub fn run(
                     validation: paths("validation", &validation_seeds),
                     parameters: baseline_path.clone(),
                     initial_parameters: initial_parameters.clone(),
+                    evaluation_parameters: None,
                     namespace: String::new(),
                     reference_topic: "simulation/ball_ground_truth_field".into(),
                     reference_frame: ball_filter_tuner::ReferenceFrame::Field,
