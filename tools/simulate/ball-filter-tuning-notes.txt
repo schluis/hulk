@@ -1142,3 +1142,29 @@ Scope correction and replacement robotics PR (2026-10-03)
 - Old supervisor568792 temporarily SIGSTOPped during fixes; remote search stays
   active. Resume via fresh same-session supervisor after rebuilding simulator,
   force new capture generation before optimizer replacement, retain all history.
+- Requested robotics test branch pushedb30ea678f; all GitHub CI green. PR2921
+  explicitly lists visual expiry/admission as unresolved. Old game branch intact.
+- Post-fix brief-gap harness logs/ball-approach-reviewed-filter-20261003/report.json:
+  all4 cases pass with zero close Kick->Stand. These are fixed-pose command checks,
+  not proof of successful physical kicks or absence of long-silence selector bug.
+- Same-session supervisor restarted PID620092; generation10 fresh capture active
+  with correctedfilter, FutureMap, current v4 winner baseline and seed1801021089.
+  Remote generation9 continues until new paused build/replay checks are ready.
+- CobaltCave owns separate minimal localization source-time PR, per his user's
+  instruction. Do not duplicate extraction or drop runtime fix from test branch.
+  Link dependency when supplied; rebase after merge to remove duplicated diff.
+- Next accuracy interpretation: distinguish visible close-range measurement error
+  from occluded close-range prediction error. Hidden opponent kicks are inherently
+  unobserved; diagnose which subset dominates RMSE before further algorithm changes.
+- Localization extraction is PR2924, commit93e404b0f (CobaltCave); PR2921 now links
+  that dependency. Test branch retains identical localization code until rebase.
+- Generation10 handoff completed: remote run20261003-160254-a99961ec,32workers;
+  all6 exact baseline replays succeeded (completed optimizer rounds), all6 capture
+  approach reports have zero close Kick->Stand. Supervisor620092 active with5min
+  refresh, bridge/preview healthy; oldgeneration9 stopped cooperatively.
+- Early new-data snapshot logs/reviewed-filter-first-results.json at32768 trials:
+  close RMSE training0.926758m, held-out
+  0.424578m. No near accuracy gain yet;
+  different recordings from generation8, so do not compare their raw errors as
+  algorithm improvement/regression. Search remains continuous; no new robot base
+  parameters promoted from these results. Low-close-error objective remains open.
