@@ -860,3 +860,44 @@ Validated replacement capture (2026-10-03)
 - Combined simulator/Twix and standalone simulator builds passed. Targeted tests:
   248 Rust tests and 71 Python tests passed; formatting passed. Game branch is
   frozen at 0cdd4ac5f with all eight CI checks passing.
+
+Development follow-up in progress (2026-10-03)
+- New 32-worker remote search is active from retry-01; old 19-worker generation
+  cooperatively finished its rounds and stopped. Remote preflight and exact replay
+  passed, and 32 exact worker processes were observed.
+- Owned local launcher PID332453 is temporarily SIGSTOPped to prevent automatic
+  capture while robotics files are being edited. Its bridge/preview children and
+  all remote workers CONTINUE. Resume or replace this supervisor after validation!
+  State file: logs/ball-pregame-search-current.json. Twix/viewer PIDs322581/322582.
+- User requested improved merging and a simpler delayed field-boundary penalty.
+  New field_boundary_margin=.5m begins beyond whole-ball clearance, retaining the
+  original exponential shape. Legacy omitted margin is0; old remote candidates
+  will still apply0 until a fresh generation/baseline is installed. Do not claim
+  the new buffer is active merely because development base parameters changed.
+- Live snapshot confirmed hidden decay0, field extra rate2/s, distance.3m, margin0.
+  This independently explains rapid loss of an occluded near-border hypothesis.
+- Merge implementation is addressing moving duplicates, correlated covariance,
+  recent kick history, and persistent protection of same-exposure distinct balls.
+- User forwarded OpenCode review of production head d4ffb70d5 (robotics only,
+  parameters excluded): obstacle pose timestamps, stalled-frame expiry, legacy
+  duplicate detector decay, and high-rate redundant obstacle merging. Evaluate
+  and fix confirmed issues on DEVELOPMENT ONLY. Game branch remains frozen.
+
+Follow-up implementation validated (2026-10-03)
+- Development checkpoints 75c5b159a (merge, detector deduplication, border margin)
+  and eeed078cf (obstacle review fixes). Game branch remains 0cdd4ac5f.
+- Ball/tuner/simulator/Twix tests: 263 passed, one pre-existing simulator test
+  ignored. Obstacle tests: 15 passed. Formatting passed. Two independent targeted
+  agent-review checks (semantic usefulness and runtime performance) are clear.
+- Ball merging now uses covariance intersection for compatible same-mode tracks;
+  moving tracks need confirmed support and compatible velocities. Stored merge
+  time intervals protect independent same-exposure tracks across later finishes.
+  Interleaved intervals deliberately defer merging until a genuinely new match.
+- All four forwarded robotics findings were confirmed and fixed in development:
+  source-time pose history; node-clock expiry with stale-frame clear output;
+  unconditional detector deduplication; measurement-triggered obstacle merging
+  and subscriber-gated diagnostic cloning. Expiry timer skips missed deadlines.
+- UI/runtime rebuild and fresh-generation migration remain in progress. Supervisor
+  PID332453 is still paused intentionally; remote32 and bridge/preview run. Resume
+  once binaries are ready, then verify fresh capture and active margin0.5 before
+  reporting the buffer live. New diagnostic schemas require matching Twix/viewer.
