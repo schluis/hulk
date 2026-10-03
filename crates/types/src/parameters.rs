@@ -278,6 +278,9 @@ pub struct BallFilterParameters {
     /// direction. Values <= 1 disable this optional ground-ball geometry gate.
     #[serde(default)]
     pub maximum_detection_radius_ratio: f32,
+    /// Apply size consistency only within this Ground distance; zero means everywhere.
+    #[serde(default)]
+    pub radius_consistency_maximum_distance: f32,
     /// Ranking penalty per square metre of position covariance trace. Does not
     /// change output eligibility, stored confidence, or hypothesis retention.
     #[serde(default)]
@@ -326,6 +329,7 @@ impl Default for BallFilterParameters {
             maximum_matching_cost: Default::default(),
             maximum_matching_distance: Default::default(),
             maximum_detection_radius_ratio: Default::default(),
+            radius_consistency_maximum_distance: Default::default(),
             hypothesis_uncertainty_weight: Default::default(),
             association_uncertainty_weight: Default::default(),
             visibility_uncertainty_scale: Default::default(),

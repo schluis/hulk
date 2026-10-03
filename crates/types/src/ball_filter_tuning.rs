@@ -46,6 +46,7 @@ pub const TUNED_PARAMETER_POINTERS: &[&str] = &[
     "/maximum_matching_cost",
     "/maximum_matching_distance",
     "/maximum_detection_radius_ratio",
+    "/radius_consistency_maximum_distance",
     "/hypothesis_uncertainty_weight",
     "/association_uncertainty_weight",
     "/visibility_uncertainty_scale",

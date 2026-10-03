@@ -731,7 +731,11 @@ fn project_detected_balls(
                     return None;
                 }
                 let maximum_ratio = parameters.maximum_detection_radius_ratio;
-                if maximum_ratio.is_finite() && maximum_ratio > 1.0 {
+                let radius_distance = parameters.radius_consistency_maximum_distance;
+                let check_size = !radius_distance.is_finite()
+                    || radius_distance <= 0.0
+                    || position.coords().norm() <= radius_distance;
+                if maximum_ratio.is_finite() && maximum_ratio > 1.0 && check_size {
                     let expected = camera_matrix
                         .get_pixel_radius(ball_radius, area.center())
                         .ok()?;
@@ -1047,6 +1051,32 @@ mod tests {
                         .unwrap();
                 assert_eq!(output.len(), usize::from((0.5..=2.0).contains(&scale)));
             }
+        }
+    }
+
+    #[test]
+    fn radius_consistency_can_be_limited_to_near_geometry() {
+        let camera = horizontal_test_camera();
+        let radius = FieldDimensions::SPL_2025.ball_radius;
+        let mut parameters = BallFilterParameters {
+            maximum_detection_radius_ratio: 2.0,
+            radius_consistency_maximum_distance: 1.5,
+            ..Default::default()
+        };
+        parameters.noise.detection_noise.inner.fill(0.05);
+        for distance in [0.8, 2.0, 6.0] {
+            let center = camera
+                .ground_with_z_to_pixel(point![distance, 0.0], radius)
+                .unwrap();
+            let expected = camera.get_pixel_radius(radius, center).unwrap();
+            let mut detection = test_ball_detection(center);
+            let offset = linear_algebra::vector![expected * 0.2, expected * 0.2];
+            detection.bounding_box.area.min = center - offset;
+            detection.bounding_box.area.max = center + offset;
+            let output =
+                project_detected_balls(Some(&[detection]), Some(&camera), &parameters, radius)
+                    .unwrap();
+            assert_eq!(output.len(), usize::from(distance > 1.5));
         }
     }
 
