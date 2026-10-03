@@ -1,3 +1,4 @@
+mod probabilistic_association;
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use color_eyre::{Result, eyre::WrapErr};
@@ -472,10 +473,50 @@ fn advance_all_hypotheses(
             let score = match_matrix[(hypothesis_index, percept_index)];
             used_percepts.push(percept_index);
             matched[hypothesis_index] = true;
-            hypothesis.update(
+            let temperature = filter_parameters.association_temperature;
+            let mut alternatives = Vec::new();
+            if temperature.is_finite() && temperature > 0.0 {
+                for (index, percept) in ball_percepts.iter().enumerate() {
+                    // Do not reuse a detection assigned to another existing track.
+                    let claimed_elsewhere = assignment.as_ref().is_some_and(|a| {
+                        a.iter()
+                            .enumerate()
+                            .any(|(row, column)| row != hypothesis_index && *column == Some(index))
+                    });
+                    let alternative_score = match_matrix[(hypothesis_index, index)];
+                    if !claimed_elsewhere
+                        && alternative_score.is_finite()
+                        && -alternative_score <= filter_parameters.maximum_matching_cost
+                    {
+                        let residual = percept.percept_in_ground.mean
+                            - hypothesis.position().position.inner.coords;
+                        let covariance =
+                            hypothesis.position_covariance() + percept.percept_in_ground.covariance;
+                        if let Some(factor) = covariance.cholesky() {
+                            let log_likelihood = (-0.5 * residual.dot(&factor.solve(&residual))
+                                - factor.l().diagonal().map(|x| x.ln()).sum())
+                                / temperature;
+                            if log_likelihood.is_finite() {
+                                alternatives.push((percept.percept_in_ground, log_likelihood));
+                            }
+                        }
+                    }
+                }
+            }
+            let maximum = alternatives
+                .iter()
+                .map(|(_, weight)| *weight)
+                .fold(f32::NEG_INFINITY, f32::max);
+            for (_, weight) in &mut alternatives {
+                *weight = (*weight - maximum).exp();
+            }
+            alternatives.retain(|(_, weight)| *weight >= 0.1);
+            probabilistic_association::update(
+                hypothesis,
                 time,
                 ball_percepts[percept_index].percept_in_ground,
                 score.exp(),
+                &alternatives,
             );
         }
     }
