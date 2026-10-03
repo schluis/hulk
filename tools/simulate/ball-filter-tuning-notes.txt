@@ -966,3 +966,36 @@ Fresh generation active and game evidence downloaded (2026-10-03, 11:44UTC)
   cancels SDK visual kick and needs>250ms to restart. Second permits model fallback.
   Check real blackboard/trace/command/SDK timestamps before assigning causality;
   raw vision delay may also cross100ms. Full predicates in game43 behavior-gates.txt.
+
+Robot43 game comparison completed (2026-10-03)
+- Recovered both original MCAPs into separate indexed copies; complete payloads,
+  schemas and source/delivery timestamps preserved, CRCs checked. First5,187,320
+  messages; second4,516,482. Incomplete tails23,028/165,635bytes; lost-message
+  counts unknown. Originals and transfer SHA receipts retained under game43 logs.
+- Native-schema decode:69,169/48,743 behavior ticks, zero errors. Same strict
+  close<=1m/Playing/upright/striker/nooverride metric: first Stand42.914/125.542s
+  (34.18%), second0/75.847s. These are command times using model distance, not
+  physical immobility or metric ground truth; deployments/game situations differ.
+- First62 Playing kick-Failure -> stand-Success transitions:32 visual age>100ms,
+  30 missing visual after a recent raw frame without confident ball.49 close<=1m.
+  Second0 equivalent failures; its source permits model fallback. Source absence
+  can legitimately prohibit a kick; don't classify all62 cancellations as mistakes.
+- Independently validated exact11:06:02.694157505UTC event/sequence35117: own
+  model0.655m, visual101.032ms old, trace explicitly fails kick then succeeds Stand.
+  Next20ms tick visual is fresh but250ms motion-switch lockout blocks restart;
+  first allowed restart260.238ms later. Nine fresh ticks blocked, three intervening
+  None ticks. Finite pose/point, upright/closest/Playing/nooverride exclude other
+  kick gates for this event. Recorder arrival is not subscriber-processing proof.
+- Raw detector latency median51.89ms first/51.00ms second; not general slowdown.
+  Actual camera frames show real ball in contest and beside line near episodes;
+ 2Hz images cannot establish visibility at exact transition or calibrated distance.
+- Behavior/selector follow-up (NOT implemented; preserve filter focus/game freeze):
+  keep visual authorization, distinguish latency/brief occlusion from sustained
+  negative evidence, avoid unconditional Stand plus restart penalty for safe
+  approach. Regression cases:101ms threshold crossing, opponent occlusion, fresh
+  return during lockout, truly absent close ball. Raising timeout alone incomplete.
+- Full report logs/game43-replay-20261003/comparison.txt and .json; exact timeline
+  chart first-half/hesitation-timeline.{png,svg}. Ole replay/Twix successfully built
+  isolated and opened actual first-half panels paused11:06:00UTC. Timeline Space
+  plays; arrows step100ms. Image panel expects RosImage but archive StereoImagePair;
+  use extracted native camera PNGs for now, note adapter outside filter scope.
