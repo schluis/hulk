@@ -126,21 +126,16 @@ impl BallFilter {
     ) -> Vec<BallHypothesis> {
         let (valid, removed): (Vec<_>, Vec<_>) = self.hypotheses.drain(..).partition(is_valid);
 
-        self.hypotheses = valid
-            .into_iter()
-            .fold(vec![], |mut deduplicated, hypothesis| {
-                let mergeable_hypothesis = deduplicated
-                    .iter_mut()
-                    .find(|existing_hypothesis| merge_criterion(existing_hypothesis, &hypothesis));
-
-                if let Some(mergeable_hypothesis) = mergeable_hypothesis {
-                    mergeable_hypothesis.merge(hypothesis)
-                } else {
-                    deduplicated.push(hypothesis);
-                }
-
-                deduplicated
+        let mut deduplicated: Vec<BallHypothesis> = Vec::new();
+        for hypothesis in valid {
+            let merged = deduplicated.iter_mut().any(|existing| {
+                merge_criterion(existing, &hypothesis) && existing.merge(&hypothesis)
             });
+            if !merged {
+                deduplicated.push(hypothesis);
+            }
+        }
+        self.hypotheses = deduplicated;
 
         removed
     }
@@ -167,6 +162,7 @@ impl BallFilter {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            merge_observation_start: None,
         };
 
         self.hypotheses.push(new_hypothesis)

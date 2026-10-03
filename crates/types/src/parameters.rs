@@ -215,7 +215,12 @@ pub struct BallFilterParameters {
     /// Maximum absolute offset between image exposure and camera geometry.
     #[serde(default = "default_ball_camera_tolerance")]
     pub maximum_camera_matrix_time_difference: Duration,
-    /// Distance outside the field for an e-fold confidence reduction; <= 0 disables.
+    /// Additional clearance in metres after the whole ball crosses the playing
+    /// field boundary, before either confidence weighting or stored decay starts.
+    /// Omitted legacy values default to zero; invalid/negative values act as zero.
+    #[serde(default)]
+    pub field_boundary_margin: f32,
+    /// Distance beyond the boundary margin for an e-fold reduction; <= 0 disables.
     #[serde(default = "default_ball_field_confidence_decay_distance")]
     pub field_boundary_confidence_decay_distance: f32,
     /// Maximum additional confidence decay per second outside the field.
@@ -273,6 +278,7 @@ impl Default for BallFilterParameters {
         Self {
             good_localization: true,
             maximum_camera_matrix_time_difference: Default::default(),
+            field_boundary_margin: Default::default(),
             field_boundary_confidence_decay_distance: Default::default(),
             field_boundary_validity_decay_rate: Default::default(),
             maximum_detection_distance: Default::default(),

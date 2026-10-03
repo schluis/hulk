@@ -76,22 +76,19 @@ impl Tracker {
                 parameters,
             );
         }
-        if negative_evidence::enabled(parameters)
-            || validity_decay::enabled(parameters)
-            || competition::enabled(parameters)
-        {
-            // Odometry-only updates cannot provide negative perception evidence.
-            if detections.is_none() {
-                return Ok(Vec::new());
-            }
-            if self
-                .last_detection_time
-                .is_some_and(|previous| time <= previous)
-            {
-                return Ok(Vec::new());
-            }
-            self.last_detection_time = Some(time);
+        // Admission is independent of retention policy. Repeated exposures must
+        // never run association, confidence updates, decay, or spawning twice.
+        // Odometry above still advances independently of detector availability.
+        if detections.is_none() {
+            return Ok(Vec::new());
         }
+        if self
+            .last_detection_time
+            .is_some_and(|previous| time <= previous)
+        {
+            return Ok(Vec::new());
+        }
+        self.last_detection_time = Some(time);
         let camera = camera
             .filter(|c| {
                 camera_is_recent(
@@ -243,6 +240,158 @@ mod tests {
                 confidence,
             },
         }
+    }
+
+    fn merge_track(x: f32, velocity: f32, validity: f32, milliseconds: i64) -> BallHypothesis {
+        let mut track = BallHypothesis::new(
+            MultivariateNormalDistribution {
+                mean: nalgebra::vector![x, 0.0, velocity, 0.0],
+                covariance: Matrix4::identity() * 0.1,
+            },
+            Time::from_nanos(milliseconds * 1_000_000),
+        );
+        track.validity = validity;
+        track
+    }
+
+    #[test]
+    fn moving_duplicates_merge_without_losing_velocity_or_counting_confidence_twice() {
+        for reverse in [false, true] {
+            let (mut tracker, _, mut parameters, dimensions) = negative_evidence_fixture();
+            parameters.hypothesis_merge_distance = 0.1;
+            let tracks = [
+                merge_track(1.0, 3.0, 10.0, 40),
+                merge_track(1.06, 3.1, 4.0, 80),
+            ];
+            tracker.filter.hypotheses = if reverse {
+                tracks.into_iter().rev().collect()
+            } else {
+                tracks.into()
+            };
+            let selected = tracker
+                .finish(Time::from_nanos(120_000_000), &parameters, &dimensions)
+                .unwrap();
+            assert_eq!(tracker.filter.hypotheses.len(), 1);
+            let merged = &tracker.filter.hypotheses[0];
+            assert!(matches!(merged.mode, BallMode::Moving(_)));
+            assert_eq!(merged.validity, 10.0);
+            assert_eq!(selected.last_seen, Time::from_nanos(80_000_000));
+            assert!((selected.position.x() - 1.03).abs() < 1e-5);
+            assert!((selected.velocity.x() - 3.05).abs() < 1e-5);
+            assert!(
+                (merged.position_covariance() - Matrix2::identity() * 0.1).norm() < 1e-5,
+                "duplicate tracks must not halve their shared uncertainty"
+            );
+        }
+    }
+
+    #[test]
+    fn distinct_moving_balls_and_unconfirmed_kick_hypotheses_are_not_merged() {
+        let mut cases = vec![
+            // Crossing balls, despite matching positions and broad uncertainty.
+            vec![
+                merge_track(1.0, 3.0, 10.0, 40),
+                merge_track(1.02, -3.0, 5.0, 80),
+            ],
+            // Two detections in one actual image retain independent support.
+            vec![
+                merge_track(1.0, 3.0, 10.0, 80),
+                merge_track(1.02, 3.0, 5.0, 80),
+            ],
+            // A new, uncertain hypothesis must establish its own motion first.
+            vec![
+                merge_track(1.0, 0.2, 10.0, 40),
+                merge_track(1.02, 0.0, 1.0, 80),
+            ],
+            // Position separation still has a hard configured limit.
+            vec![
+                merge_track(1.0, 3.0, 10.0, 40),
+                merge_track(1.6, 3.0, 5.0, 80),
+            ],
+        ];
+        let mut precise = vec![
+            merge_track(1.0, 3.0, 10.0, 40),
+            merge_track(1.08, 3.0, 5.0, 80),
+        ];
+        for track in &mut precise {
+            let BallMode::Moving(state) = &mut track.mode else {
+                unreachable!()
+            };
+            state.covariance = Matrix4::identity() * 0.00001;
+        }
+        cases.push(precise);
+        for tracks in cases {
+            let (mut tracker, _, mut parameters, dimensions) = negative_evidence_fixture();
+            parameters.hypothesis_merge_distance = 0.5;
+            tracker.filter.hypotheses = tracks;
+            tracker.finish(Time::from_nanos(120_000_000), &parameters, &dimensions);
+            assert_eq!(tracker.filter.hypotheses.len(), 2);
+        }
+    }
+
+    #[test]
+    fn resting_duplicates_still_merge_but_mixed_motion_modes_remain_separate() {
+        for mixed in [false, true] {
+            let (mut tracker, _, mut parameters, dimensions) = negative_evidence_fixture();
+            parameters.hypothesis_merge_distance = 0.1;
+            let mut old = merge_track(1.0, 0.0, 10.0, 40);
+            old.mode = BallMode::Resting(MultivariateNormalDistribution {
+                mean: nalgebra::vector![1.0, 0.0],
+                covariance: Matrix2::identity() * 0.1,
+            });
+            let mut recent = merge_track(1.04, 2.0, 4.0, 80);
+            if !mixed {
+                recent.mode = BallMode::Resting(MultivariateNormalDistribution {
+                    mean: nalgebra::vector![1.04, 0.0],
+                    covariance: Matrix2::identity() * 0.1,
+                });
+            }
+            tracker.filter.hypotheses = vec![old, recent];
+            tracker.finish(Time::from_nanos(120_000_000), &parameters, &dimensions);
+            assert_eq!(tracker.filter.hypotheses.len(), if mixed { 2 } else { 1 });
+            if !mixed {
+                let merged = &tracker.filter.hypotheses[0];
+                assert!((merged.position().position.x() - 1.02).abs() < 1e-5);
+                assert_eq!(merged.validity, 10.0);
+                assert_eq!(merged.last_seen, Time::from_nanos(80_000_000));
+            }
+        }
+    }
+
+    #[test]
+    fn merging_an_intermediate_track_cannot_erase_same_exposure_two_ball_support() {
+        let (mut tracker, _, mut parameters, dimensions) = negative_evidence_fixture();
+        parameters.hypothesis_merge_distance = 0.1;
+        tracker.filter.hypotheses = vec![
+            merge_track(1.0, 1.0, 10.0, 40),
+            merge_track(1.01, 1.0, 4.0, 80),
+            merge_track(1.02, 1.0, 4.0, 40),
+        ];
+        for milliseconds in [120, 122, 124, 160] {
+            tracker.finish(
+                Time::from_nanos(milliseconds * 1_000_000),
+                &parameters,
+                &dimensions,
+            );
+            assert_eq!(tracker.filter.hypotheses.len(), 2);
+        }
+    }
+
+    #[test]
+    fn a_failed_covariance_merge_keeps_both_hypotheses_and_does_not_panic() {
+        let old = merge_track(1.0, 1.0, 10.0, 40);
+        let mut singular = merge_track(1.01, 1.0, 4.0, 80);
+        let BallMode::Moving(state) = &mut singular.mode else {
+            unreachable!()
+        };
+        state.covariance = Matrix4::zeros();
+        let mut filter = BallFilter {
+            hypotheses: vec![old, singular],
+        };
+        filter.remove_hypotheses(|_| true, |_, _| true);
+        assert_eq!(filter.hypotheses.len(), 2);
+        assert_eq!(filter.hypotheses[0].position().position.x(), 1.0);
+        assert_eq!(filter.hypotheses[0].validity, 10.0);
     }
 
     fn detector_frame(
@@ -435,6 +584,60 @@ mod tests {
             tracker.filter.hypotheses[0]
                 .validity_decay_evidence
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn legacy_retention_rejects_duplicate_and_backdated_exposures_before_any_mutation() {
+        let (mut tracker, camera, mut parameters, dimensions) = learned_decay_parameters();
+        parameters.hidden_validity_decay_rate = None;
+        parameters.visible_missed_validity_decay_rate = None;
+        parameters.competing_hypothesis_validity_decay_rate = None;
+        parameters.near_visible_missed_validity_decay_rate = None;
+        parameters.visible_missed_detection_timeout = Duration::ZERO;
+        parameters.near_visible_missed_detection_timeout = Duration::ZERO;
+        let ball = image_object(RobocupObjectLabel::Ball, 1.0);
+        detector_frame(&mut tracker, &camera, 40, &[ball], &parameters, &dimensions);
+        let before = tracker.filter.hypotheses[0].clone();
+        let mut unmatched = ball;
+        unmatched.bounding_box.area.min = linear_algebra::point![450.0, 240.0];
+        unmatched.bounding_box.area.max = linear_algebra::point![490.0, 304.0];
+        for milliseconds in [40, 20] {
+            for detections in [vec![], vec![ball], vec![unmatched]] {
+                detector_frame(
+                    &mut tracker,
+                    &camera,
+                    milliseconds,
+                    &detections,
+                    &parameters,
+                    &dimensions,
+                );
+                assert_eq!(tracker.filter.hypotheses.len(), 1);
+                let after = &tracker.filter.hypotheses[0];
+                assert_eq!(after.validity, before.validity);
+                assert_eq!(after.last_seen, before.last_seen);
+                assert_eq!(after.position().position, before.position().position);
+                assert_eq!(after.position().velocity, before.position().velocity);
+                assert_eq!(after.position_covariance(), before.position_covariance());
+            }
+        }
+        // Admission does not prevent odometry-only motion compensation.
+        for (milliseconds, x) in [(42, 0.0), (44, 0.1)] {
+            tracker
+                .advance(
+                    Time::from_nanos(milliseconds * 1_000_000),
+                    Some(Pose2::new(linear_algebra::point![x, 0.0], 0.0)),
+                    None,
+                    None,
+                    &parameters,
+                    &dimensions,
+                )
+                .unwrap();
+        }
+        let after = &tracker.filter.hypotheses[0];
+        assert_eq!(after.validity, before.validity);
+        assert!(
+            (after.position().position.x() - before.position().position.x() + 0.1).abs() < 1e-5
         );
     }
 

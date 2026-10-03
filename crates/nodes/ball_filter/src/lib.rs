@@ -529,16 +529,13 @@ fn remove_invalid_and_merge_hypotheses(
             && duration_since_last_observation < filter_parameters.hypothesis_timeout
     };
 
-    let should_merge_hypotheses =
-        |hypothesis1: &BallHypothesis, hypothesis2: &BallHypothesis| match (
-            &hypothesis1.mode,
-            &hypothesis2.mode,
-        ) {
-            (BallMode::Resting(ball1), BallMode::Resting(ball2)) => {
-                (ball1.mean - ball2.mean).norm() < filter_parameters.hypothesis_merge_distance
-            }
-            _ => false,
-        };
+    let should_merge_hypotheses = |left: &BallHypothesis, right: &BallHypothesis| {
+        left.can_merge(
+            right,
+            filter_parameters.hypothesis_merge_distance,
+            filter_parameters.validity_output_threshold,
+        )
+    };
 
     ball_filter.remove_hypotheses(is_hypothesis_valid, should_merge_hypotheses);
     ball_filter
@@ -1028,6 +1025,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            merge_observation_start: None,
         };
         let mut filter = BallFilter {
             hypotheses: vec![old_track],
@@ -1112,6 +1110,7 @@ mod tests {
                 negative_evidence: None,
                 validity_decay_evidence: None,
                 leadership_evidence: None,
+                merge_observation_start: None,
             }],
         };
         let mut solver = AssignmentSolver::default();
@@ -1214,6 +1213,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            merge_observation_start: None,
         };
         let hypothesis2 = BallHypothesis {
             mode: BallMode::Moving(MultivariateNormalDistribution {
@@ -1226,6 +1226,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            merge_observation_start: None,
         };
 
         let percept1 = BallPercept {

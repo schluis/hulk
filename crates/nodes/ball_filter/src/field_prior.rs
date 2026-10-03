@@ -127,7 +127,17 @@ pub(crate) fn confidence_weight(
     let dx = (position.x().abs() - dimensions.length / 2.0).max(0.0);
     let dy = (position.y().abs() - dimensions.width / 2.0).max(0.0);
     let whole_ball_distance = (dx.hypot(dy) - dimensions.ball_radius).max(0.0);
-    (-whole_ball_distance / decay_distance).exp()
+    // Allow localization/radius uncertainty beyond the existing whole-ball
+    // clearance. The margin delays both ranking and stored-validity penalties;
+    // their exponential shape remains unchanged outside that buffer.
+    let margin = parameters.field_boundary_margin;
+    let margin = if margin.is_finite() && margin > 0.0 {
+        margin
+    } else {
+        0.0
+    };
+    let penalized_distance = (whole_ball_distance - margin).max(0.0);
+    (-penalized_distance / decay_distance).exp()
 }
 
 #[cfg(test)]
@@ -161,6 +171,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            merge_observation_start: None,
         }
     }
 
@@ -299,6 +310,7 @@ mod tests {
         let dimensions = FieldDimensions::SPL_2025;
         let mut parameters = parameters();
         parameters.good_localization = false;
+        parameters.field_boundary_margin = 0.5;
         parameters.field_boundary_validity_decay_rate = 2.0;
         let mut balls = vec![hypothesis(1.0, 0.0, 2.0)];
         let pose = Some(Isometry2::from_parts(vector![100.0, 0.0], 0.0));
@@ -319,7 +331,9 @@ mod tests {
     #[test]
     fn stored_field_decay_integrates_seconds_independently_of_finish_frequency() {
         let dimensions = FieldDimensions::SPL_2025;
-        let x = dimensions.length / 2.0 + dimensions.ball_radius + 0.3;
+        let x = dimensions.length / 2.0
+            + dimensions.ball_radius
+            + parameters().field_boundary_confidence_decay_distance;
         let expected = 25.0 * (-2.0_f32 * (1.0 - (-1.0_f32).exp())).exp();
         for step in [2, 20, 40, 100] {
             let validity = run_stored_decay(x, step);
@@ -343,6 +357,161 @@ mod tests {
             farther >= 25.0 * (-2.0_f32).exp(),
             "maximum rate is two per second"
         );
+    }
+
+    #[test]
+    fn boundary_margin_protects_nearby_balls_and_preserves_decay_beyond_it() {
+        let dimensions = FieldDimensions::SPL_2025;
+        let mut parameters = parameters();
+        parameters.field_boundary_margin = 0.5;
+        parameters.field_boundary_validity_decay_rate = 2.0;
+        let edge = dimensions.length / 2.0 + dimensions.ball_radius;
+        let pose = Some(Isometry2::identity());
+        for distance in [0.0, 0.1, 0.3, 0.49] {
+            let mut balls = [hypothesis(edge + distance, 0.0, 25.0)];
+            assert_eq!(
+                confidence_weight(&balls[0], pose, &dimensions, &parameters),
+                1.0
+            );
+            decay_stored_validity(
+                &mut balls,
+                Duration::from_secs(1),
+                pose,
+                &dimensions,
+                &parameters,
+            );
+            assert_eq!(balls[0].validity, 25.0);
+        }
+        let buffered_edge = hypothesis(edge + 0.5, 0.0, 25.0);
+        assert!(
+            (confidence_weight(&buffered_edge, pose, &dimensions, &parameters) - 1.0).abs() < 1e-5
+        );
+        for distance in [0.1_f32, 0.3, 1.0] {
+            let mut balls = [hypothesis(edge + 0.5 + distance, 0.0, 25.0)];
+            let expected_weight = (-distance / 0.3).exp();
+            assert!(
+                (confidence_weight(&balls[0], pose, &dimensions, &parameters) - expected_weight)
+                    .abs()
+                    < 1e-5
+            );
+            decay_stored_validity(
+                &mut balls,
+                Duration::from_secs(1),
+                pose,
+                &dimensions,
+                &parameters,
+            );
+            let expected_validity = 25.0 * (-2.0 * (1.0 - expected_weight)).exp();
+            assert!((balls[0].validity - expected_validity).abs() < 1e-4);
+        }
+    }
+
+    #[test]
+    fn boundary_margin_handles_corner_distance_and_transformed_ground_positions() {
+        let dimensions = FieldDimensions::SPL_2025;
+        let mut parameters = parameters();
+        parameters.field_boundary_margin = 0.5;
+        let pose = Isometry2::from_parts(vector![2.0, -1.0], 1.4);
+        let corner = point![dimensions.length / 2.0, dimensions.width / 2.0];
+        for clearance in [0.4_f32, 0.8] {
+            let offset = (dimensions.ball_radius + clearance) / 2.0_f32.sqrt();
+            let ground_position = pose.inverse() * (corner + vector![offset, offset]);
+            let ball = hypothesis(ground_position.x(), ground_position.y(), 25.0);
+            let expected = (-(clearance - 0.5).max(0.0) / 0.3).exp();
+            assert!(
+                (confidence_weight(&ball, Some(pose), &dimensions, &parameters) - expected).abs()
+                    < 1e-5
+            );
+        }
+    }
+
+    #[test]
+    fn localization_wobble_near_the_sideline_does_not_decay_a_track() {
+        let dimensions = FieldDimensions::SPL_2025;
+        let mut parameters = parameters();
+        parameters.field_boundary_margin = 0.5;
+        parameters.field_boundary_validity_decay_rate = 2.0;
+        let mut tracker = Tracker::default();
+        tracker.filter.hypotheses.push(hypothesis(
+            dimensions.length / 2.0 + dimensions.ball_radius,
+            0.0,
+            25.0,
+        ));
+        for tick in 0..=50 {
+            let offset = if tick % 2 == 0 { -0.1 } else { 0.1 };
+            assert!(
+                tracker
+                    .finish_with_field_pose(
+                        Time::from_nanos(tick * 20_000_000),
+                        &parameters,
+                        &dimensions,
+                        Some(Isometry2::from_parts(vector![offset, 0.0], 0.0)),
+                    )
+                    .is_some()
+            );
+        }
+        assert_eq!(tracker.filter.hypotheses[0].validity, 25.0);
+    }
+
+    #[test]
+    fn boundary_buffer_adds_no_decay_for_hidden_or_visible_hypotheses() {
+        use crate::{negative_evidence::Visibility, validity_decay::Evidence};
+
+        let dimensions = FieldDimensions::SPL_2025;
+        let mut parameters = parameters();
+        parameters.field_boundary_margin = 0.5;
+        parameters.field_boundary_validity_decay_rate = 2.0;
+        parameters.hidden_validity_decay_rate = Some(0.0);
+        parameters.visible_missed_validity_decay_rate = Some(1.0);
+        for visibility in [Visibility::Hidden, Visibility::Visible] {
+            let mut tracker = Tracker::default();
+            let mut ball = hypothesis(
+                dimensions.length / 2.0 + dimensions.ball_radius + 0.3,
+                0.0,
+                25.0,
+            );
+            ball.validity_decay_evidence = Some(Evidence {
+                time: Time::zero(),
+                visibility,
+            });
+            tracker.filter.hypotheses.push(ball);
+            // Finishes between detector exposures may apply field decay, but
+            // cannot treat visibility or an occluded opponent as a new miss.
+            for tick in 0..=50 {
+                assert!(
+                    tracker
+                        .finish_with_field_pose(
+                            Time::from_nanos(tick * 20_000_000),
+                            &parameters,
+                            &dimensions,
+                            Some(Isometry2::identity()),
+                        )
+                        .is_some()
+                );
+            }
+            assert_eq!(tracker.filter.hypotheses[0].validity, 25.0);
+        }
+    }
+
+    #[test]
+    fn default_or_invalid_boundary_margin_preserves_legacy_geometry() {
+        let mut parameters = parameters();
+        assert_eq!(parameters.field_boundary_margin, 0.0);
+        let dimensions = FieldDimensions::SPL_2025;
+        let ball = hypothesis(
+            dimensions.length / 2.0 + dimensions.ball_radius + 0.3,
+            0.0,
+            25.0,
+        );
+        for margin in [0.0, -0.5, f32::NAN, f32::INFINITY] {
+            parameters.field_boundary_margin = margin;
+            assert!(
+                (confidence_weight(&ball, Some(Isometry2::identity()), &dimensions, &parameters)
+                    - (-1.0_f32).exp())
+                .abs()
+                    < 1e-5
+            );
+        }
     }
 
     #[test]
@@ -404,7 +573,10 @@ mod tests {
         assert_eq!(confidence(0.0, 0.0), 2.0);
         assert_eq!(confidence(edge, 0.0), 2.0);
         assert!((confidence(edge + dimensions.ball_radius, 0.0) - 2.0).abs() < 1e-5);
-        let near = confidence(edge + dimensions.ball_radius + 0.3, 0.0);
+        let near = confidence(
+            edge + dimensions.ball_radius + parameters.field_boundary_confidence_decay_distance,
+            0.0,
+        );
         let far = confidence(edge + dimensions.ball_radius + 0.6, 0.0);
         assert!((near - 2.0 / std::f32::consts::E).abs() < 1e-5);
         assert!(0.0 < far && far < near && near < 2.0);
@@ -417,7 +589,12 @@ mod tests {
     fn field_prior_accounts_for_robot_translation_and_rotation() {
         let dimensions = FieldDimensions::SPL_2025;
         let parameters = parameters();
-        let field_position = point![dimensions.length / 2.0 + dimensions.ball_radius + 0.3, 0.4];
+        let field_position = point![
+            dimensions.length / 2.0
+                + dimensions.ball_radius
+                + parameters.field_boundary_confidence_decay_distance,
+            0.4
+        ];
         for pose in [
             Isometry2::<Ground, Field>::identity(),
             Isometry2::from_parts(vector![2.0, -1.0], 1.4),

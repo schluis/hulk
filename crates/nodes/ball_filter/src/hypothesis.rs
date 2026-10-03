@@ -1,8 +1,7 @@
 use std::{f32::consts::PI, time::Duration};
 
-use filtering::kalman_filter::KalmanFilter;
 use moving::{MovingPredict, MovingUpdate};
-use nalgebra::{Matrix2, Matrix4};
+use nalgebra::{Matrix2, Matrix4, SMatrix};
 use resting::{RestingPredict, RestingUpdate};
 use ros_z::{Message, time::Time};
 use serde::{Deserialize, Serialize};
@@ -30,6 +29,10 @@ pub enum BallMode {
 pub struct BallHypothesis {
     pub mode: BallMode,
     pub last_seen: Time,
+    /// Conservative interval of merged observation support through last_seen.
+    /// Retained across predictions; a genuinely new matched observation resets it.
+    #[serde(default)]
+    pub merge_observation_start: Option<Time>,
     pub validity: f32,
     /// Explicit diagnostic state, shared by live filtering and input replay.
     #[serde(default)]
@@ -55,6 +58,7 @@ impl BallHypothesis {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            merge_observation_start: None,
         }
     }
 
@@ -153,6 +157,7 @@ impl BallHypothesis {
             return;
         }
         self.last_seen = detection_time;
+        self.merge_observation_start = None;
         self.negative_evidence = None;
         self.validity_decay_evidence = None;
         self.validity += validity_bonus;
@@ -177,41 +182,140 @@ impl BallHypothesis {
         }
     }
 
-    pub fn merge(&mut self, other: BallHypothesis) {
-        match (&mut self.mode, other.mode) {
-            (BallMode::Resting(resting), BallMode::Resting(distribution)) => {
-                KalmanFilter::update(
-                    resting,
-                    Matrix2::identity(),
-                    distribution.mean,
-                    distribution.covariance,
-                );
-                self.validity = self.validity.max(other.validity);
-                self.last_seen = self.last_seen.max(other.last_seen);
-                self.negative_evidence = None;
-                self.validity_decay_evidence = None;
-                self.leadership_evidence = None;
-                // Evidence from distinct tracks must not be concatenated.
-                self.motion_evidence = None;
+    pub fn can_merge(
+        &self,
+        other: &Self,
+        configured_distance: f32,
+        confirmation_validity: f32,
+    ) -> bool {
+        // Distinct assignments from one image are independent support for two
+        // balls, even if their uncertain projected positions almost coincide.
+        // A merged interval persists across prediction-only cycles. Overlapping
+        // histories deliberately defer merging until a fresh matched exposure.
+        let self_start = self.merge_observation_start.unwrap_or(self.last_seen);
+        let other_start = other.merge_observation_start.unwrap_or(other.last_seen);
+        if (self_start <= other.last_seen && other_start <= self.last_seen)
+            || !configured_distance.is_finite()
+            || configured_distance <= 0.0
+        {
+            return false;
+        }
+        let left = self.position();
+        let right = other.position();
+        if (left.position - right.position).norm() >= configured_distance {
+            return false;
+        }
+        match (&self.mode, &other.mode) {
+            (BallMode::Resting(left), BallMode::Resting(right)) => distributions_agree(left, right),
+            (BallMode::Moving(left_state), BallMode::Moving(right_state)) => {
+                // Newly spawned tracks have zero mean velocity and broad velocity
+                // uncertainty. Wait for repeated support before interpreting that
+                // uncertainty as permission to combine them with a moving ball.
+                const MAXIMUM_VELOCITY_DIFFERENCE: f32 = 0.5;
+                self.validity >= confirmation_validity.max(3.0)
+                    && other.validity >= confirmation_validity.max(3.0)
+                    && (left.velocity - right.velocity).norm() <= MAXIMUM_VELOCITY_DIFFERENCE
+                    && distributions_agree(left_state, right_state)
             }
-            (BallMode::Moving(moving), BallMode::Moving(distribution)) => {
-                KalmanFilter::update(
-                    moving,
-                    Matrix4::identity(),
-                    distribution.mean,
-                    distribution.covariance,
-                );
-                self.validity = self.validity.max(other.validity);
-                self.last_seen = self.last_seen.max(other.last_seen);
-                self.negative_evidence = None;
-                self.validity_decay_evidence = None;
-                self.leadership_evidence = None;
-                // Evidence from distinct tracks must not be concatenated.
-                self.motion_evidence = None;
-            }
-            _ => (), // deny merge
-        };
+            _ => false,
+        }
     }
+
+    /// Tracks share process noise and may share earlier measurements. Equal-weight
+    /// covariance intersection avoids treating their estimates as independent data.
+    /// Failure leaves both inputs unchanged, so the caller can retain the other track.
+    pub fn merge(&mut self, other: &Self) -> bool {
+        let merged = match (&self.mode, &other.mode) {
+            (BallMode::Resting(left), BallMode::Resting(right)) => {
+                covariance_intersection(left, right).map(BallMode::Resting)
+            }
+            (BallMode::Moving(left), BallMode::Moving(right)) => {
+                covariance_intersection(left, right).map(BallMode::Moving)
+            }
+            _ => None,
+        };
+        let Some(mode) = merged else {
+            return false;
+        };
+        // Keep one coherent observation history; never fabricate a velocity by
+        // concatenating measurements belonging to two formerly separate tracks.
+        // Prefer the freshest supported history instead of discarding an emerging kick.
+        let motion_evidence = if matches!(mode, BallMode::Resting(_)) {
+            if other.motion_evidence.is_some()
+                && (self.motion_evidence.is_none() || other.last_seen > self.last_seen)
+            {
+                other.motion_evidence.clone()
+            } else {
+                self.motion_evidence.take()
+            }
+        } else {
+            None
+        };
+        self.merge_observation_start = Some(
+            self.merge_observation_start
+                .unwrap_or(self.last_seen)
+                .min(other.merge_observation_start.unwrap_or(other.last_seen)),
+        );
+        self.mode = mode;
+        self.validity = self.validity.max(other.validity);
+        self.last_seen = self.last_seen.max(other.last_seen);
+        self.negative_evidence = None;
+        self.validity_decay_evidence = None;
+        self.leadership_evidence = None;
+        self.motion_evidence = motion_evidence;
+        true
+    }
+}
+
+fn distributions_agree<const N: usize>(
+    left: &MultivariateNormalDistribution<N>,
+    right: &MultivariateNormalDistribution<N>,
+) -> bool {
+    let difference = left.mean - right.mean;
+    let covariance = left.covariance + right.covariance;
+    if !difference
+        .iter()
+        .chain(covariance.iter())
+        .all(|value| value.is_finite())
+    {
+        return false;
+    }
+    let Some(cholesky) = ((covariance + covariance.transpose()) * 0.5).cholesky() else {
+        return false;
+    };
+    difference.dot(&cholesky.solve(&difference)) <= 9.0
+}
+
+fn covariance_intersection<const N: usize>(
+    left: &MultivariateNormalDistribution<N>,
+    right: &MultivariateNormalDistribution<N>,
+) -> Option<MultivariateNormalDistribution<N>> {
+    if !left
+        .mean
+        .iter()
+        .chain(right.mean.iter())
+        .chain(left.covariance.iter())
+        .chain(right.covariance.iter())
+        .all(|value| value.is_finite())
+    {
+        return None;
+    }
+    let information = |covariance: SMatrix<f32, N, N>| {
+        ((covariance + covariance.transpose()) * 0.5)
+            .cholesky()
+            .map(|factor| factor.inverse())
+    };
+    let left_information = information(left.covariance)?;
+    let right_information = information(right.covariance)?;
+    let combined = ((left_information + right_information) * 0.5).cholesky()?;
+    let mean =
+        combined.solve(&((left_information * left.mean + right_information * right.mean) * 0.5));
+    let covariance = combined.inverse();
+    (mean
+        .iter()
+        .chain(covariance.iter())
+        .all(|value| value.is_finite()))
+    .then_some(MultivariateNormalDistribution { mean, covariance })
 }
 
 #[cfg(test)]
@@ -259,6 +363,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            merge_observation_start: None,
         }
     }
 
@@ -383,15 +488,35 @@ mod tests {
     }
 
     #[test]
-    fn merging_resets_motion_evidence() {
-        let mut hypothesis = resting_hypothesis();
-        observe(&mut hypothesis, 40, 0.04, 0.0);
-        observe(&mut hypothesis, 80, 0.08, 0.0);
-        assert!(hypothesis.motion_evidence.is_some());
-        hypothesis.merge(resting_hypothesis());
-        assert!(hypothesis.motion_evidence.is_none());
-        observe(&mut hypothesis, 120, 0.12, 0.0);
-        assert!(matches!(hypothesis.mode, BallMode::Resting(_)));
+    fn merging_preserves_coherent_kick_evidence_in_either_order() {
+        for reverse in [false, true] {
+            let mut observed = resting_hypothesis();
+            observe(&mut observed, 40, 0.04, 0.0);
+            observe(&mut observed, 80, 0.08, 0.0);
+            let (mut survivor, other) = if reverse {
+                (resting_hypothesis(), observed)
+            } else {
+                (observed, resting_hypothesis())
+            };
+            assert!(survivor.merge(&other));
+            assert!(survivor.motion_evidence.is_some());
+            observe(&mut survivor, 120, 0.12, 0.0);
+            assert!(matches!(survivor.mode, BallMode::Moving(_)));
+            assert!((survivor.position().velocity.x() - 1.0).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn merging_does_not_join_separate_histories_into_false_motion_evidence() {
+        let mut earlier = resting_hypothesis();
+        observe(&mut earlier, 40, 0.04, 0.0);
+        let mut later = resting_hypothesis();
+        observe(&mut later, 80, 0.08, 0.0);
+        assert!(earlier.merge(&later));
+        observe(&mut earlier, 120, 0.12, 0.0);
+        assert!(matches!(earlier.mode, BallMode::Resting(_)));
+        observe(&mut earlier, 160, 0.16, 0.0);
+        assert!(matches!(earlier.mode, BallMode::Moving(_)));
     }
 
     #[test]
@@ -457,6 +582,65 @@ mod tests {
     }
 
     #[test]
+    fn merged_observation_intervals_remain_separate_until_a_new_match() {
+        let make = |milliseconds: i64| {
+            let mut track = resting_hypothesis();
+            track.last_seen = Time::from_nanos(milliseconds * 1_000_000);
+            track
+        };
+        let mut first = make(40);
+        assert!(first.merge(&make(80)));
+        let mut second = make(60);
+        assert!(second.merge(&make(100)));
+        assert!(!first.can_merge(&second, 0.1, 0.5));
+        assert!(!second.can_merge(&first, 0.1, 0.5));
+        first.predict(
+            Duration::from_millis(2),
+            Isometry2::identity(),
+            1.0,
+            Matrix4::zeros(),
+            Matrix2::zeros(),
+            f32::NEG_INFINITY,
+        );
+        assert!(!first.can_merge(&second, 0.1, 0.5));
+        // A repeated exposure does not erase the merged provenance.
+        observe(&mut first, 80, 0.0, 0.0);
+        assert!(!first.can_merge(&second, 0.1, 0.5));
+        observe(&mut first, 120, 0.0, 0.0);
+        assert!(first.merge_observation_start.is_none());
+        assert!(first.can_merge(&second, 0.1, 0.5));
+    }
+
+    #[test]
+    fn covariance_intersection_preserves_shared_uncertainty_and_full_motion_correlations() {
+        let covariance = nalgebra::matrix![
+            0.1, 0.0, 0.02, 0.0;
+            0.0, 0.1, 0.0, -0.01;
+            0.02, 0.0, 0.2, 0.0;
+            0.0, -0.01, 0.0, 0.3
+        ];
+        let mut track = BallHypothesis::new(
+            MultivariateNormalDistribution {
+                mean: nalgebra::vector![1.0, 0.0, 3.0, -1.0],
+                covariance,
+            },
+            Time::zero(),
+        );
+        track.validity = 10.0;
+        let identical = track.clone();
+        for _ in 0..10 {
+            assert!(track.merge(&identical));
+            let BallMode::Moving(state) = &track.mode else {
+                panic!("motion mode changed")
+            };
+            assert!((state.covariance - covariance).norm() < 1e-5);
+            assert!((state.mean - nalgebra::vector![1.0, 0.0, 3.0, -1.0]).norm() < 1e-5);
+            assert!(state.covariance.cholesky().is_some());
+            assert_eq!(track.validity, 10.0);
+        }
+    }
+
+    #[test]
     fn successful_merges_preserve_newest_observation_in_either_order() {
         for moving in [false, true] {
             for reverse in [false, true] {
@@ -490,7 +674,7 @@ mod tests {
                     first_match: Time::zero(),
                     last_match: Time::from_nanos(200_000_000),
                 });
-                survivor.merge(removed);
+                survivor.merge(&removed);
                 assert!(survivor.negative_evidence.is_none());
                 assert!(survivor.leadership_evidence.is_none());
                 assert_eq!(survivor.last_seen, Time::from_nanos(80_000_000));
@@ -518,7 +702,7 @@ mod tests {
             },
             Time::from_nanos(1_000_000_000),
         );
-        resting.merge(moving.clone());
+        resting.merge(&moving);
         assert_eq!(
             resting
                 .negative_evidence
@@ -538,7 +722,7 @@ mod tests {
         assert_eq!(resting.validity, 6.0);
         assert!(resting.motion_evidence.is_some());
         let mut reversed = moving.clone();
-        reversed.merge(resting.clone());
+        reversed.merge(&resting);
         assert_eq!(reversed.position().position, moving.position().position);
         assert_eq!(reversed.position().velocity, moving.position().velocity);
         assert_eq!(reversed.position_covariance(), moving.position_covariance());
