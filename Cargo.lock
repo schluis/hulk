@@ -4587,15 +4587,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fake_odometry"
-version = "0.1.0"
-dependencies = [
- "color-eyre",
- "nalgebra 0.34.2",
- "ros-z",
-]
-
-[[package]]
 name = "fall_detection"
 version = "0.1.0"
 dependencies = [
@@ -5941,7 +5932,6 @@ dependencies = [
  "color-eyre",
  "controller_handler",
  "detection",
- "fake_odometry",
  "fall_detection",
  "fall_down_state_receiver",
  "field_mark_association",
