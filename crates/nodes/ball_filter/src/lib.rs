@@ -1,3 +1,4 @@
+mod robust;
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use color_eyre::{Result, eyre::WrapErr};
@@ -474,7 +475,12 @@ fn advance_all_hypotheses(
             matched[hypothesis_index] = true;
             hypothesis.update(
                 time,
-                ball_percepts[percept_index].percept_in_ground,
+                robust::reweight(
+                    hypothesis.position().position.inner.coords,
+                    hypothesis.position_covariance(),
+                    ball_percepts[percept_index].percept_in_ground,
+                    filter_parameters.student_t_robustness,
+                ),
                 score.exp(),
             );
         }

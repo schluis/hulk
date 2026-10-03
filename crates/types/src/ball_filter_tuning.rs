@@ -49,6 +49,7 @@ pub const TUNED_PARAMETER_POINTERS: &[&str] = &[
     "/hypothesis_uncertainty_weight",
     "/association_uncertainty_weight",
     "/visibility_uncertainty_scale",
+    "/student_t_robustness",
     "/velocity_decay_factor",
     "/log_likelihood_of_zero_velocity_threshold",
     "/hidden_validity_decay_rate",
