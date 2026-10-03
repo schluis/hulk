@@ -1084,3 +1084,21 @@ Scope correction and replacement robotics PR (2026-10-03)
 - Validation: all31 tuner tests pass; strict library clippy passes after replacing
   an existing clone-on-Copy in recording field dimensions with a dereference.
   Implementation checkpoint ec50dda71; paused remote v4 upload/build underway.
+- Migration complete: generation8 close-accuracy-v4-20261003 is searching on32
+  remote workers. Old generation7 stopped cooperatively after finishing rounds.
+  Same-session supervisor PID568792 resumed five-minute recapture; generation8
+  uses generation6 recordings and baseline deliberately. Twix bridge/preview
+  healthy at tcp/127.0.0.1:7448; previous user windows are closed.
+- Early snapshot logs/close-accuracy-first-results.json at16,384 evaluations:
+  training near RMSE0.421612->0.421097m; held-out0.560322m unchanged. Training
+  missing9.666->9.386s, near missing0.52s unchanged; held-out missing2.202s
+  unchanged. Insufficient accuracy improvement for promotion. Full report in
+  logs/close-accuracy-best-report.json confirms v4 and90 quality rejections;
+  RMS spatial lag2.144->2.095s. Continue search; do not claim low close error yet.
+- HULK coordination board connected via Streamable HTTP; identity BoldCave,
+  project /github/hulks/hulk. Current MistyElk onboarding guide is message9;
+  requested old message7 was not found/visible. START message10, task thread
+  ball-filter-close-accuracy. Check topic and inbox at checkpoints. Native Codex
+  server hulk-agent-board added without changing prior settings; this session
+  uses logs/hulk_board_client.py. Registration token stored privately outside
+  repository under ~/.local/state/hulk-agent-board (never publish the token).
