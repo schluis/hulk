@@ -1278,6 +1278,32 @@ mod tests {
     }
 
     #[test]
+    fn visibility_uses_camera_image_dimensions() {
+        let camera = CameraMatrix::from_normalized_focal_and_center(
+            nalgebra::vector![0.5, 0.5],
+            nalgebra::point![0.5, 0.5],
+            linear_algebra::vector![640.0, 544.0],
+            linear_algebra::Isometry3::identity(),
+            linear_algebra::Isometry3::identity(),
+            linear_algebra::Isometry3::from_translation(0.0, 0.0, 1.0),
+        );
+        let position = camera
+            .pixel_to_ground_with_z(point![320.0, 520.0], 0.105)
+            .unwrap();
+        let ball = BallPosition {
+            position,
+            velocity: linear_algebra::Vector2::zeros(),
+            last_seen: Time::zero(),
+        };
+        assert!(is_visible_to_camera(&ball, &camera, 0.105));
+        let shorter_camera = CameraMatrix {
+            image_size: linear_algebra::vector![640.0, 480.0],
+            ..camera
+        };
+        assert!(!is_visible_to_camera(&ball, &shorter_camera, 0.105));
+    }
+
+    #[test]
     fn hypothesis_update_matching() {
         let hypothesis1 = BallHypothesis {
             mode: BallMode::Moving(MultivariateNormalDistribution {
