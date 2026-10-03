@@ -22,6 +22,3 @@ ros-z-streams = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true }
 types = { workspace = true }
-
-[dev-dependencies]
-visual_kick_ball_selector = { workspace = true }

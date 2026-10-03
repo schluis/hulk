@@ -140,21 +140,9 @@ pub async fn run(ctx: Arc<Context>) -> Result<()> {
     let mut tracker = Tracker::default();
     let mut sequence = 0_u64;
     let mut last_field_prior_pose = None;
-    let mut percept_expiry_tick = node.create_timer(Duration::from_millis(20));
 
     loop {
         let future_map_item = tokio::select! {
-            _ = percept_expiry_tick.tick() => {
-                percept_expiry_tick.reset();
-                // This is a publication freshness notification, not a camera
-                // observation. It advances the visual selector's existing
-                // retention timeout even if both detectors and odometry stop.
-                // Never send it through Tracker or count it as negative evidence.
-                ball_percepts_pub
-                    .publish_with_source_time(&Vec::new(), node.clock().now())
-                    .await?;
-                continue;
-            }
             received = field_pose_sub.recv_with_metadata() => {
                 let received = received?;
                 field_poses.insert(received.source_time, received.message);
