@@ -20,6 +20,9 @@
   // Used by ./simulator --ball-perception. Noise is applied to camera detections.
   ball_perception: {
     frame_period: 0.04,
+    delivery_delay_seconds: 0.05,
+    delivery_jitter_seconds: 0.015,
+    close_dropout_pattern: [1, 2, 3],
     center_noise_pixels: 2.0,
     false_positive_probability: 0.04,
     detection_confidence: 0.9,

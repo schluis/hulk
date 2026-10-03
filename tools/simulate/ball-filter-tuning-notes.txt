@@ -1013,3 +1013,48 @@ Other game change identified (2026-10-03)
   own ball present, trace in kick path, not search. Don't infer other interactions
   absent merely from this event. Evidence game43/ballsearch-branch-comparison.json;
   comparison.txt updated. No robotics/game-branch changes.
+
+Scope correction and replacement robotics PR (2026-10-03)
+- User explicitly restricts robotics work to the ball filter and its supporting
+  inputs. The 100ms kick authorization and immediate visual-selector revocation
+  were an overreach in 46f5e2a0b. Development checkpoint e0e12b304 restores all
+  three affected files exactly to before that change, including 250ms retention.
+  switch_motion_type had no delta in game PR2917; its existing restart delay
+  amplified the new kick rejection. No new behavior rule is introduced.
+- Closed PR2917 and opened draft https://github.com/HULKs/hulk/pull/2921 at
+  5a0526d47, isolated worktree /tmp/hulk-ball-filter-robotics-20261003, based on
+  latest main3d313c10c. Exactly22 robotics/config files; no simulator/optimizer/
+  Twix, behavior or visual-selector changes. Includes later border margin,
+  conservative merging, unconditional exposure dedup, nearby confidence transfer
+  and all four obstacle review fixes. Existing main SDK fall-state semantics
+  retained when porting the obstacle changes; no motion-stack rewrite included.
+- New PR validation:92 ball-filter +15 obstacle tests; strict library Clippy;
+  workspace fmt; full hulk_ros_z cargo check. All passed. Fixes issue2918.
+  The archived game branch remains at0cdd4ac5f; it was not rewritten.
+- Viewer failure reproduced: old optimizer launches its still-running executable
+  via procfs after a rebuild; that executable read newer checkout JSON and
+  rejected delivery_delay_seconds. Viewer now embeds schema-matched defaults,
+  then receives live parameters from its matching producer. Separate dev fix.
+- Operational restart receipt logs/ball-viewer-supervisor-restart.json. Released
+  paused old supervisor332453 and let it close only local children. Replacement
+ 508241 resumes SAME session/history/active generation3 via temporary operational
+  helper logs/resume-ball-supervisor.py; detached32 remote workers never stopped.
+  Session/session.json remains source of truth. Bridge refreshed without error.
+- Simulator regression remains under validation: native delayed announcements/
+  payloads and deterministic1/2/3-frame near-ball gaps;75 tests passed previously.
+  First harness attempt caught startup-order error; second correctly failed for
+  insufficient coverage because base behavior injected zero-velocity Walk.
+  Fixed harness now creates a local override setting that injection to null;
+  production behavior code remains unchanged. Run all four cases before claiming
+  coverage. Reports/MCAPs retained in logs/ball-approach-*.
+- Final fixed-pose check logs/ball-approach-normal-behavior-20261003/report.json:
+  all four cases pass; each5.36s in Kick, zero Kick->Stand. Gap cases each cover
+  five1-frame, five2-frame and five3-frame bursts.75 simulator tests pass, one
+  pre-existing ignored. This checks commands with a stationary synthetic truth
+  ball, not physical kick success; the old restricted binary comparison was not
+  completed because harness setup failed before the later harness corrections.
+- New PR2921 CI is entirely green, including Test, Clippy, fmt and all builds.
+- Typed OpenViewer request with ROS-Z attachment exercised actual launcher and
+  opened native window PID516189 on preview attempt0011; schema error resolved.
+  Matching Twix rebuild still finishing; reopen only optimizer Twix, preserve
+  Ole replay UI. External CPU-effort/map/UI changes are not staged in our commit.

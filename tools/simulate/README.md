@@ -324,6 +324,41 @@ ball motion. It also verifies peak ball speed exceeds
 noise and 4% false detections; stress profiles add 5 px noise, pixel bias, 8% false detections, random
 misses, eight-frame dropout bursts and eight-frame false detections.
 
+Perception runs now also delay detector delivery by 50 ms with uniform ±15 ms
+jitter. Exposure timestamps remain in the original detector messages and their
+announcements; announcements precede the delay so fusion knows the frame is in
+flight. After eight in-view, unoccluded frames with a ball within 1 m, a repeating
+challenge suppresses one, two, then three detector frames (40/80/120 ms at 25 Hz).
+The physical ball and ground truth remain present. Configure this through
+`delivery_delay_seconds`, `delivery_jitter_seconds`, and `close_dropout_pattern`
+in `ball_perception`; an empty pattern disables the scheduled gaps. Existing
+random misses and physical opponent occlusion remain separate.
+
+Captures include `behavior/blackboard`, `behavior/trace`, and fall status. Their
+coverage JSON reports close-ball Kick-to-Stand transitions, standing time, and
+standing after a kick while a visual observation younger than 100 ms is present.
+These are command diagnostics, not measured immobility or completed kicks.
+`review_required` is distinct from the filter's position score; missing approach
+coverage is never reported as a successful behavior check.
+
+Before deploying behavior/filter changes, run the independent approach check:
+
+```bash
+./simulator --check-ball-approach logs/ball-approach-check
+```
+
+Use a new output directory. Four cases compare clean input, brief gaps, delivery
+delay, and both. The check runs production kinematics, Ground/torso-reference
+localization, odometry, filter, visual selector and the full behavior tree from a
+fixed MuJoCo robot pose with stationary synthetic ball ground truth at 0.7 m.
+It records native ROS-Z MCAPs and `report.json`, and exits nonzero on missing
+coverage or a Kick-to-Stand interruption. Commands are observed, not actuated;
+this isolates perception/decision continuity and does not validate the SDK or
+physical kick policy. A local parameter overlay disables the development
+zero-velocity command injection so the normal behavior tree actually runs.
+This guards against the game-discovered 100 ms authorization/Stand-lockout bug;
+parameter optimization alone cannot detect or fix a hardcoded behavior gate.
+
 Twix separates **Best tuned values** from **Fixed values (not searched)**. Six search
 variables cover five parameter groups; the saved `optimized/ball_filter.json5`
 contains the latest best configuration, saved atomically on every improvement.
