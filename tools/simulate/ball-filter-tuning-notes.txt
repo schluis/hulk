@@ -999,3 +999,17 @@ Robot43 game comparison completed (2026-10-03)
   isolated and opened actual first-half panels paused11:06:00UTC. Timeline Space
   plays; arrows step100ms. Image panel expects RosImage but archive StereoImagePair;
   use extracted native camera PNGs for now, note adapter outside filter scope.
+
+Other game change identified (2026-10-03)
+- User named ben/ballsearch. Fetched public BenSampaolo/hulk ball-search-behavior
+  @dd84ffafd02294e277d971b69124685477916629 into refs/remotes/ben/ball-search-behavior
+  without checkout/merge. PR2723. Eight relevant archived first-half files match
+  byte-for-byte; second half differs and lacks search_heatmap. Thus this change
+  was present first half only, independently of the user not specifying half.
+- Attribution: coordinated search-priority heatmap/cell approach, Own/Team source,
+  behavior retention500ms/1s (formerly250ms), Blackboard head_yaw. These explain
+  previously unidentified source/schema differences. Aggregate comparison remains
+  observational. Exact101ms stop still directly caused by visual-kick age gate:
+  own ball present, trace in kick path, not search. Don't infer other interactions
+  absent merely from this event. Evidence game43/ballsearch-branch-comparison.json;
+  comparison.txt updated. No robotics/game-branch changes.
