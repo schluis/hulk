@@ -1081,3 +1081,6 @@ Scope correction and replacement robotics PR (2026-10-03)
  508241 temporarily SIGSTOPped (receipt logs/close-accuracy-refresh-pause.json);
   remote workers continue until cooperative handoff. Restore automatic recapture
   using a fresh same-session supervisor after migration.
+- Validation: all31 tuner tests pass; strict library clippy passes after replacing
+  an existing clone-on-Copy in recording field dimensions with a dereference.
+  Implementation checkpoint ec50dda71; paused remote v4 upload/build underway.

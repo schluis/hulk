@@ -294,12 +294,11 @@ impl Recording {
                 inputs,
                 time,
                 seconds,
-                dimensions: dimensions
+                dimensions: *dimensions
                     .range(..=time)
                     .next_back()
                     .ok_or_else(|| eyre!("missing field_dimensions"))?
-                    .1
-                    .clone(),
+                    .1,
                 reference: references.get(&time).cloned(),
                 // Use a preceding pose with a bounded source-time age. Never apply
                 // an arbitrarily old transform to a fresh ball estimate.
