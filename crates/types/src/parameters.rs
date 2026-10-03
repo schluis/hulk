@@ -264,6 +264,10 @@ pub struct BallFilterParameters {
     /// confident leader. None preserves legacy behavior; zero disables the penalty.
     #[serde(default)]
     pub competing_hypothesis_validity_decay_rate: Option<f32>,
+    /// Fraction of bounded confidence inherited when spawning near a recent track.
+    /// None preserves legacy spawn confidence; zero disables the bonus.
+    #[serde(default)]
+    pub nearby_spawn_validity_factor: Option<f32>,
     pub validity_output_threshold: f32,
     pub validity_discard_threshold: f32,
     pub velocity_decay_factor: f32,
@@ -297,6 +301,7 @@ impl Default for BallFilterParameters {
             visible_missed_validity_decay_rate: Default::default(),
             near_visible_missed_validity_decay_rate: Default::default(),
             competing_hypothesis_validity_decay_rate: Default::default(),
+            nearby_spawn_validity_factor: Default::default(),
             validity_output_threshold: Default::default(),
             validity_discard_threshold: Default::default(),
             velocity_decay_factor: Default::default(),

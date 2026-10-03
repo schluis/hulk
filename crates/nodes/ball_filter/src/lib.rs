@@ -368,6 +368,10 @@ fn predict_hypotheses_from_odometry(
     );
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Keep independently timestamped sensor inputs explicit at the replay boundary"
+)]
 fn advance_all_hypotheses(
     ball_filter: &mut BallFilter,
     assignment_solver: &mut AssignmentSolver,
@@ -451,6 +455,7 @@ fn advance_all_hypotheses(
                 time,
                 percept.percept_in_ground,
                 Matrix4::from_diagonal(&filter_parameters.noise.initial_covariance),
+                filter_parameters.nearby_spawn_validity_factor,
             );
             matched.push(true);
         }
@@ -1000,6 +1005,62 @@ mod tests {
         let assignment = solver.solve(scores.view(), Objective::Maximize).unwrap();
         assert_eq!(assignment[0], Some(0));
         assert!(assignment[1].unwrap() >= 2);
+    }
+
+    #[test]
+    fn nearby_rejected_association_inherits_only_when_parent_is_unmatched() {
+        for parent_seen in [false, true] {
+            let parameters = BallFilterParameters {
+                hidden_validity_exponential_decay_factor: 1.0,
+                maximum_matching_cost: 0.25,
+                nearby_spawn_validity_factor: Some(0.5),
+                ..Default::default()
+            };
+            let mut parent = BallHypothesis::new(
+                MultivariateNormalDistribution {
+                    mean: nalgebra::Vector4::zeros(),
+                    covariance: Matrix4::identity() * 0.0001,
+                },
+                Time::from_nanos(40_000_000),
+            );
+            parent.validity = 10.0;
+            let percept = |x| BallPercept {
+                percept_in_ground: MultivariateNormalDistribution {
+                    mean: vector![x, 0.0],
+                    covariance: Matrix2::identity() * 0.0001,
+                },
+                image_location: Circle::new(point![0.0, 0.0], 1.0),
+            };
+            let percepts = if parent_seen {
+                vec![percept(0.0), percept(0.1)]
+            } else {
+                vec![percept(0.1)]
+            };
+            let mut filter = BallFilter {
+                hypotheses: vec![parent],
+            };
+            advance_all_hypotheses(
+                &mut filter,
+                &mut AssignmentSolver::default(),
+                Time::from_nanos(80_000_000),
+                &percepts,
+                None,
+                None,
+                &parameters,
+                &FieldDimensions::SPL_2025,
+            )
+            .unwrap();
+            assert_eq!(filter.hypotheses.len(), 2);
+            assert_eq!(
+                filter.hypotheses[1].validity,
+                if parent_seen { 1.0 } else { 2.0 }
+            );
+            assert_eq!(
+                filter.hypotheses[0].validity,
+                if parent_seen { 11.0 } else { 9.0 }
+            );
+            assert_eq!(filter.hypotheses[1].position().position, point![0.1, 0.0]);
+        }
     }
 
     #[test]

@@ -145,7 +145,48 @@ impl BallFilter {
         detection_time: Time,
         measurement: MultivariateNormalDistribution<2>,
         initial_moving_covariance: Matrix4<f32>,
+        nearby_spawn_validity_factor: Option<f32>,
     ) {
+        // Nearby recent support can survive a tight association gate without
+        // manufacturing confidence or copying an old position/unknown velocity.
+        // Current-exposure matches (including other newborns) cannot donate.
+        const MAXIMUM_PARENT_AGE: Duration = Duration::from_millis(250);
+        const MAXIMUM_PARENT_DISTANCE: f32 = 0.2;
+        let factor = nearby_spawn_validity_factor
+            .filter(|factor| factor.is_finite())
+            .unwrap_or(0.0)
+            .clamp(0.0, 1.0);
+        let parent = (factor > 0.0)
+            .then(|| {
+                self.hypotheses
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, hypothesis)| {
+                        if !hypothesis.validity.is_finite()
+                            || hypothesis.validity < 3.0
+                            || hypothesis.last_seen >= detection_time
+                            || detection_time.duration_since(hypothesis.last_seen)
+                                > MAXIMUM_PARENT_AGE
+                        {
+                            return None;
+                        }
+                        let distance =
+                            (hypothesis.position().position.inner.coords - measurement.mean).norm();
+                        (distance.is_finite() && distance <= MAXIMUM_PARENT_DISTANCE)
+                            .then_some((index, distance))
+                    })
+                    .min_by(|(_, left), (_, right)| left.total_cmp(right))
+                    .map(|(index, _)| index)
+            })
+            .flatten();
+        let bonus = if let Some(parent) = parent {
+            let parent = &mut self.hypotheses[parent];
+            let bonus = factor * (parent.validity - 1.0).clamp(0.0, 2.0);
+            parent.validity -= bonus;
+            bonus
+        } else {
+            0.0
+        };
         // An unmatched percept represents a new ball or an abrupt motion change.
         // Starting at the nearest old track biases the new position toward an
         // unrelated ball and cannot infer velocity without a temporal match.
@@ -157,7 +198,7 @@ impl BallFilter {
         let new_hypothesis = BallHypothesis {
             mode: BallMode::Moving(new_hypothesis),
             last_seen: detection_time,
-            validity: 1.0,
+            validity: 1.0 + bonus,
             motion_evidence: None,
             negative_evidence: None,
             validity_decay_evidence: None,
@@ -183,6 +224,110 @@ mod tests {
         );
         track.validity = validity;
         track
+    }
+
+    fn spawn_nearby(filter: &mut BallFilter, x: f32, factor: Option<f32>) {
+        filter.spawn(
+            Time::from_nanos(300_000_000),
+            MultivariateNormalDistribution {
+                mean: nalgebra::vector![x, 0.0],
+                covariance: Matrix2::identity() * 0.01,
+            },
+            Matrix4::identity() * 0.2,
+            factor,
+        );
+    }
+
+    #[test]
+    fn nearby_birth_transfers_bounded_confidence_without_copying_position_or_velocity() {
+        for (factor, expected) in [
+            (None, 1.0),
+            (Some(0.0), 1.0),
+            (Some(0.5), 2.0),
+            (Some(1.0), 3.0),
+            (Some(5.0), 3.0),
+            (Some(f32::NAN), 1.0),
+        ] {
+            let mut parent = track(1.0, 50.0, 100_000_000);
+            if let BallMode::Moving(state) = &mut parent.mode {
+                state.mean.z = 5.0;
+            }
+            let mut filter = BallFilter {
+                hypotheses: vec![parent],
+            };
+            spawn_nearby(&mut filter, 1.1, factor);
+            let born = &filter.hypotheses[1];
+            assert_eq!(born.validity, expected);
+            assert_eq!(born.position().position, linear_algebra::point![1.1, 0.0]);
+            assert_eq!(born.position().velocity, linear_algebra::Vector2::zeros());
+            assert_eq!(born.position_covariance(), Matrix2::identity() * 0.2);
+            assert_eq!(born.last_seen, Time::from_nanos(300_000_000));
+            assert_eq!(
+                filter.hypotheses[0].last_seen,
+                Time::from_nanos(100_000_000)
+            );
+            assert_eq!(filter.hypotheses[0].validity + born.validity, 51.0);
+        }
+    }
+
+    #[test]
+    fn nearby_birth_requires_recent_unmatched_confirmed_parent() {
+        for parent in [
+            track(0.89, 10.0, 100_000_000), // More than 0.2 m away.
+            track(1.0, 10.0, 49_999_999),   // Older than 250 ms.
+            track(1.0, 10.0, 300_000_000),  // Already observed in this image.
+            track(1.0, 10.0, 320_000_000),  // Future observation is not evidence.
+            track(1.0, 2.99, 100_000_000),
+            track(1.0, f32::INFINITY, 100_000_000),
+        ] {
+            let validity = parent.validity;
+            let mut filter = BallFilter {
+                hypotheses: vec![parent],
+            };
+            spawn_nearby(&mut filter, 1.1, Some(1.0));
+            assert_eq!(filter.hypotheses[1].validity, 1.0);
+            assert_eq!(filter.hypotheses[0].validity, validity);
+        }
+    }
+
+    #[test]
+    fn multiple_births_cannot_clone_confidence_or_reuse_newborns_as_parents() {
+        let mut filter = BallFilter {
+            hypotheses: vec![track(1.0, 3.0, 100_000_000)],
+        };
+        spawn_nearby(&mut filter, 1.1, Some(1.0));
+        spawn_nearby(&mut filter, 1.15, Some(1.0));
+        assert_eq!(
+            filter
+                .hypotheses
+                .iter()
+                .map(|h| h.validity)
+                .collect::<Vec<_>>(),
+            vec![1.0, 3.0, 1.0]
+        );
+        assert_eq!(
+            filter.hypotheses.iter().map(|h| h.validity).sum::<f32>(),
+            5.0
+        );
+    }
+
+    #[test]
+    fn nearby_birth_uses_nearest_parent_after_odometry_compensation() {
+        let mut filter = BallFilter {
+            hypotheses: vec![track(1.0, 10.0, 100_000_000), track(1.08, 8.0, 100_000_000)],
+        };
+        filter.predict(
+            Duration::ZERO,
+            Isometry2::from_parts(linear_algebra::vector![-0.5, 0.0], 0.0),
+            1.0,
+            Matrix4::zeros(),
+            Matrix2::zeros(),
+            f32::INFINITY,
+        );
+        spawn_nearby(&mut filter, 0.6, Some(0.5));
+        assert_eq!(filter.hypotheses[0].validity, 10.0);
+        assert_eq!(filter.hypotheses[1].validity, 7.0);
+        assert_eq!(filter.hypotheses[2].validity, 2.0);
     }
 
     #[test]

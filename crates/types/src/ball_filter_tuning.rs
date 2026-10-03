@@ -49,6 +49,7 @@ pub const TUNED_PARAMETER_POINTERS: &[&str] = &[
     "/visible_missed_validity_decay_rate",
     "/competing_hypothesis_validity_decay_rate",
     "/near_visible_missed_validity_decay_rate",
+    "/nearby_spawn_validity_factor",
 ];
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, ros_z::Message)]

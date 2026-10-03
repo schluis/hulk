@@ -14,6 +14,7 @@
   visible_missed_validity_decay_rate: 1.0,
   near_visible_missed_validity_decay_rate: 20.0,
   competing_hypothesis_validity_decay_rate: 0.5,
+  nearby_spawn_validity_factor: 0.5,
   hypothesis_merge_distance: 0.10000000149011612,
   hypothesis_timeout: {
     nanos: 0,

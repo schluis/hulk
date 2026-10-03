@@ -1722,6 +1722,10 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("competing_hypothesis_validity_decay_rate");
+        historical
+            .as_object_mut()
+            .unwrap()
+            .remove("nearby_spawn_validity_factor");
         historical["maximum_matching_cost"] = serde_json::json!(2.5);
         let legacy: BallFilterParameters = serde_json::from_value(historical.clone()).unwrap();
         assert!(legacy.visible_missed_detection_timeout.is_zero());
@@ -1734,10 +1738,12 @@ mod tests {
         assert_eq!(legacy.visible_missed_validity_decay_rate, None);
         assert_eq!(legacy.near_visible_missed_validity_decay_rate, None);
         assert_eq!(legacy.competing_hypothesis_validity_decay_rate, None);
+        assert_eq!(legacy.nearby_spawn_validity_factor, None);
         let path = overrides.path().join("ball_filter.json5");
         std::fs::write(&path, serde_json::to_vec(&historical).unwrap()).unwrap();
         let retained = capture_parameter_override(&path).unwrap();
         assert!(retained.get("field_boundary_margin").is_none());
+        assert!(retained.get("nearby_spawn_validity_factor").is_none());
         std::fs::write(&path, serde_json::to_vec(&retained).unwrap()).unwrap();
         let context = ContextBuilder::default()
             .with_namespace("/capture_defaults_test")
@@ -1772,6 +1778,7 @@ mod tests {
         );
         assert_eq!(snapshot.typed().near_visible_missed_detection_distance, 1.0);
         assert_eq!(snapshot.typed().hidden_validity_decay_rate, Some(0.0));
+        assert_eq!(snapshot.typed().nearby_spawn_validity_factor, Some(0.5));
         assert_eq!(
             snapshot.typed().visible_missed_validity_decay_rate,
             Some(1.0)
@@ -1787,7 +1794,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn capture_fixed_settings_inherit_omissions_and_preserve_explicit_disabling() {
+    async fn capture_overrides_inherit_omissions_and_preserve_explicit_disabling() {
         // Replay of an old file keeps its historical enabled prior. A fresh
         // capture instead inherits current layers when the key was omitted.
         for (current_gate, override_gate) in [(false, None), (true, Some(false))] {
@@ -1814,12 +1821,18 @@ mod tests {
                 .as_object_mut()
                 .unwrap()
                 .remove("field_boundary_margin");
+            historical
+                .as_object_mut()
+                .unwrap()
+                .remove("nearby_spawn_validity_factor");
             let legacy: BallFilterParameters = serde_json::from_value(historical.clone()).unwrap();
             assert!(legacy.good_localization);
             assert_eq!(legacy.field_boundary_margin, 0.0);
+            assert_eq!(legacy.nearby_spawn_validity_factor, None);
             if let Some(enabled) = override_gate {
                 historical["good_localization"] = serde_json::json!(enabled);
                 historical["field_boundary_margin"] = serde_json::json!(0.0);
+                historical["nearby_spawn_validity_factor"] = serde_json::json!(0.0);
             }
             let path = overrides.path().join("ball_filter.json5");
             std::fs::write(&path, serde_json::to_vec(&historical).unwrap()).unwrap();
@@ -1853,6 +1866,10 @@ mod tests {
             assert_eq!(
                 binding.snapshot().typed().field_boundary_margin,
                 if override_gate.is_some() { 0.0 } else { 0.5 }
+            );
+            assert_eq!(
+                binding.snapshot().typed().nearby_spawn_validity_factor,
+                Some(if override_gate.is_some() { 0.0 } else { 0.5 })
             );
         }
     }
