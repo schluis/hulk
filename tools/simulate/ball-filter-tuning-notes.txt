@@ -901,3 +901,43 @@ Follow-up implementation validated (2026-10-03)
   PID332453 is still paused intentionally; remote32 and bridge/preview run. Resume
   once binaries are ready, then verify fresh capture and active margin0.5 before
   reporting the buffer live. New diagnostic schemas require matching Twix/viewer.
+
+Static artifacts, confidence transfer and game replay (2026-10-03)
+- User requested correlated false detections be static physical artifacts. Existing
+  bursts were fixed pixels and moved in the world with the camera. New detector
+  anchors each burst in Field, reprojects per exposure, retains Gaussian pixel
+  noise and publishes fixed-anchor provenance; occlusion/out-of-view omit emissions.
+  Independent one-frame image outliers remain unchanged. Tests are pending below.
+- User requested tunable confidence support for nearby newborn candidates.
+  nearby_spawn_validity_factor is optional (legacy None), base0.5, search0..1 as
+  dimension11. Eligible unmatched parent is within0.2m and seen within250ms with
+  confidence>=3. Transfer factor*min(parent_validity-1,2), rather than clone it;
+  preserve new measured position/unknown velocity and exclude same-frame matches.
+- These follow-ups are uncommitted pending final combined tests/builds. External
+  CPU-effort edits remain separate. Root started serial test/build/build/clippy
+  pipeline; inspect logs/ball-static-spawn-{tests,build,standalone-build}.log and
+  logs/ball-robotics-review-clippy.log. A test-only point-type annotation was fixed.
+- Actual game symptom: robot43 sometimes does not approach a nearby ball, but
+  other branches played. Do NOT attribute to our filter without replay evidence.
+- Ole replay fetched: oleflb/feat/localization-improvements @1cd26ef600b032f3824e02f23219924dcc0c87ea,
+  detached /tmp/hulk-ole-replay-20261003. Contains replay tool and Twix Timeline,
+  not game MCAPs. Matching replay uses port7450, isolated Twix state; helper prep
+  in logs/game43-replay-20261003. No replay build yet (root owns Cargo slot).
+- User log server http://10.1.24.108:8000/ has today's directory
+  2026-10-03-HULKs-vs-HTWK/. Went offline; user expects return ~20min after11:25UTC,
+  so retry around11:45UTC. Robot43; gamefile/player-event times still unavailable.
+  Nürnberg Telegram chat is where Konrad posts links, but direct server suffices;
+  no messages sent and no Telegram session accessed.
+- Supervisor332453 STILL intentionally SIGSTOPped; childbridge/oldpreview and
+  remote32 keep running. MUST resume/replace once current binaries validated,
+  reopen matching Twix/viewer and audit new generation with margin0.5 plus new
+  confidence parameter. Watcher355052 awaits generation0001 and needs adjustment
+  for the newly added nearby_spawn setting (fresh default0.5, not legacyNone).
+- Follow-up checkpoints: bba84e727 (nearby confidence transfer/search dimension11)
+  and 48b905fad (static correlated artifacts). Final validation passed:288 tests,
+  one pre-existing ignored simulator test, combinedapps build, standalone simulator
+  build and strict library clippy for ball_filter/obstacle_filter. Earlier broad
+  all-targets clippy also flagged pre-existing test fixture style; CI-style library
+  checks now pass after narrow explicit-input argument-count expectations.
+- At11:33UTC root is releasing Cargo for Ole replay/Twix in its isolated cached
+  target, and resuming the local refresh supervisor to record/activate newcode.
