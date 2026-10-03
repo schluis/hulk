@@ -1058,3 +1058,13 @@ Scope correction and replacement robotics PR (2026-10-03)
   opened native window PID516189 on preview attempt0011; schema error resolved.
   Matching Twix rebuild still finishing; reopen only optimizer Twix, preserve
   Ole replay UI. External CPU-effort/map/UI changes are not staged in our commit.
+- UI build completed successfully. Optimizer Twix reopened with a normal X11
+  close/save of prior window: PID519572. A read-only viewer in its own process
+  group (PID519838) remains open across local capture/preview handoffs. Generation6
+  is recording with restored behavior, delayed detector delivery and brief gaps.
+  The normal OpenViewer command path was separately verified before the scheduled
+  capture rotation closed its child window. Remote32 continued throughout.
+- Viewer lifecycle follow-up outside filter scope: a viewer opened by the button
+  shares the producer process group and closes during scheduled recapture; an
+  independently launched viewer can reconnect. Keep this separate from the fixed
+  schema/defaults failure. Do not add simulator/Twix to robotics PR2921.
