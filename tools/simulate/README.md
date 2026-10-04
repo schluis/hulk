@@ -490,7 +490,8 @@ comparable; the report records the formulas and objective version.
 
 The live filter also applies a soft field-boundary prior to hypothesis confidence:
 `raw validity * exp(-distance / field_boundary_confidence_decay_distance)`.
-The default decay distance is 0.3 m; a nonpositive value disables it. This weight
+The default decay distance is 0.3 m; zero makes it a hard boundary.
+A large decay distance makes the reduction gradual. This weight
 affects output selection and confidence thresholds. With
 `field_boundary_validity_decay_rate = 2.0`, it also reduces stored validity by
 `exp(-rate * (1 - weight) * elapsed_seconds)`: farther outside the field means
@@ -504,7 +505,8 @@ reference and production kinematics, without visual localization. Real robots us
 their normal `ground_to_field` estimate. The decay distance and rate are fixed,
 not searched. Projected ball detections farther than the default
 `maximum_detection_distance` of 15 m are rejected before association or track
-creation; zero disables this limit for legacy baselines. This distance limit is
+creation; zero permits only the origin. Use a large distance such as 1000 m
+for a permissive limit. This distance limit is
 also fixed during optimization.
 The ordinary ROS-Z topic `ball_filter/field_prior_pose` records the exact pose (or
 its absence) used for each output, so live and offline filtering agree. Legacy

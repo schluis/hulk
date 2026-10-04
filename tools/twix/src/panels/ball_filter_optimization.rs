@@ -447,7 +447,7 @@ impl Panel for BallFilterOptimizationPanel {
                     scores(ui, "validation", baseline, best);
                 }
                 ui.label(
-                    "Loss includes position error, missed balls and false tracks. Lower is better.",
+                    "Loss includes position and velocity error, missed balls and false tracks. Lower is better.",
                 );
                 if let Ok(mut fixed) = serde_json::to_value(&search.best_parameters) {
                     let mut tuned = serde_json::Map::new();
@@ -466,7 +466,7 @@ impl Panel for BallFilterOptimizationPanel {
                         }
                     }
                     ui.collapsing("Best tuned values", |ui| {
-                        let variables = 6 + usize::from(search.best_parameters.hidden_validity_decay_rate.is_some())
+                        let variables = 16 + usize::from(search.best_parameters.hidden_validity_decay_rate.is_some())
                             + usize::from(search.best_parameters.visible_missed_validity_decay_rate.is_some())
                             + usize::from(search.best_parameters.competing_hypothesis_validity_decay_rate.is_some())
                             + usize::from(search.best_parameters.near_visible_missed_validity_decay_rate.is_some())
@@ -477,7 +477,6 @@ impl Panel for BallFilterOptimizationPanel {
                         }
                     });
                     ui.collapsing("Fixed values (not searched)", |ui| {
-                        ui.label("maximum_matching_cost_validity_penalty_factor is retained for old configuration compatibility and is no longer used.");
                         if let Ok(json) = serde_json::to_string_pretty(&fixed) {
                             monospace(ui, json);
                         }

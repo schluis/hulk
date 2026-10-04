@@ -1,4 +1,5 @@
 //! Offline tuning from ordinary ros-z MCAP recordings; no simulator dependency.
+pub mod parameter_migration;
 mod recording;
 mod scoring;
 use clap::Parser;
@@ -85,6 +86,7 @@ struct Comparison {
 }
 #[derive(Serialize)]
 struct Report<'a> {
+    parameter_semantics: &'static str,
     objective: scoring::Objective,
     training_recordings: &'a [PathBuf],
     validation_recordings: &'a [PathBuf],
@@ -127,21 +129,21 @@ const BOUNDS: [(f64, f64, bool); 21] = [
     (1e-6, 0.1, true),
     (0.02, 20.0, true),
     (0.99, 1.0, false),
-    (0.0, 0.3, false),   // hidden confidence decay, per second
-    (0.0, 4.0, false),   // observable unmatched confidence decay, per second
-    (0.0, 2.0, false),   // unmatched competitor decay under a confirmed leader, per second
-    (0.0, 40.0, false),  // additional close clear-view missed confidence decay, per second
-    (0.0, 1.0, false),   // fraction of bounded nearby-track spawn confidence
-    (-5.0, 20.0, false), // log-density threshold for switching a moving track to rest
-    (0.0, 3.0, false),   // physical association gate, zero disables
-    (1.0, 8.0, false),   // projected/observed radius ratio, one disables
-    (0.0, 20.0, false),  // covariance penalty in selection only
-    (0.0, 1.0, false),   // uncertainty penalty between feasible associations
-    (0.0, 3.0, false),   // covariance margin for clear missed-detection evidence
-    (0.0, 5.0, false),   // distance limit for radius consistency
-    (0.0, 30.0, false),  // selection confidence cap, zero disables
-    (0.0, 2.0, false),   // physical association gate after observation gaps
-    (0.0, 0.5, false),   // optional speed-based resting transition, m/s
+    (0.0, 0.3, false),        // hidden confidence decay, per second
+    (0.0, 4.0, false),        // observable unmatched confidence decay, per second
+    (0.0, 2.0, false),        // unmatched competitor decay under a confirmed leader, per second
+    (0.0, 40.0, false),       // additional close clear-view missed confidence decay, per second
+    (0.0, 1.0, false),        // fraction of bounded nearby-track spawn confidence
+    (-5.0, 20.0, false),      // log-density threshold for switching a moving track to rest
+    (0.0, 1000.0, true),      // literal physical association distance, log1p search
+    (1.0, 1_000_000.0, true), // literal radius ratio; large values are permissive
+    (0.0, 20.0, false),       // covariance penalty in selection only
+    (0.0, 1.0, false),        // uncertainty penalty between feasible associations
+    (0.0, 3.0, false),        // covariance margin for clear missed-detection evidence
+    (0.0, 1000.0, true),      // distance limit for radius consistency
+    (0.0, 1_000_000.0, true), // literal selection confidence cap
+    (0.0, 1000.0, true),      // physical association gate after observation gaps
+    (0.0, 0.5, false),        // optional speed-based resting transition, m/s
 ];
 fn encode(parameters: &BallFilterParameters) -> [f64; 21] {
     let values = [
@@ -162,7 +164,7 @@ fn encode(parameters: &BallFilterParameters) -> [f64; 21] {
         parameters.nearby_spawn_validity_factor.unwrap_or(0.0),
         parameters.log_likelihood_of_zero_velocity_threshold,
         parameters.maximum_matching_distance,
-        parameters.maximum_detection_radius_ratio.max(1.0),
+        parameters.maximum_detection_radius_ratio,
         parameters.hypothesis_uncertainty_weight,
         parameters.association_uncertainty_weight,
         parameters.visibility_uncertainty_scale,
@@ -174,7 +176,9 @@ fn encode(parameters: &BallFilterParameters) -> [f64; 21] {
     std::array::from_fn(|i| {
         let (lo, hi, log) = BOUNDS[i];
         let x = f64::from(values[i]).clamp(lo, hi);
-        if log {
+        if log && lo == 0.0 {
+            x.ln_1p() / hi.ln_1p()
+        } else if log {
             (x.ln() - lo.ln()) / (hi.ln() - lo.ln())
         } else {
             (x - lo) / (hi - lo)
@@ -184,7 +188,9 @@ fn encode(parameters: &BallFilterParameters) -> [f64; 21] {
 fn decode(base: &BallFilterParameters, values: [f64; 21]) -> BallFilterParameters {
     let v: [f32; 21] = std::array::from_fn(|i| {
         let (lo, hi, log) = BOUNDS[i];
-        if log {
+        if log && lo == 0.0 {
+            (values[i] * hi.ln_1p()).exp_m1() as f32
+        } else if log {
             (lo.ln() + values[i] * (hi.ln() - lo.ln())).exp() as f32
         } else {
             (lo + values[i] * (hi - lo)) as f32
@@ -208,7 +214,7 @@ fn decode(base: &BallFilterParameters, values: [f64; 21]) -> BallFilterParameter
     p.nearby_spawn_validity_factor = base.nearby_spawn_validity_factor.map(|_| v[10]);
     p.log_likelihood_of_zero_velocity_threshold = v[11];
     p.maximum_matching_distance = v[12];
-    p.maximum_detection_radius_ratio = if v[13] <= 1.0 { 0.0 } else { v[13] };
+    p.maximum_detection_radius_ratio = v[13];
     p.hypothesis_uncertainty_weight = v[14];
     p.association_uncertainty_weight = v[15];
     p.visibility_uncertainty_scale = v[16];
@@ -554,6 +560,7 @@ pub fn run_with_progress(
             .collect()
     };
     let report = Report {
+        parameter_semantics: "literal_limits_v1",
         training_per_recording: comparisons(&train)?,
         validation_per_recording: comparisons(&validation)?,
         objective: scoring::OBJECTIVE,
@@ -675,6 +682,29 @@ fn evaluate_candidate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn literal_limits_round_trip_without_zero_or_one_sentinels() {
+        let base: BallFilterParameters = json5::from_str(include_str!(
+            "../../../etc/parameters/base/ball_filter.json5"
+        ))
+        .unwrap();
+        for coordinate in [0.0, 0.25, 0.5, 1.0] {
+            let decoded = decode(&base, [coordinate; 21]);
+            let encoded = encode(&decoded);
+            for index in [12, 13, 17, 18, 19] {
+                assert!((encoded[index] - coordinate).abs() < 1e-7);
+            }
+        }
+        let low = decode(&base, [0.0; 21]);
+        assert_eq!(low.maximum_matching_distance, 0.0);
+        assert_eq!(low.maximum_detection_radius_ratio, 1.0);
+        assert_eq!(low.selection_confidence_cap, 0.0);
+        let high = decode(&base, [1.0; 21]);
+        assert_eq!(high.maximum_matching_distance, 1000.0);
+        assert_eq!(high.maximum_detection_radius_ratio, 1_000_000.0);
+        assert_eq!(high.selection_confidence_cap, 1_000_000.0);
+    }
 
     #[test]
     fn candidates_and_old_warm_starts_cannot_override_fixed_policy() {
@@ -914,26 +944,32 @@ mod tests {
         // Historical captures must supply their old behavior explicitly now
         // that production parameter defaults live in configuration files.
         let mut legacy = current.clone();
-        legacy.visible_missed_detection_timeout = std::time::Duration::ZERO;
+        legacy.visible_missed_detection_timeout = std::time::Duration::from_secs(1_000_000);
         legacy.maximum_obstacle_time_difference = std::time::Duration::from_millis(100);
         legacy.field_boundary_validity_decay_rate = 0.0;
-        legacy.maximum_detection_distance = 0.0;
+        legacy.maximum_detection_distance = 1000.0;
         legacy.hidden_validity_decay_rate = None;
         legacy.visible_missed_validity_decay_rate = None;
         legacy.competing_hypothesis_validity_decay_rate = None;
         legacy.near_visible_missed_validity_decay_rate = None;
         legacy.nearby_spawn_validity_factor = None;
-        legacy.near_visible_missed_detection_timeout = std::time::Duration::ZERO;
+        legacy.near_visible_missed_detection_timeout = std::time::Duration::from_secs(1_000_000);
         legacy.near_visible_missed_detection_distance = 0.0;
-        assert!(legacy.visible_missed_detection_timeout.is_zero());
+        assert_eq!(
+            legacy.visible_missed_detection_timeout,
+            std::time::Duration::from_secs(1_000_000)
+        );
         assert_eq!(legacy.field_boundary_validity_decay_rate, 0.0);
-        assert_eq!(legacy.maximum_detection_distance, 0.0);
+        assert_eq!(legacy.maximum_detection_distance, 1000.0);
         assert_eq!(legacy.hidden_validity_decay_rate, None);
         assert_eq!(legacy.visible_missed_validity_decay_rate, None);
         assert_eq!(legacy.competing_hypothesis_validity_decay_rate, None);
         assert_eq!(legacy.near_visible_missed_validity_decay_rate, None);
         assert_eq!(legacy.nearby_spawn_validity_factor, None);
-        assert!(legacy.near_visible_missed_detection_timeout.is_zero());
+        assert_eq!(
+            legacy.near_visible_missed_detection_timeout,
+            std::time::Duration::from_secs(1_000_000)
+        );
         assert_eq!(legacy.near_visible_missed_detection_distance, 0.0);
         assert_eq!(
             legacy.maximum_obstacle_time_difference,
@@ -943,15 +979,21 @@ mod tests {
         // Warm starts import search dimensions, never opt old recordings into
         // visibility behavior absent from their live baseline.
         let candidate = decode(&legacy, encode(&current));
-        assert!(candidate.visible_missed_detection_timeout.is_zero());
+        assert_eq!(
+            candidate.visible_missed_detection_timeout,
+            std::time::Duration::from_secs(1_000_000)
+        );
         assert_eq!(candidate.field_boundary_validity_decay_rate, 0.0);
-        assert_eq!(candidate.maximum_detection_distance, 0.0);
+        assert_eq!(candidate.maximum_detection_distance, 1000.0);
         assert_eq!(candidate.hidden_validity_decay_rate, None);
         assert_eq!(candidate.visible_missed_validity_decay_rate, None);
         assert_eq!(candidate.competing_hypothesis_validity_decay_rate, None);
         assert_eq!(candidate.near_visible_missed_validity_decay_rate, None);
         assert_eq!(candidate.nearby_spawn_validity_factor, None);
-        assert!(candidate.near_visible_missed_detection_timeout.is_zero());
+        assert_eq!(
+            candidate.near_visible_missed_detection_timeout,
+            std::time::Duration::from_secs(1_000_000)
+        );
         assert_eq!(candidate.near_visible_missed_detection_distance, 0.0);
         assert_eq!(
             candidate.maximum_obstacle_time_difference,

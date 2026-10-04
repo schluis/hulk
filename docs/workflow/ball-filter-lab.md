@@ -141,3 +141,42 @@ Re-evaluate every baseline under v9 before comparing new candidates. Losses
 from v8 and v9 are not directly comparable. For clean single-ball fast-shot
 checks, also inspect the primary hypotheses: one sustained track is the target,
 while clutter recordings may legitimately require alternative hypotheses.
+
+
+### Literal ball-filter parameter limits
+
+Limits now use their numeric values directly. Existing parameter files with the
+old zero-disable convention must be explicitly converted before replay or tuning;
+ordinary loading never interprets zero as infinity.
+
+| Parameter | Meaning of zero | Permissive value |
+| --- | --- | --- |
+| `maximum_matching_distance`, `reacquisition_matching_distance` | Only coincident positions can match (where the gate applies) | 1000 m |
+| `maximum_detection_distance`, `publication_maximum_distance` | Only the origin is within range | 1000 m |
+| `maximum_detection_radius_ratio` | Reject positive radii; one requires equal radii | 1,000,000 |
+| `radius_consistency_maximum_distance` | Check size only at the origin | 1000 m checks the whole field |
+| `selection_confidence_cap` | Cap selection support at zero | 1,000,000 |
+| `publication_maximum_covariance_ratio` | Require zero auxiliary covariance | 1,000,000 |
+| Publication age and clear-view miss timeouts | Current observation only / expire on first clear miss | 1,000,000 s |
+| `field_boundary_confidence_decay_distance` | Hard boundary | Large distance gives gradual decay |
+| `publication_detection_noise` | Zero measurement noise, no implicit fallback | Set the desired noise explicitly |
+
+Zero weights and decay rates already mean zero contribution and stay unchanged.
+`resting_velocity_threshold` and the near-miss region use strict less-than tests:
+zero gives an empty nonnegative speed/distance range. The likelihood-based resting
+transition remains independent. A long near-miss timeout does not cancel its
+independent decay rate; set that rate to zero for no additional decay.
+The unused `maximum_matching_cost_validity_penalty_factor` has been removed.
+
+Convert a **legacy standalone ball-filter file once**, writing a new file:
+
+```sh
+cargo run --release -p ball-filter-tuner --bin migrate-ball-filter-parameters --   legacy-ball-filter.json5 > literal-ball-filter.json5
+```
+
+Do not run this conversion on a file already using literal semantics: a deliberate
+zero would be changed. Keep the original capture configuration and recording
+immutable; use the converted capture configuration for live/replay verification.
+Tuner reports record `parameter_semantics: "literal_limits_v1"`; the objective
+version separately describes scoring. Search uses literal limits and logarithmic
+coordinates (log1p for bounds including zero), without disabled-value sentinels.
