@@ -88,23 +88,34 @@ impl BallFilter {
             };
             validity / (1.0 + weight * hypothesis.position_covariance().trace().max(0.0))
         };
-        let established_incumbent = ((uncertainty_weight.is_finite() && uncertainty_weight > 0.0)
-            || cap_enabled)
-            && candidates
-                .clone()
-                .max_by(|(_, _, a), (_, _, b)| a.total_cmp(b))
-                .is_some_and(|(track, _, _)| track.validity >= confirmation_confidence);
-        let (incumbent, incumbent_recovery_rank, _) = candidates
+        // Resolve the unchanged selection first. Enabling an arbitrarily small
+        // ranking penalty must not remove otherwise eligible hypotheses.
+        let (baseline, baseline_recovery_rank, _) = candidates
             .clone()
-            // A newborn's small covariance is not independent confirmation.
-            // Require the same support as stale-track recovery before it
-            // can displace an established track on uncertainty alone.
-            .filter(|(track, _, _)| {
-                !established_incumbent || track.validity >= confirmation_confidence
+            .max_by(|(_, _, a), (_, _, b)| a.total_cmp(b))?;
+        let baseline = candidates
+            .clone()
+            .filter(|(candidate, recovery_rank, _)| {
+                candidate.validity >= confirmation_confidence
+                    && candidate.last_seen > baseline.last_seen
+                    && candidate.last_seen.duration_since(baseline.last_seen)
+                        > STALE_TRACK_RECOVERY_GRACE
+                    && *recovery_rank >= baseline_recovery_rank
             })
-            .max_by(|(a, _, validity_a), (b, _, validity_b)| {
-                rank(a, *validity_a).total_cmp(&rank(b, *validity_b))
-            })?;
+            .max_by(|(a, rank_a, validity_a), (b, rank_b, validity_b)| {
+                rank_a
+                    .total_cmp(rank_b)
+                    .then_with(|| a.last_seen.cmp(&b.last_seen))
+                    .then_with(|| validity_a.total_cmp(validity_b))
+            })
+            .map(|(hypothesis, _, _)| hypothesis)
+            .unwrap_or(baseline);
+        let (incumbent, incumbent_recovery_rank, _) =
+            candidates
+                .clone()
+                .max_by(|(a, _, validity_a), (b, _, validity_b)| {
+                    rank(a, *validity_a).total_cmp(&rank(b, *validity_b))
+                })?;
         let recovered = candidates
             .filter(|(candidate, recovery_rank, _)| {
                 candidate.validity >= confirmation_confidence
@@ -122,7 +133,19 @@ impl BallFilter {
             .map(|(hypothesis, _, _)| hypothesis);
         // Selection does not change stored validity, output eligibility, decay,
         // or timeout. A lone false observation cannot trigger stale recovery.
-        Some(recovered.unwrap_or(incumbent))
+        let selected = recovered.unwrap_or(incumbent);
+        // Uncertainty is useful only to refine two spatially consistent tracks.
+        // A fresh, independently confirmed estimate can refine a stale estimate;
+        // covariance alone is not evidence that a distant competing ball is real.
+        let supported_refinement = selected.validity >= confirmation_confidence
+            && selected.last_seen > baseline.last_seen
+            && selected.position_covariance().trace() < baseline.position_covariance().trace()
+            && (selected.position().position - baseline.position().position).norm() <= 0.25;
+        Some(if supported_refinement {
+            selected
+        } else {
+            baseline
+        })
     }
 
     pub fn decay_hypotheses(&mut self, decay_factor_criterion: impl Fn(&BallHypothesis) -> f32) {
@@ -282,7 +305,7 @@ mod tests {
         if let BallMode::Moving(state) = &mut uncertain.mode {
             state.covariance *= 100.0;
         }
-        let precise = track(0.5, 5.0, 100_000_000);
+        let precise = track(4.05, 5.0, 140_000_000);
         let filter = BallFilter {
             hypotheses: vec![uncertain, precise],
         };
@@ -316,7 +339,7 @@ mod tests {
     #[test]
     fn capped_selection_preserves_confirmation_eligibility_and_stored_confidence() {
         let mut established = track(1.0, 50.0, 0);
-        let mut recent = track(2.0, 4.0, 0);
+        let mut recent = track(1.05, 4.0, 40_000_000);
         if let BallMode::Moving(state) = &mut established.mode {
             state.covariance *= 10.0;
         }
@@ -350,6 +373,30 @@ mod tests {
         );
         assert_eq!(filter.hypotheses[0].validity, 50.0);
         assert!(filter.select_hypothesis(100.0, |_| 1.0, 1.0, 5.0).is_none());
+    }
+
+    #[test]
+    fn ranking_cannot_replace_supported_output_with_distant_or_stale_precision() {
+        for (x, seen, confidence) in [
+            (2.0, 40_000_000, 5.0),
+            (1.05, 0, 5.0),
+            (1.05, 40_000_000, 2.0),
+        ] {
+            let mut incumbent = track(1.0, 10.0, 0);
+            if let BallMode::Moving(state) = &mut incumbent.mode {
+                state.covariance *= 100.0;
+            }
+            let alternative = track(x, confidence, seen);
+            let filter = BallFilter {
+                hypotheses: vec![incumbent, alternative],
+            };
+            for weight in [f32::EPSILON, 0.01, 1.0, 100.0] {
+                let selected = filter.select_hypothesis(0.5, |_| 1.0, weight, 3.0).unwrap();
+                assert_eq!(selected.position().position.x(), 1.0);
+                assert_eq!(filter.hypotheses[0].validity, 10.0);
+                assert_eq!(filter.hypotheses[1].validity, confidence);
+            }
+        }
     }
 
     #[test]

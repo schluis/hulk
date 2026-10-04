@@ -22,6 +22,9 @@
   },
   ball_confidence_threshold: 0.6,
   log_likelihood_of_zero_velocity_threshold: 0.5,
+  // Refine selection only with a confirmed, fresher, nearby, more certain track.
+  hypothesis_uncertainty_weight: 10.0,
+  selection_confidence_cap: 3.0,
   maximum_matching_cost: 0.25,
   maximum_matching_cost_validity_penalty_factor: 0.14,
   maximum_number_of_hypotheses: 15,
