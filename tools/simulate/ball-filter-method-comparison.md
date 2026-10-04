@@ -221,3 +221,44 @@ Predeclared independent localization stress (same 24 clips, scoring truth/camera
 Reproduction/provenance artifacts live under `logs/ball-improvement-20261003` on this server: `candidate144-before-sixth-audit-manifest.json` (frozen source/parameters/binary hashes), `sixth-audit-complete-manifest.json` (capture hashes and commands), `sixth-audit-verdict.json` (every ordinary/wobble guard), `sixth-audit-diagnostics-{baseline,candidate}/availability.json` (per-recording acquisition/reacquisition), `final168-verification/report.json` and `final168-integration-verdict.json` (exact integrated replay), `final168-tests.log`, `final168-clippy.log`, `final168-simulator-build.log`, `final168-approach/report.json`, and `final-completion-audit.json`. Captures and immutable binaries are local artifacts, not a clean-checkout download guarantee. Use a new output directory when reproducing evaluator commands; existing reports are protected from overwrite.
 
 The Student-t, IMM and PDA adaptations remain separate worktree experiments. Their matched comparison is documented above; the promoted change is the geometry-supported auxiliary history, not a claim of reproducing a published SOTA method. No parameters were selected from the sixth audit.
+
+## Preserved-worktree continuation audit — 2026-10-04
+
+At the user's request, all eight ball-filter worktrees were checked again, including the uncommitted soft-geometry v4 implementation. Each implementation was copied into a disposable source tree and evaluated with the current, shared v8 scoring and recording code. Algorithm-specific tracking source, parameter types and search encoding were retained. The evaluator adapter permits zero trials and adds prior wobble after exact capture replay verification. Original worktrees, dirty edits, production parameters and monitor work were preserved.
+
+This audit evaluated **19 fixed configurations × 4 localization amplitudes = 76 cases**, each across all **168 inspected recordings**. The historical selected configurations were reused; where a grid had no qualifying improvement, its lowest-loss rejected candidate was included as an explicitly rejected diagnostic probe. IMM also received an enabled probe because its historical winner disabled the model. This is a fixed-candidate comparison under common v8 guards, **not a new equal-budget optimization or independent validation**. The sixth audit is now part of this inspected comparison dataset.
+
+Ordinary-input results below compare against the original capture filter. The failing-clip column excludes aggregate failures; all safeguards must pass for qualification.
+
+| Fixed configuration | Close RMSE, m | RMS spatial lag, s | Failing clips / 168 |
+|---|---:|---:|---:|
+| Original filter / every disabled control | 0.427070 | 0.788793 | 0 |
+| Historical selected Student-t | 0.345643 | 0.586990 | 70 |
+| Historical selected IMM (model disabled) | 0.345643 | 0.586990 | 70 |
+| Enabled IMM probe, otherwise capture parameters | 0.966421 | 1.127217 | 119 |
+| Historical selected PDA | 0.345652 | 0.586958 | 69 |
+| Historical selected output-only IMM | 0.424413 | 0.788131 | 37 |
+| Lowest-loss rejected output-only IMM probe | 0.408232 | 0.787864 | 57 |
+| Historical selected selection-only (baseline-identical) | 0.427070 | 0.788793 | 0 |
+| Lowest-loss rejected selection-only probe | 0.404496 | 0.522033 | 17 |
+| Lowest-loss rejected soft-geometry v4 probe | 0.406584 | 0.622236 | 17 |
+| Lowest-loss rejected output-reacquisition v5 probe | 0.424300 | 0.789880 | 1 |
+| Integrated publication-filter configuration | **0.351157** | **0.657605** | **0** |
+
+Student-t, selected IMM and PDA also fail the aggregate false-track guard: **726.512 → 741.144 s**. Output-reacquisition also fails aggregate RMS/mean-absolute spatial lag. None of the tested improving alternative configurations passes every original-filter safeguard, and none passes every safeguard against the integrated publication filter. Their lower aggregate metrics in some columns do not justify promotion. This does not rule out retuning these methods or combining them with the publication history; neither was tested here.
+
+All disabled controls reproduce identical per-recording scores at every amplitude, and the publication configuration reproduces all 168 previously frozen ordinary per-recording scores exactly. The publication filter also passes every per-recording and aggregate guard on **all 168 recordings** at each of 0, 0.1, 0.25 and 0.5 m per-axis prior wobble, expanding stress coverage beyond the earlier 48 inspected development plus 24 independent clips. At zero wobble, correct-ball unavailable time improves **1516.352 → 1454.792 s**, with false-track time unchanged at **726.512 s**.
+
+Each copied filter passes its library tests: Student-t 101, IMM 102, PDA 101, output-only IMM 103, selection-only 105, soft geometry 109, output reacquisition 111, publication filter 108. The shared evaluator passes 38 tests with each implementation. Every release build and strict library Clippy check passes, including the previously unverified final soft-geometry edits.
+
+Evidence is under `logs/ball-improvement-20261003/worktree-audit-20261004-v2/`: `manifest.json` records worktree HEADs/status, source hashes, binary hashes, parameter hashes and all 168 input hashes; `*-source.tar.gz` preserves effective source; `*-{build,test,clippy}.log` records checks; each case directory contains its full `report.json`; `verdict.json` contains failures against both original and production references; `completion-audit.json` verifies coverage, hashes and unchanged worktrees. Earlier `worktree-audit-20261004/` artifacts record an abandoned adapter build and are not the completed audit.
+
+To reproduce, choose unused output and scratch directories:
+
+```bash
+python3 tools/simulate/check_remaining_worktrees.py \
+  --output logs/ball-improvement-20261003/worktree-audit-new \
+  --scratch /tmp/hulk-worktree-audit-new --workers 16
+```
+
+The runner uses the locally installed Rust 1.98.1 toolchain and offline dependencies. `--resume` verifies frozen input/source/binary/parameter hashes before reusing built evaluators and rerunning the fixed cases. Synthetic detector and physical closed-loop limitations remain unchanged; this audit introduces no new production setting.
