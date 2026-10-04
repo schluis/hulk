@@ -306,6 +306,10 @@ pub struct BallFilterParameters {
     /// Maximum alternate ball distance for correction; zero disables this gate.
     #[serde(default)]
     pub publication_maximum_distance: f32,
+    /// Additional field-boundary uncertainty buffer for the auxiliary history.
+    /// The main filter's existing margin remains a lower bound.
+    #[serde(default)]
+    pub publication_field_boundary_margin: f32,
     /// Bounded uncertainty penalty for choosing between feasible associations.
     /// Zero preserves legacy assignment; does not change the matching gate.
     #[serde(default)]
@@ -359,6 +363,7 @@ impl Default for BallFilterParameters {
             publication_detection_noise: 0.05,
             publication_maximum_age: Duration::ZERO,
             publication_maximum_distance: 0.0,
+            publication_field_boundary_margin: 0.0,
             association_uncertainty_weight: Default::default(),
             visibility_uncertainty_scale: Default::default(),
             maximum_matching_cost_validity_penalty_factor: Default::default(),
