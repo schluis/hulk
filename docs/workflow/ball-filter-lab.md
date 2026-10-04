@@ -180,3 +180,41 @@ immutable; use the converted capture configuration for live/replay verification.
 Tuner reports record `parameter_semantics: "literal_limits_v1"`; the objective
 version separately describes scoring. Search uses literal limits and logarithmic
 coordinates (log1p for bounds including zero), without disabled-value sentinels.
+
+### Local verification after the literal-limit conversion (2026-10-04)
+
+The production change is committed locally as `bc15e987d`; its simulator equivalent
+is `b2ccd7fe0`, followed by tooling/migration commit `1b8fbef53`. These commits have
+not been pushed. Continue committing locally; do not push without a new instruction.
+
+Validation: 116 ball-filter tests and 45 tuner tests pass; `simulate` and `twix`
+check successfully. Explicitly converted capture parameters reproduce live outputs
+on all 48 original recordings. Aggregate and per-recording scores exactly match
+the preceding preferred baseline. Three additional fast-near-shot recordings also
+pass live/replay verification.
+
+A fresh search used 32 workers, 64 trials each, alternating coordinate search and
+differential evolution, with one thread per worker and the existing 45 GiB RAM
+cap. It included 26 training and 25 development recordings, adding the new fast
+shots. All 2,048 trials completed; none improved training while satisfying the
+position, velocity, availability and false-track guards. Training loss remains
+3.972739359 and development loss 3.302223250 under v9. This is a bounded search,
+not proof that no better parameters exist. No candidate was promoted.
+
+Occlusion replay confirms a fragmentation example in
+`final-contested/train-42.mcap` at 12.082 s: four pre-existing hypotheses remain;
+the minimum squared Mahalanobis cost to the single returning detection is 0.449952,
+above `maximum_matching_cost = 0.25`, so a fifth hypothesis starts at zero velocity.
+An older hypothesis had survived robot occlusion but predicted only 0.0156 m/s.
+It already estimated 0.0296 m/s at its last observation (11.442 s), when the
+recorded physical ball speed was approximately 3.66 m/s. Occlusion exposes the
+poor prediction; survival alone does not provide good reassociation. The physical
+1000 m gate is not the limiting gate in this example. Fast-ball fragmentation also
+occurs without obstacles, so these results do not identify occlusion as its sole
+cause or establish a fix.
+
+Local evidence and reproducible commands are under
+`/home/schluis/hulk/logs/ball-filter-literal-parameters-20261004/`:
+`parity-comparison.json`, `search/protocol.json`, `search/status.json`, and
+`occlusion/summary.json`. Diagnostic source/binaries are preserved there without
+adding instrumentation to the production filter. All jobs are finished.
