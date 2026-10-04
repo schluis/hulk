@@ -294,6 +294,17 @@ pub struct BallFilterParameters {
     pub visibility_uncertainty_scale: f32,
     /// Legacy compatibility field; rejected associations no longer penalize track validity.
     pub maximum_matching_cost_validity_penalty_factor: f32,
+    /// Soft penalty for inconsistent detection size in output ranking only.
+    #[serde(default)]
+    pub selection_size_consistency_weight: f32,
+    /// Maximum separation for a physically supported selection refinement.
+    /// Nonpositive values impose no cutoff; omitted legacy settings use 0.1 m.
+    #[serde(default = "default_size_refinement_distance")]
+    pub selection_size_consistency_maximum_distance: f32,
+}
+
+fn default_size_refinement_distance() -> f32 {
+    0.1
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, ros_z::Message)]

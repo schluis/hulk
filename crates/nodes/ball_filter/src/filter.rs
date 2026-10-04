@@ -25,7 +25,7 @@ pub struct BallFilter {
 
 impl BallFilter {
     pub fn best_hypothesis(&self, validity_threshold: f32) -> Option<&BallHypothesis> {
-        self.select_hypothesis(validity_threshold, |_| 1.0, 0.0, 0.0)
+        self.select_hypothesis(validity_threshold, |_| 1.0, 0.0, 0.0, 0.0)
     }
 
     pub fn best_hypothesis_with_field_pose(
@@ -34,19 +34,71 @@ impl BallFilter {
         dimensions: &FieldDimensions,
         ground_to_field: Option<Isometry2<Ground, Field>>,
     ) -> Option<&BallHypothesis> {
-        self.select_hypothesis(
+        let confidence_weight = |hypothesis: &BallHypothesis| {
+            crate::field_prior::confidence_weight(
+                hypothesis,
+                ground_to_field,
+                dimensions,
+                parameters,
+            )
+        };
+        let baseline = self.select_hypothesis(
             parameters.validity_output_threshold,
-            |hypothesis| {
-                crate::field_prior::confidence_weight(
-                    hypothesis,
-                    ground_to_field,
-                    dimensions,
-                    parameters,
-                )
-            },
+            confidence_weight,
             parameters.hypothesis_uncertainty_weight,
             parameters.selection_confidence_cap,
-        )
+            0.0,
+        )?;
+        Some(self.refine_size(
+            baseline,
+            parameters.validity_output_threshold,
+            confidence_weight,
+            parameters.selection_size_consistency_weight,
+            parameters.selection_size_consistency_maximum_distance,
+        ))
+    }
+
+    fn refine_size<'a>(
+        &'a self,
+        baseline: &'a BallHypothesis,
+        validity_threshold: f32,
+        confidence_weight: impl Fn(&BallHypothesis) -> f32,
+        strength: f32,
+        maximum_distance: f32,
+    ) -> &'a BallHypothesis {
+        if !strength.is_finite() || strength <= 0.0 || !maximum_distance.is_finite() {
+            return baseline;
+        }
+        let error = |hypothesis: &BallHypothesis| {
+            hypothesis
+                .size_consistency_error
+                .filter(|e| e.is_finite() && *e >= 0.0)
+        };
+        let tolerance = 1.5_f32.ln();
+        if !error(baseline).is_some_and(|e| e > tolerance) {
+            return baseline;
+        }
+        let confirmation = 3.0_f32.max(validity_threshold);
+        let rank = |hypothesis: &BallHypothesis| {
+            let excess = (error(hypothesis).unwrap_or(0.0) - tolerance).max(0.0);
+            hypothesis.validity.min(confirmation) * confidence_weight(hypothesis)
+                / (1.0 + strength * excess * excess)
+        };
+        let baseline_rank = rank(baseline);
+        self.hypotheses
+            .iter()
+            .filter(|candidate| {
+                candidate.validity >= confirmation
+                    && candidate.validity * confidence_weight(candidate) >= validity_threshold
+                    && candidate.last_seen >= baseline.last_seen
+                    && error(candidate).is_some_and(|e| e <= tolerance)
+                    && (maximum_distance <= 0.0
+                        || (candidate.position().position - baseline.position().position).norm()
+                            <= maximum_distance)
+                    && rank(candidate) > baseline_rank
+            })
+            .max_by(|a, b| rank(a).total_cmp(&rank(b)))
+            .unwrap_or(baseline)
     }
 
     fn select_hypothesis(
@@ -55,6 +107,7 @@ impl BallFilter {
         confidence_weight: impl Fn(&BallHypothesis) -> f32,
         uncertainty_weight: f32,
         confidence_cap: f32,
+        size_consistency_weight: f32,
     ) -> Option<&BallHypothesis> {
         let confirmation_confidence = 3.0_f32.max(validity_threshold);
         let candidates = self.hypotheses.iter().filter_map(|hypothesis| {
@@ -122,7 +175,14 @@ impl BallFilter {
             .map(|(hypothesis, _, _)| hypothesis);
         // Selection does not change stored validity, output eligibility, decay,
         // or timeout. A lone false observation cannot trigger stale recovery.
-        Some(recovered.unwrap_or(incumbent))
+        let baseline = recovered.unwrap_or(incumbent);
+        Some(self.refine_size(
+            baseline,
+            validity_threshold,
+            confidence_weight,
+            size_consistency_weight,
+            0.1,
+        ))
     }
 
     pub fn decay_hypotheses(&mut self, decay_factor_criterion: impl Fn(&BallHypothesis) -> f32) {
@@ -242,6 +302,7 @@ impl BallFilter {
             validity_decay_evidence: None,
             leadership_evidence: None,
             last_observation_size_plausible: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         };
 
@@ -278,6 +339,152 @@ mod tests {
     }
 
     #[test]
+    fn enabled_size_evidence_does_not_change_unrelated_confirmation_policy() {
+        let established = track(4.0, 100.0, 0);
+        let newborn = track(0.5, 2.0, 0);
+        let filter = BallFilter {
+            hypotheses: vec![established, newborn],
+        };
+        let field_weight = |h: &BallHypothesis| {
+            if h.position().position.x() > 1.0 {
+                0.01
+            } else {
+                1.0
+            }
+        };
+        for strength in [0.0, 0.001, 1.0, 10.0] {
+            let selected = filter
+                .select_hypothesis(0.5, field_weight, 0.0, 0.0, strength)
+                .unwrap();
+            assert_eq!(selected.position().position.x(), 0.5);
+        }
+    }
+
+    #[test]
+    fn refinement_requires_fresh_known_size_and_spatial_agreement() {
+        let mut incumbent = track(4.0, 20.0, 10);
+        incumbent.size_consistency_error = Some(2.0);
+        let mut contender = track(4.05, 5.0, 9);
+        contender.size_consistency_error = Some(0.0);
+        let mut filter = BallFilter {
+            hypotheses: vec![incumbent, contender],
+        };
+        for stage in 0..4 {
+            match stage {
+                1 => {
+                    filter.hypotheses[1].last_seen = Time::from_nanos(11);
+                    filter.hypotheses[1].size_consistency_error = None;
+                }
+                2 => {
+                    filter.hypotheses[1].size_consistency_error = Some(0.0);
+                    if let BallMode::Moving(m) = &mut filter.hypotheses[1].mode {
+                        m.mean.x = 5.0;
+                    }
+                }
+                3 => {
+                    if let BallMode::Moving(m) = &mut filter.hypotheses[1].mode {
+                        m.mean.x = 4.05;
+                    }
+                }
+                _ => {}
+            }
+            let selected = filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 1.0)
+                .unwrap();
+            assert_eq!(
+                selected.position().position.x(),
+                if stage == 3 { 4.05 } else { 4.0 }
+            );
+        }
+    }
+
+    #[test]
+    fn size_ranking_keeps_availability_and_requires_confirmation() {
+        let mut implausible = track(4.0, 10.0, 0);
+        implausible.size_consistency_error = Some(2.0);
+        let mut plausible = track(4.05, 5.0, 0);
+        plausible.size_consistency_error = Some(0.01);
+        let mut filter = BallFilter {
+            hypotheses: vec![implausible, plausible],
+        };
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 0.0)
+                .unwrap()
+                .validity,
+            10.0
+        );
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 1.0)
+                .unwrap()
+                .validity,
+            5.0
+        );
+        assert_eq!(
+            filter
+                .select_hypothesis(6.0, |_| 1.0, 0.0, 0.0, 1.0)
+                .unwrap()
+                .validity,
+            10.0
+        );
+        filter.hypotheses[1].validity = 2.0;
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 1.0)
+                .unwrap()
+                .validity,
+            10.0
+        );
+        assert!(
+            filter
+                .select_hypothesis(11.0, |_| 1.0, 0.0, 0.0, 1.0)
+                .is_none()
+        );
+        assert_eq!(filter.hypotheses[0].validity, 10.0);
+    }
+
+    #[test]
+    fn size_evidence_does_not_block_confirmed_stale_track_recovery() {
+        let mut stale = track(4.0, 20.0, 0);
+        stale.size_consistency_error = Some(0.0);
+        let mut fresh = track(1.0, 5.0, 200_000_000);
+        fresh.size_consistency_error = Some(0.1);
+        let filter = BallFilter {
+            hypotheses: vec![stale, fresh],
+        };
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 1.0)
+                .unwrap()
+                .position()
+                .position
+                .x(),
+            1.0
+        );
+    }
+
+    #[test]
+    fn size_evidence_preserves_original_stale_recovery_topology() {
+        let mut stale = track(4.0, 20.0, 0);
+        stale.size_consistency_error = Some(0.1);
+        let mut fresh = track(1.0, 5.0, 200_000_000);
+        fresh.size_consistency_error = Some(1.0);
+        let filter = BallFilter {
+            hypotheses: vec![stale, fresh],
+        };
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 1.0)
+                .unwrap()
+                .position()
+                .position
+                .x(),
+            1.0
+        );
+    }
+
+    #[test]
     fn uncertainty_ranking_preserves_eligibility_and_stored_confidence() {
         let mut uncertain = track(4.0, 10.0, 100_000_000);
         if let BallMode::Moving(state) = &mut uncertain.mode {
@@ -289,14 +496,14 @@ mod tests {
         };
         assert_eq!(
             filter
-                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0)
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 0.0)
                 .unwrap()
                 .validity,
             10.0
         );
         assert_eq!(
             filter
-                .select_hypothesis(0.5, |_| 1.0, 1.0, 0.0)
+                .select_hypothesis(0.5, |_| 1.0, 1.0, 0.0, 0.0)
                 .unwrap()
                 .validity,
             5.0
@@ -304,12 +511,16 @@ mod tests {
         // Penalizing uncertainty cannot hide the only eligible track.
         assert_eq!(
             filter
-                .select_hypothesis(6.0, |_| 1.0, 1.0, 0.0)
+                .select_hypothesis(6.0, |_| 1.0, 1.0, 0.0, 0.0)
                 .unwrap()
                 .validity,
             10.0
         );
-        assert!(filter.select_hypothesis(11.0, |_| 1.0, 1.0, 0.0).is_none());
+        assert!(
+            filter
+                .select_hypothesis(11.0, |_| 1.0, 1.0, 0.0, 0.0)
+                .is_none()
+        );
         assert_eq!(filter.hypotheses[0].validity, 10.0);
         assert_eq!(filter.hypotheses[1].validity, 5.0);
     }
@@ -329,7 +540,7 @@ mod tests {
         };
         assert_eq!(
             filter
-                .select_hypothesis(0.5, |_| 1.0, 1.0, 5.0)
+                .select_hypothesis(0.5, |_| 1.0, 1.0, 5.0, 0.0)
                 .unwrap()
                 .validity,
             4.0
@@ -337,20 +548,24 @@ mod tests {
         filter.hypotheses[1].validity = 2.0;
         assert_eq!(
             filter
-                .select_hypothesis(0.5, |_| 1.0, 1.0, 5.0)
+                .select_hypothesis(0.5, |_| 1.0, 1.0, 5.0, 0.0)
                 .unwrap()
                 .validity,
             50.0
         );
         assert_eq!(
             filter
-                .select_hypothesis(10.0, |_| 1.0, 1.0, 5.0)
+                .select_hypothesis(10.0, |_| 1.0, 1.0, 5.0, 0.0)
                 .unwrap()
                 .validity,
             50.0
         );
         assert_eq!(filter.hypotheses[0].validity, 50.0);
-        assert!(filter.select_hypothesis(100.0, |_| 1.0, 1.0, 5.0).is_none());
+        assert!(
+            filter
+                .select_hypothesis(100.0, |_| 1.0, 1.0, 5.0, 0.0)
+                .is_none()
+        );
     }
 
     #[test]

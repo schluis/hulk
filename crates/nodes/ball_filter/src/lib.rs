@@ -1,4 +1,5 @@
 mod reacquisition;
+mod size_consistency;
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use color_eyre::{Result, eyre::WrapErr};
@@ -500,6 +501,14 @@ fn advance_all_hypotheses(
             let score = match_matrix[(hypothesis_index, percept_index)];
             used_percepts.push(percept_index);
             matched[hypothesis_index] = true;
+            if filter_parameters.selection_size_consistency_weight > 0.0 {
+                size_consistency::observe(
+                    hypothesis,
+                    &ball_percepts[percept_index],
+                    camera_matrix,
+                    field_dimensions.ball_radius,
+                );
+            }
             hypothesis.update(
                 time,
                 ball_percepts[percept_index].percept_in_ground,
@@ -527,6 +536,16 @@ fn advance_all_hypotheses(
             {
                 hypothesis.last_observation_size_plausible =
                     radius_consistency(percept, camera_matrix, field_dimensions.ball_radius);
+            }
+            if filter_parameters.selection_size_consistency_weight > 0.0
+                && let Some(hypothesis) = ball_filter.hypotheses.last_mut()
+            {
+                size_consistency::observe(
+                    hypothesis,
+                    percept,
+                    camera_matrix,
+                    field_dimensions.ball_radius,
+                );
             }
             matched.push(true);
         }
@@ -993,6 +1012,44 @@ fn is_visible_to_camera(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn size_evidence_uses_focal_length_and_camera_depth() {
+        let camera = horizontal_test_camera();
+        let radius = FieldDimensions::SPL_2025.ball_radius;
+        let ground = point![1.0, 0.3];
+        let center = camera.ground_with_z_to_pixel(ground, radius).unwrap();
+        let depth = (camera.ground_to_camera * point![ground.x(), ground.y(), radius]).z();
+        let projected_radius =
+            radius * camera.intrinsics.focals.x.min(camera.intrinsics.focals.y) / depth;
+        let mut percept = BallPercept {
+            percept_in_ground: MultivariateNormalDistribution {
+                mean: ground.inner.coords,
+                covariance: Matrix2::identity(),
+            },
+            image_location: Circle {
+                center,
+                radius: projected_radius,
+            },
+        };
+        let mut hypothesis = hypothesis::BallHypothesis::new(
+            MultivariateNormalDistribution {
+                mean: nalgebra::vector![ground.x(), ground.y(), 0.0, 0.0],
+                covariance: Matrix4::identity(),
+            },
+            Time::zero(),
+        );
+        size_consistency::observe(&mut hypothesis, &percept, Some(&camera), radius);
+        assert!(hypothesis.size_consistency_error.unwrap() < 1e-5);
+        hypothesis.size_consistency_error = None;
+        percept.image_location.radius *= 0.25;
+        size_consistency::observe(&mut hypothesis, &percept, Some(&camera), radius);
+        assert!((hypothesis.size_consistency_error.unwrap() - 4.0_f32.ln()).abs() < 1e-5);
+        hypothesis.size_consistency_error = None;
+        percept.image_location.radius *= 16.0;
+        size_consistency::observe(&mut hypothesis, &percept, Some(&camera), radius);
+        assert_eq!(hypothesis.size_consistency_error, Some(0.0));
+    }
+
     use linear_algebra::point;
     use nalgebra::vector;
     use types::multivariate_normal_distribution::MultivariateNormalDistribution;
@@ -1591,6 +1648,7 @@ mod tests {
             validity_decay_evidence: None,
             leadership_evidence: None,
             last_observation_size_plausible: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         };
         let mut filter = BallFilter {
@@ -1679,6 +1737,7 @@ mod tests {
                 validity_decay_evidence: None,
                 leadership_evidence: None,
                 last_observation_size_plausible: None,
+                size_consistency_error: None,
                 merge_observation_start: None,
             }],
         };
@@ -1784,6 +1843,7 @@ mod tests {
             validity_decay_evidence: None,
             leadership_evidence: None,
             last_observation_size_plausible: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         };
         let hypothesis2 = BallHypothesis {
@@ -1798,6 +1858,7 @@ mod tests {
             validity_decay_evidence: None,
             leadership_evidence: None,
             last_observation_size_plausible: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         };
 
