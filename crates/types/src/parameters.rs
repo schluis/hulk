@@ -277,7 +277,7 @@ pub struct BallFilterParameters {
     /// covariance-only association; positive values reject distant percepts.
     #[serde(default)]
     pub maximum_matching_distance: f32,
-    /// Physical association gate after a >120 ms observation gap; zero disables.
+    /// Physical gate after a gap for quiet balls outside kicking reach; zero disables.
     #[serde(default)]
     pub reacquisition_matching_distance: f32,
     /// Maximum ratio between observed and projected ball radii, in either

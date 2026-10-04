@@ -1,3 +1,4 @@
+mod reacquisition;
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use color_eyre::{Result, eyre::WrapErr};
@@ -430,8 +431,7 @@ fn advance_all_hypotheses(
     if reacquisition_distance.is_finite() && reacquisition_distance > 0.0 {
         for ((row, column), score) in match_matrix.indexed_iter_mut() {
             let hypothesis = &ball_filter.hypotheses[row];
-            if time > hypothesis.last_seen
-                && time.duration_since(hypothesis.last_seen) > Duration::from_millis(120)
+            if reacquisition::protect_prior(hypothesis, time, obstacles, filter_parameters)
                 && (ball_percepts[column].percept_in_ground.mean
                     - hypothesis.position().position.inner.coords)
                     .norm_squared()
@@ -1424,12 +1424,13 @@ mod tests {
             let mut parameters = BallFilterParameters::default();
             parameters.reacquisition_matching_distance = gate;
             parameters.maximum_matching_cost = 1.0;
+            parameters.velocity_decay_factor = 0.998;
             parameters.hidden_validity_exponential_decay_factor = 1.0;
             parameters.validity_discard_threshold = 0.2;
             parameters.noise.initial_covariance.fill(1.0);
             let mut old = BallHypothesis::new(
                 MultivariateNormalDistribution {
-                    mean: nalgebra::Vector4::zeros(),
+                    mean: nalgebra::vector![1.0, 0.0, 0.0, 0.0],
                     covariance: Matrix4::identity() * 10.0,
                 },
                 Time::zero(),
@@ -1440,7 +1441,7 @@ mod tests {
             };
             let percept = BallPercept {
                 percept_in_ground: MultivariateNormalDistribution {
-                    mean: nalgebra::vector![0.5, 0.0],
+                    mean: nalgebra::vector![1.5, 0.0],
                     covariance: Matrix2::identity() * 0.01,
                 },
                 image_location: Circle::new(point![0.0, 0.0], 8.0),
@@ -1451,7 +1452,7 @@ mod tests {
                 Time::from_nanos(millis * 1_000_000),
                 &[percept],
                 None,
-                None,
+                Some(&[]),
                 &[],
                 &parameters,
                 &FieldDimensions::SPL_2025,
@@ -1460,15 +1461,15 @@ mod tests {
             assert_eq!(filter.hypotheses.len(), if should_branch { 2 } else { 1 });
             if should_branch {
                 assert_eq!(filter.hypotheses[0].last_seen, Time::zero());
-                assert_eq!(filter.hypotheses[0].position().position, point![0.0, 0.0]);
+                assert_eq!(filter.hypotheses[0].position().position, point![1.0, 0.0]);
                 assert_eq!(filter.hypotheses[1].validity, 1.0);
-                assert_eq!(filter.hypotheses[1].position().position, point![0.5, 0.0]);
+                assert_eq!(filter.hypotheses[1].position().position, point![1.5, 0.0]);
             } else {
                 assert_eq!(
                     filter.hypotheses[0].last_seen,
                     Time::from_nanos(millis * 1_000_000)
                 );
-                assert!(filter.hypotheses[0].position().position.x() > 0.49);
+                assert!(filter.hypotheses[0].position().position.x() > 1.49);
             }
         }
     }
