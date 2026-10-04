@@ -12369,6 +12369,7 @@ dependencies = [
  "hulk_widgets",
  "image",
  "itertools 0.14.0",
+ "json5",
  "linear_algebra",
  "log",
  "nalgebra 0.34.2",

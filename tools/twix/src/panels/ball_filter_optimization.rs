@@ -1820,7 +1820,12 @@ mod tests {
                         loss: 0.5,
                         ..Default::default()
                     },
-                    ..Default::default()
+                    ..types::ball_filter_tuning::SearchProgress::new(
+                        json5::from_str(include_str!(
+                            "../../../../etc/parameters/base/ball_filter.json5"
+                        ))
+                        .unwrap(),
+                    )
                 }),
                 ..Default::default()
             })

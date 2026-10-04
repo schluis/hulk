@@ -79,7 +79,7 @@ pub struct Metrics {
     pub missing_transform_seconds: f64,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, ros_z::Message)]
+#[derive(Clone, Debug, Serialize, Deserialize, ros_z::Message)]
 pub struct SearchProgress {
     pub reference_frame: String,
     pub trial: u64,
@@ -90,6 +90,22 @@ pub struct SearchProgress {
     pub best_parameters: BallFilterParameters,
     pub validation_baseline: Option<Metrics>,
     pub validation_best: Option<Metrics>,
+}
+
+impl SearchProgress {
+    pub fn new(best_parameters: BallFilterParameters) -> Self {
+        Self {
+            reference_frame: String::new(),
+            trial: 0,
+            trials: 0,
+            best_trial: 0,
+            baseline: Metrics::default(),
+            best: Metrics::default(),
+            best_parameters,
+            validation_baseline: None,
+            validation_best: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, ros_z::Message)]

@@ -1,8 +1,5 @@
 use hsl_network_messages::SubState;
-use types::{
-    controller_input::Button, motion_type::MotionType,
-    primary_state::PrimaryState,
-};
+use types::{controller_input::Button, motion_type::MotionType, primary_state::PrimaryState};
 
 use crate::{
     action,
@@ -11,9 +8,8 @@ use crate::{
     condition,
     conditions::{
         has_ball_position, hulks_is_kicking_team, is_ball_interception_candidate, is_close_to_ball,
-        is_closest_to_ball, is_controller_connected, is_goalkeeper,
-        is_last_hulk_standing, is_primary_state, is_remote_control_enabled, is_remote_kick_mode,
-        is_simple,
+        is_closest_to_ball, is_controller_connected, is_goalkeeper, is_last_hulk_standing,
+        is_primary_state, is_remote_control_enabled, is_remote_kick_mode, is_simple,
     },
     goalkeeper::goalkeeper_subtree,
     head::{look_around, look_at_ball_subtree, search_for_lost_ball_subtree},

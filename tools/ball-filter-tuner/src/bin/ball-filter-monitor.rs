@@ -283,7 +283,7 @@ mod tests {
             "validation_recordings": ["holdout"], "baseline_parameters": {},
             "reference_frame": "ground", "reference_topic": "truth", "namespace": "",
             "penalty_metres": 2.0, "trials": 100,
-            "optimized_parameters": SearchProgress::default().best_parameters,
+            "optimized_parameters": json5::from_str::<types::parameters::BallFilterParameters>(include_str!("../../../../etc/parameters/base/ball_filter.json5")).unwrap(),
             "training": {"baseline": metrics, "optimized": metrics},
             "validation": {"baseline": metrics, "optimized": metrics}
         });

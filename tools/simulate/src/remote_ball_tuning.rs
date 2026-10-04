@@ -51,7 +51,12 @@ mod tests {
                 best_candidate: "remote/run/worker-00/round-000001".into(),
                 ..Default::default()
             },
-            search: Some(SearchProgress::default()),
+            search: Some(SearchProgress::new(
+                json5::from_str(include_str!(
+                    "../../../etc/parameters/base/ball_filter.json5"
+                ))
+                .unwrap(),
+            )),
         }
     }
 
@@ -71,7 +76,12 @@ mod tests {
         assert!(state.problem(102.0).is_some());
         state.remote.best_candidate.clear();
         assert!(state.problem(102.0).is_none());
-        state.search = Some(SearchProgress::default());
+        state.search = Some(SearchProgress::new(
+            json5::from_str(include_str!(
+                "../../../etc/parameters/base/ball_filter.json5"
+            ))
+            .unwrap(),
+        ));
         assert!(state.problem(102.0).is_some());
     }
 

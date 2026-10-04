@@ -391,8 +391,7 @@ pub fn run_with_progress(
         trials: args.trials as u64,
         baseline: (&base_train).into(),
         best: best_metrics,
-        best_parameters: best.clone(),
-        ..Default::default()
+        ..SearchProgress::new(best.clone())
     };
     publish(&progress)?;
     let active_dimensions = active_dimensions(&baseline);

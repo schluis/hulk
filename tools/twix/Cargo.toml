@@ -42,3 +42,6 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 twix_visualization = { workspace = true }
 types = { workspace = true }
 uuid = { workspace = true }
+
+[dev-dependencies]
+json5 = { workspace = true }
