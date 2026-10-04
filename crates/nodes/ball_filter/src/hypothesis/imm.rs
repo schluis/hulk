@@ -14,6 +14,12 @@ pub struct Imm {
     pub states: [Gaussian<4>; 2],
     pub moving_probability: f32,
     pub transition_rate: f32,
+    #[serde(default = "unit_scale")]
+    pub measurement_scale: f32,
+    #[serde(default = "unit_scale")]
+    pub process_scale: f32,
+    #[serde(default = "unit_scale")]
+    pub output_blend: f32,
 }
 
 fn mixture(a: Gaussian<4>, b: Gaussian<4>, weight_b: f32) -> Gaussian<4> {
@@ -33,6 +39,9 @@ impl Imm {
             states: [state; 2],
             moving_probability: 0.5,
             transition_rate,
+            measurement_scale: 1.0,
+            process_scale: 1.0,
+            output_blend: 1.0,
         }
     }
     pub fn combined(&self) -> Gaussian<4> {
@@ -46,6 +55,8 @@ impl Imm {
         moving_noise: Matrix4<f32>,
         resting_noise: Matrix2<f32>,
     ) {
+        let moving_noise = moving_noise * self.process_scale;
+        let resting_noise = resting_noise * self.process_scale;
         let switch = 0.5 * -(-2.0 * self.transition_rate * dt.as_secs_f32()).exp_m1();
         let p = self.moving_probability;
         let prior = (p * (1.0 - switch) + (1.0 - p) * switch).clamp(1e-6, 1.0 - 1e-6);
@@ -62,7 +73,8 @@ impl Imm {
         MovingPredict::predict(&mut self.states[0], dt, odometry, 0.90, resting_q);
         MovingPredict::predict(&mut self.states[1], dt, odometry, decay, moving_noise);
     }
-    pub fn update(&mut self, measurement: Gaussian<2>) {
+    pub fn update(&mut self, mut measurement: Gaussian<2>) {
+        measurement.covariance *= self.measurement_scale;
         let likelihood = |state: Gaussian<4>| {
             let residual = measurement.mean - state.mean.xy();
             let covariance =
@@ -146,4 +158,8 @@ mod tests {
         assert!(imm.moving_probability < 0.5);
         assert!(imm.combined().mean.z.abs() < 0.05);
     }
+}
+
+fn unit_scale() -> f32 {
+    1.0
 }

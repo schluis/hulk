@@ -81,6 +81,30 @@ impl BallHypothesis {
         }
     }
 
+    /// Optional independent estimator for publication. Association, existence,
+    /// field eligibility and selection continue to use the baseline state.
+    pub fn output_position(&self) -> BallPosition<Ground> {
+        match &self.imm {
+            Some(imm) if imm.output_blend > 0.0 => {
+                let baseline = self.position();
+                let original = nalgebra::vector![
+                    baseline.position.x(),
+                    baseline.position.y(),
+                    baseline.velocity.x(),
+                    baseline.velocity.y()
+                ];
+                let mean =
+                    original * (1.0 - imm.output_blend) + imm.combined().mean * imm.output_blend;
+                BallPosition {
+                    position: mean.xy().framed().as_point(),
+                    velocity: vector![mean.z, mean.w],
+                    last_seen: self.last_seen,
+                }
+            }
+            _ => self.position(),
+        }
+    }
+
     pub fn position_covariance(&self) -> Matrix2<f32> {
         match self.mode {
             BallMode::Resting(resting) => resting.covariance,
@@ -105,9 +129,6 @@ impl BallHypothesis {
                 moving_process_noise,
                 resting_process_noise,
             );
-            self.mode = BallMode::Moving(imm.combined());
-            self.motion_evidence = None;
-            return;
         }
         match &mut self.mode {
             BallMode::Resting(resting) => {
@@ -179,8 +200,6 @@ impl BallHypothesis {
         self.validity += validity_bonus;
         if let Some(imm) = &mut self.imm {
             imm.update(measurement);
-            self.mode = BallMode::Moving(imm.combined());
-            return;
         }
 
         match &mut self.mode {
@@ -343,6 +362,57 @@ fn covariance_intersection<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn independent_imm_never_changes_association_state_or_confidence() {
+        let state = MultivariateNormalDistribution {
+            mean: nalgebra::vector![0.0, 0.0, 0.0, 0.0],
+            covariance: Matrix4::identity(),
+        };
+        let mut baseline = BallHypothesis::new(state, Time::from_nanos(0));
+        let mut candidate = baseline.clone();
+        let mut estimator = imm::Imm::new(state, 1.0);
+        estimator.measurement_scale = 0.001;
+        estimator.process_scale = 0.01;
+        candidate.imm = Some(estimator);
+        for step in 1..20 {
+            for hypothesis in [&mut baseline, &mut candidate] {
+                hypothesis.predict(
+                    Duration::from_millis(40),
+                    Isometry2::identity(),
+                    0.998,
+                    Matrix4::identity() * 0.005,
+                    Matrix2::identity() * 0.001,
+                    0.5,
+                );
+                hypothesis.update(
+                    Time::from_nanos(step * 40_000_000),
+                    MultivariateNormalDistribution {
+                        mean: nalgebra::vector![step as f32 * 0.03, 0.0],
+                        covariance: Matrix2::identity(),
+                    },
+                    1.0,
+                );
+            }
+            assert_eq!(candidate.position().position, baseline.position().position);
+            assert_eq!(candidate.position().velocity, baseline.position().velocity);
+            assert_eq!(
+                candidate.position_covariance(),
+                baseline.position_covariance()
+            );
+            assert_eq!(candidate.validity, baseline.validity);
+            assert_eq!(candidate.last_seen, baseline.last_seen);
+        }
+        assert!(
+            (candidate.output_position().position.x() - baseline.position().position.x()).abs()
+                > 0.01
+        );
+        candidate.imm.as_mut().unwrap().output_blend = 0.0;
+        assert_eq!(
+            candidate.output_position().position,
+            baseline.position().position
+        );
+    }
 
     #[test]
     fn resting_decision_uses_velocity_uncertainty_not_position_uncertainty() {

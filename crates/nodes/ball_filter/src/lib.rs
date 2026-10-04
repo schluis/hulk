@@ -386,6 +386,22 @@ fn predict_hypotheses_from_odometry(
         } else {
             hypothesis.imm = None;
         }
+        if let Some(imm) = &mut hypothesis.imm {
+            let scale = |value: f32| {
+                if value.is_finite() && value > 0.0 {
+                    value
+                } else {
+                    1.0
+                }
+            };
+            imm.measurement_scale = scale(filter_parameters.output_imm_measurement_scale);
+            imm.process_scale = scale(filter_parameters.output_imm_process_scale);
+            imm.output_blend = if filter_parameters.output_imm_blend.is_finite() {
+                filter_parameters.output_imm_blend.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+        }
     }
     ball_filter.predict(
         delta_time,

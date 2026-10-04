@@ -293,6 +293,15 @@ pub struct BallFilterParameters {
     /// Two-model interaction rate per second, zero disables.
     #[serde(default)]
     pub imm_transition_rate: f32,
+    /// Measurement covariance multiplier for the independent output IMM.
+    #[serde(default = "default_output_imm_noise_scale")]
+    pub output_imm_measurement_scale: f32,
+    /// Process covariance multiplier for the independent output IMM.
+    #[serde(default = "default_output_imm_noise_scale")]
+    pub output_imm_process_scale: f32,
+    /// Fraction of independent IMM state in the reported position and velocity.
+    #[serde(default = "default_output_imm_noise_scale")]
+    pub output_imm_blend: f32,
     /// Legacy compatibility field; rejected associations no longer penalize track validity.
     pub maximum_matching_cost_validity_penalty_factor: f32,
 }
@@ -333,6 +342,9 @@ impl Default for BallFilterParameters {
             association_uncertainty_weight: Default::default(),
             visibility_uncertainty_scale: Default::default(),
             imm_transition_rate: Default::default(),
+            output_imm_measurement_scale: 1.0,
+            output_imm_process_scale: 1.0,
+            output_imm_blend: 1.0,
             maximum_matching_cost_validity_penalty_factor: Default::default(),
         }
     }
@@ -578,4 +590,8 @@ pub struct LineDetectionParameters {
     pub allowed_projected_segment_length: Range<f32>,
     pub minimum_number_of_points_on_line: usize,
     pub ransac_iterations: usize,
+}
+
+fn default_output_imm_noise_scale() -> f32 {
+    1.0
 }
