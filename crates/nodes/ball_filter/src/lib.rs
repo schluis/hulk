@@ -509,6 +509,13 @@ fn advance_all_hypotheses(
                 ball_percepts[percept_index].percept_in_ground,
                 score.exp(),
             );
+            if filter_parameters.publication_filter_blend > 0.0 {
+                hypothesis.last_observation_size_plausible = radius_consistency(
+                    &ball_percepts[percept_index],
+                    camera_matrix,
+                    field_dimensions.ball_radius,
+                );
+            }
         }
     }
     for (index, percept) in ball_percepts.iter().enumerate() {
@@ -519,6 +526,12 @@ fn advance_all_hypotheses(
                 Matrix4::from_diagonal(&filter_parameters.noise.initial_covariance),
                 filter_parameters.nearby_spawn_validity_factor,
             );
+            if filter_parameters.publication_filter_blend > 0.0
+                && let Some(hypothesis) = ball_filter.hypotheses.last_mut()
+            {
+                hypothesis.last_observation_size_plausible =
+                    radius_consistency(percept, camera_matrix, field_dimensions.ball_radius);
+            }
             matched.push(true);
         }
     }
@@ -768,9 +781,19 @@ fn project_detected_balls(
                     || radius_distance <= 0.0
                     || position.coords().norm() <= radius_distance;
                 if maximum_ratio.is_finite() && maximum_ratio > 1.0 && check_size {
-                    let expected = camera_matrix
-                        .get_pixel_radius(ball_radius, area.center())
-                        .ok()?;
+                    let in_camera = camera_matrix.ground_to_camera
+                        * linear_algebra::point![position.x(), position.y(), ball_radius];
+                    let depth = in_camera.z();
+                    if !depth.is_finite() || depth <= 0.0 {
+                        return None;
+                    }
+                    let expected = ball_radius
+                        * camera_matrix
+                            .intrinsics
+                            .focals
+                            .x
+                            .min(camera_matrix.intrinsics.focals.y)
+                        / depth;
                     if !expected.is_finite()
                         || expected <= 0.0
                         || detected_ball_radius > maximum_ratio * expected
@@ -822,6 +845,29 @@ fn project_detected_balls(
             })
             .collect(),
     )
+}
+
+// A larger image can be an airborne ball. Only an undersized image implies
+// a sphere below the ground plane, so only that direction permits correction.
+fn radius_consistency(
+    percept: &BallPercept,
+    camera: Option<&CameraMatrix>,
+    ball_radius: f32,
+) -> Option<bool> {
+    let camera = camera?;
+    let position = percept.percept_in_ground.mean;
+    let camera_position =
+        camera.ground_to_camera * linear_algebra::point![position.x, position.y, ball_radius];
+    let depth = camera_position.z();
+    let observed = percept.image_location.radius;
+    let expected = ball_radius * camera.intrinsics.focals.x.min(camera.intrinsics.focals.y) / depth;
+    (depth.is_finite()
+        && depth > 0.0
+        && observed.is_finite()
+        && observed > 0.0
+        && expected.is_finite()
+        && expected > 0.0)
+        .then_some(expected <= 1.5 * observed)
 }
 
 fn hypothesis_visibility(
@@ -1057,6 +1103,33 @@ mod tests {
         )
         .unwrap();
         assert_eq!(percepts.len(), 1);
+    }
+
+    #[test]
+    fn publication_correction_rejects_undersized_images_but_allows_airborne_size() {
+        let camera = horizontal_test_camera();
+        let radius = FieldDimensions::SPL_2025.ball_radius;
+        let position = point![1.0, 0.2];
+        let center = camera.ground_with_z_to_pixel(position, radius).unwrap();
+        let depth = (camera.ground_to_camera * point![position.x(), position.y(), radius]).z();
+        let expected = radius * camera.intrinsics.focals.x.min(camera.intrinsics.focals.y) / depth;
+        for (scale, plausible) in [(0.5, false), (1.0, true), (2.0, true)] {
+            let percept = BallPercept {
+                percept_in_ground: MultivariateNormalDistribution {
+                    mean: position.inner.coords,
+                    covariance: Matrix2::identity(),
+                },
+                image_location: Circle {
+                    center,
+                    radius: expected * scale,
+                },
+            };
+            assert_eq!(
+                radius_consistency(&percept, Some(&camera), radius),
+                Some(plausible)
+            );
+            assert_eq!(radius_consistency(&percept, None, radius), None);
+        }
     }
 
     #[test]
@@ -1497,6 +1570,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            last_observation_size_plausible: None,
             merge_observation_start: None,
         };
         let mut filter = BallFilter {
@@ -1584,6 +1658,7 @@ mod tests {
                 negative_evidence: None,
                 validity_decay_evidence: None,
                 leadership_evidence: None,
+                last_observation_size_plausible: None,
                 merge_observation_start: None,
             }],
         };
@@ -1688,6 +1763,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            last_observation_size_plausible: None,
             merge_observation_start: None,
         };
         let hypothesis2 = BallHypothesis {
@@ -1701,6 +1777,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            last_observation_size_plausible: None,
             merge_observation_start: None,
         };
 
