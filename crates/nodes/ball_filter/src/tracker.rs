@@ -44,6 +44,12 @@ fn publication_parameters(parameters: &BallFilterParameters) -> Option<BallFilte
     let mut alternate = parameters.clone();
     // This guard bounds nesting to one auxiliary tracker.
     alternate.publication_filter_blend = 0.0;
+    // Keep localization-dependent confidence decay out of the retained history.
+    // Ranking still uses a soft field prior with an optional uncertainty buffer.
+    alternate.field_boundary_validity_decay_rate = 0.0;
+    alternate.field_boundary_margin = parameters
+        .field_boundary_margin
+        .max(parameters.publication_field_boundary_margin);
     let noise = parameters.publication_detection_noise;
     alternate
         .noise

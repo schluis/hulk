@@ -66,6 +66,10 @@ pub struct Args {
     /// Export fixed evaluation-baseline frames, without substituting the searched winner.
     #[arg(long)]
     pub export_baseline_training_frames: bool,
+    /// Replay-only sinusoidal prior-position error per axis, applied after capture verification.
+    /// Ground truth, cameras and odometry remain unchanged. Zero disables this stress test.
+    #[arg(long, default_value_t = 0.0)]
+    pub field_prior_wobble_metres: f32,
     /// Reject coordinate-search candidates cheaply on the first N training clips.
     /// Passing candidates still require all training clips and aggregate guards.
     #[arg(long, default_value_t = 0)]
@@ -97,6 +101,9 @@ struct Report<'a> {
     reference_topic: &'a str,
     reference_frame: ReferenceFrame,
     replay_matches_live: bool,
+    field_prior_wobble_metres: f32,
+    field_prior_stressed_cycles: usize,
+    field_prior_stress_policy: &'static str,
     validation_improved: bool,
     training: Comparison,
     validation: Comparison,
@@ -308,11 +315,20 @@ pub fn run_with_progress(
             })
             .collect()
     };
-    let train = read(&args.train)?;
-    let validation = read(&args.validation)?;
+    let mut train = read(&args.train)?;
+    let mut validation = read(&args.validation)?;
     for recording in train.iter().chain(&validation) {
         verify(recording, &recording_parameters)?;
     }
+    ensure!(
+        args.field_prior_wobble_metres.is_finite() && args.field_prior_wobble_metres >= 0.0,
+        "field-prior wobble must be finite and nonnegative"
+    );
+    let field_prior_stressed_cycles = train
+        .iter_mut()
+        .chain(&mut validation)
+        .map(|recording| recording.apply_prior_wobble(args.field_prior_wobble_metres))
+        .sum();
     let baseline: BallFilterParameters = match &args.evaluation_parameters {
         Some(path) => json5::from_str(&std::fs::read_to_string(path)?)?,
         None => recording_parameters.clone(),
@@ -557,6 +573,9 @@ pub fn run_with_progress(
         reference_topic: &args.reference_topic,
         reference_frame: args.reference_frame,
         replay_matches_live: true,
+        field_prior_wobble_metres: args.field_prior_wobble_metres,
+        field_prior_stressed_cycles,
+        field_prior_stress_policy: "Exact original capture replay is verified first. Optional stress adds amplitude*sin(2*pi*t/4) to Field x and amplitude*sin(2*pi*t/7) to Field y of the filter prior only; t is seconds from the first cycle of each recording. Missing prior poses remain missing. Reference truth, scoring transforms, camera matrices and odometry are unchanged.",
         validation_improved,
         training: Comparison {
             baseline: base_train,
