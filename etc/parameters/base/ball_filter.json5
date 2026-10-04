@@ -25,6 +25,9 @@
   maximum_matching_cost: 0.25,
   maximum_matching_cost_validity_penalty_factor: 0.14,
   maximum_number_of_hypotheses: 15,
+  // Refine a clearly undersized winner using confirmed fresh size support.
+  selection_size_consistency_weight: 0.1,
+  selection_size_consistency_maximum_distance: 0.0,
   noise: {
     detection_noise: [5.0, 5.0],
     initial_covariance: [0.5, 0.5, 40.0, 40.0],

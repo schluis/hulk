@@ -297,6 +297,10 @@ pub struct BallFilterParameters {
     /// Soft penalty for inconsistent detection size in output ranking only.
     #[serde(default)]
     pub selection_size_consistency_weight: f32,
+    /// Maximum separation for a physically supported selection refinement.
+    /// Nonpositive values impose no cutoff; omitted legacy settings use 0.1 m.
+    #[serde(default = "default_size_refinement_distance")]
+    pub selection_size_consistency_maximum_distance: f32,
     /// Bounded uncertainty penalty for choosing between feasible associations.
     /// Zero preserves legacy assignment; does not change the matching gate.
     #[serde(default)]
@@ -347,6 +351,7 @@ impl Default for BallFilterParameters {
             hypothesis_uncertainty_weight: Default::default(),
             selection_confidence_cap: Default::default(),
             selection_size_consistency_weight: Default::default(),
+            selection_size_consistency_maximum_distance: default_size_refinement_distance(),
             association_uncertainty_weight: Default::default(),
             visibility_uncertainty_scale: Default::default(),
             maximum_matching_cost_validity_penalty_factor: Default::default(),
@@ -594,4 +599,8 @@ pub struct LineDetectionParameters {
     pub allowed_projected_segment_length: Range<f32>,
     pub minimum_number_of_points_on_line: usize,
     pub ransac_iterations: usize,
+}
+
+fn default_size_refinement_distance() -> f32 {
+    0.1
 }
