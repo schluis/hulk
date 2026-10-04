@@ -441,6 +441,7 @@ pub fn run(
                     search_method: Default::default(),
                     penalty_metres: 2.0,
                     export_training_frames: false,
+                    export_baseline_training_frames: false,
                     screening_recordings: 0,
                     output: checkpoint.clone(),
                 },
