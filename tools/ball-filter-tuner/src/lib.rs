@@ -50,6 +50,7 @@ pub struct Args {
     /// Frame of the labelled reference. Field scoring includes recorded ground_to_field.
     #[arg(long, value_enum, default_value = "ground")]
     pub reference_frame: ReferenceFrame,
+    /// Number of search trials; zero evaluates supplied parameters without searching.
     #[arg(long, default_value_t = 4096)]
     pub trials: usize,
     #[arg(long, default_value_t = 7)]
@@ -281,8 +282,8 @@ pub fn run_with_progress(
         );
     }
     ensure!(
-        args.trials > 0 && args.penalty_metres.is_finite() && args.penalty_metres > 0.0,
-        "trials and penalty must be positive"
+        args.penalty_metres.is_finite() && args.penalty_metres > 0.0,
+        "penalty must be finite and positive"
     );
     for train in &args.train {
         for validation in &args.validation {
