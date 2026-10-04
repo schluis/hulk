@@ -798,6 +798,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "ball-filter-tuner"
+version = "0.1.0"
+dependencies = [
+ "ball_filter",
+ "clap",
+ "color-eyre",
+ "coordinate_systems",
+ "json5",
+ "linear_algebra",
+ "mcap",
+ "nalgebra 0.34.2",
+ "projection",
+ "rand 0.9.4",
+ "rand_chacha 0.9.0",
+ "ros-z",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "types",
+]
+
+[[package]]
 name = "ball_filter"
 version = "0.1.0"
 dependencies = [

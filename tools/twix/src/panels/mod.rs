@@ -1,4 +1,6 @@
 mod audio;
+mod ball_filter_optimization;
+pub use ball_filter_optimization::BallFilterOptimizationPanel;
 mod image;
 mod map;
 mod parameter;
