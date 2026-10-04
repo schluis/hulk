@@ -1,0 +1,738 @@
+use crate::ReferenceFrame;
+use ball_filter::tracker::UpdateSchedule;
+use color_eyre::{
+    Result,
+    eyre::{WrapErr, ensure, eyre},
+};
+use coordinate_systems::{Field, Ground, Odometry};
+use linear_algebra::{Isometry2, Point3, Pose2};
+use projection::camera_matrix::CameraMatrix;
+use ros_z::{SerdeCdrCodec, message::WireDecoder, time::Time};
+use serde::de::DeserializeOwned;
+use std::{collections::BTreeMap, path::Path};
+use types::{
+    ball_position::BallPosition,
+    field_dimensions::FieldDimensions,
+    object_detection::{Object, RobocupObjectLabel},
+    obstacles::Obstacle,
+    time_wrapper::TimeWrapper,
+};
+
+// Capture-only wire compatibility; production stream APIs remain unchanged.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Announcement {
+    time: Time,
+    source_global_id: ros_z::EndpointGlobalId,
+    sequence_number: i64,
+}
+impl Announcement {
+    fn time(&self) -> Time {
+        self.time
+    }
+    fn source_global_id(&self) -> ros_z::EndpointGlobalId {
+        self.source_global_id
+    }
+    fn sequence_number(&self) -> i64 {
+        self.sequence_number
+    }
+}
+
+// Historical captures include head-planning calibration metadata that main's
+// CameraMatrix does not. Both stored transforms already include the correction.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CapturedCameraMatrix {
+    ground_to_robot:
+        linear_algebra::Isometry3<coordinate_systems::Ground, coordinate_systems::Robot>,
+    robot_to_head: linear_algebra::Isometry3<coordinate_systems::Robot, coordinate_systems::Head>,
+    #[serde(rename = "correction_in_robot")]
+    _correction_in_robot:
+        linear_algebra::Rotation3<coordinate_systems::Robot, coordinate_systems::Robot>,
+    head_to_camera: linear_algebra::Isometry3<coordinate_systems::Head, coordinate_systems::Camera>,
+    intrinsics: projection::intrinsic::Intrinsic,
+    field_of_view: nalgebra::Vector2<f32>,
+    horizon: Option<projection::horizon::Horizon>,
+    image_size: linear_algebra::Vector2<coordinate_systems::Pixel>,
+    ground_to_camera:
+        linear_algebra::Isometry3<coordinate_systems::Ground, coordinate_systems::Camera>,
+    ground_to_pixel: projection::camera_projection::CameraProjection<coordinate_systems::Ground>,
+    pixel_to_ground:
+        projection::camera_projection::InverseCameraProjection<coordinate_systems::Ground>,
+}
+impl CapturedCameraMatrix {
+    #[allow(
+        clippy::field_reassign_with_default,
+        reason = "Initialize optional simulator-only metadata through Default while copying every shared cached transform exactly"
+    )]
+    fn into_current(self) -> CameraMatrix {
+        let mut camera = CameraMatrix::default();
+        camera.ground_to_robot = self.ground_to_robot;
+        camera.robot_to_head = self.robot_to_head;
+        camera.head_to_camera = self.head_to_camera;
+        camera.intrinsics = self.intrinsics;
+        camera.field_of_view = self.field_of_view;
+        camera.horizon = self.horizon;
+        camera.image_size = self.image_size;
+        camera.ground_to_camera = self.ground_to_camera;
+        camera.ground_to_pixel = self.ground_to_pixel;
+        camera.pixel_to_ground = self.pixel_to_ground;
+        camera
+    }
+}
+fn decode_camera(message: &mcap::Message<'_>) -> Result<TimeWrapper<CameraMatrix>> {
+    let extended = message.channel.schema.as_ref().is_some_and(|schema| {
+        schema
+            .data
+            .windows(b"correction_in_robot".len())
+            .any(|window| window == b"correction_in_robot")
+    });
+    if extended {
+        let captured: TimeWrapper<CapturedCameraMatrix> = decode(message)?;
+        Ok(TimeWrapper {
+            time: captured.time,
+            inner: captured.inner.into_current(),
+        })
+    } else {
+        decode(message)
+    }
+}
+
+type Detections = Vec<Object<RobocupObjectLabel>>;
+
+pub struct Input {
+    pub time: Time,
+    pub odometry: Option<Pose2<Odometry>>,
+    pub detections: Option<Detections>,
+    pub camera: Option<TimeWrapper<CameraMatrix>>,
+    /// Exact snapshot selected by the live filter, before odometry compensation.
+    pub obstacles: Option<TimeWrapper<Vec<Obstacle>>>,
+}
+
+#[derive(Clone)]
+pub enum Reference {
+    Ground(Vec<Point3<Ground>>),
+    Field(Vec<Point3<Field>>),
+}
+
+impl Reference {
+    pub fn validate_for_optimization(&self) -> Result<()> {
+        let count = match self {
+            Self::Ground(points) => points.len(),
+            Self::Field(points) => points.len(),
+        };
+        ensure!(
+            count <= 1,
+            "ball-filter optimization requires at most one labelled ball per frame; multiple balls are supported only in the optional stress preview"
+        );
+        Ok(())
+    }
+}
+
+pub struct Cycle {
+    pub inputs: Vec<Input>,
+    pub time: Time,
+    pub dimensions: FieldDimensions,
+    /// None means unlabelled, Some(empty) explicitly means no ball.
+    pub reference: Option<Reference>,
+    /// Independently timestamp-matched Field truth for motion derivatives.
+    /// Avoid differentiating Ground truth transformed with a stale field pose.
+    pub motion_reference: Option<Vec<Point3<Field>>>,
+    pub ground_to_field: Option<Isometry2<Ground, Field>>,
+    /// Actual live prior decision, independently recorded from scoring geometry.
+    /// Legacy recordings have no prior diagnostic and replay with no field prior.
+    pub field_prior_pose: Option<Isometry2<Ground, Field>>,
+    pub recorded_estimate: Option<BallPosition<Ground>>,
+    pub seconds: f64,
+}
+
+pub struct Recording {
+    pub cycles: Vec<Cycle>,
+    pub path: String,
+}
+
+fn decode<T: DeserializeOwned>(message: &mcap::Message<'_>) -> Result<T> {
+    ensure!(
+        message.channel.message_encoding == "ros-z-cdr",
+        "expected ros-z-cdr on {}",
+        message.channel.topic
+    );
+    SerdeCdrCodec::<T>::deserialize(&message.data).wrap_err_with(|| {
+        format!(
+            "decoding {} at {}",
+            message.channel.topic, message.publish_time
+        )
+    })
+}
+
+fn required<T: Clone>(map: &BTreeMap<Time, T>, time: Time, topic: &str) -> Result<T> {
+    map.get(&time)
+        .cloned()
+        .ok_or_else(|| eyre!("missing {topic} at {time:?}; recording is incomplete"))
+}
+
+fn field_prior_pose_at(
+    poses: &BTreeMap<Time, Option<Isometry2<Ground, Field>>>,
+    time: Time,
+) -> Result<Option<Isometry2<Ground, Field>>> {
+    if poses.is_empty() {
+        // Legacy captures predate the diagnostic. Never infer a live decision
+        // from scoring geometry, which may have a different temporal selection.
+        Ok(None)
+    } else {
+        // New captures publish even an explicit None for every output. A missing
+        // entry is incomplete capture, not authorization to reuse a nearby pose.
+        required(poses, time, "ball_filter/field_prior_pose")
+    }
+}
+
+fn selected_obstacles_at(
+    snapshots: &BTreeMap<Time, Option<TimeWrapper<Vec<Obstacle>>>>,
+    time: Time,
+) -> Result<Option<TimeWrapper<Vec<Obstacle>>>> {
+    if snapshots.is_empty() {
+        Ok(None) // Legacy recordings predate this input.
+    } else {
+        // Missing and explicit None differ: once this diagnostic is present,
+        // every consumed detector frame must have its actual selection recorded.
+        required(snapshots, time, "ball_filter/obstacles")
+    }
+}
+
+impl Recording {
+    /// Inject localization error only into the filter's optional field prior.
+    /// Call after exact replay verification; never modify scoring coordinates.
+    pub fn apply_prior_wobble(&mut self, amplitude: f32) -> usize {
+        if amplitude == 0.0 {
+            return 0;
+        }
+        let Some(first) = self.cycles.first().map(|cycle| cycle.time.as_nanos()) else {
+            return 0;
+        };
+        let mut changed = 0;
+        for cycle in &mut self.cycles {
+            let t = (cycle.time.as_nanos() - first) as f64 * 1e-9;
+            if let Some(pose) = &mut cycle.field_prior_pose {
+                let before = *pose;
+                pose.inner.translation.vector.x +=
+                    amplitude * (std::f64::consts::TAU * t / 4.0).sin() as f32;
+                pose.inner.translation.vector.y +=
+                    amplitude * (std::f64::consts::TAU * t / 7.0).sin() as f32;
+                changed += usize::from(*pose != before);
+            }
+        }
+        changed
+    }
+
+    pub fn read(
+        path: &Path,
+        namespace: &str,
+        reference_topic: &str,
+        frame: ReferenceFrame,
+    ) -> Result<Self> {
+        let bytes = std::fs::read(path)?;
+        let prefix = format!("{}/", namespace.trim_matches('/'));
+        let mut odometry_payloads = BTreeMap::new();
+        let mut odometry_announcements = Vec::new();
+        let mut detection_announcements = Vec::new();
+        let mut cameras = BTreeMap::new();
+        let mut detection_payloads = BTreeMap::new();
+        let mut references = BTreeMap::new();
+        let mut motion_references = BTreeMap::new();
+        let mut ground_to_field = BTreeMap::new();
+        let mut field_prior_poses = BTreeMap::new();
+        let mut selected_obstacles = BTreeMap::new();
+        let mut dimensions = BTreeMap::new();
+        let mut estimates = BTreeMap::new();
+        let mut schedules = BTreeMap::new();
+        for message in mcap::MessageStream::new(&bytes)? {
+            let message = message?;
+            let topic = message.channel.topic.trim_start_matches('/');
+            let topic = if namespace.is_empty() {
+                topic
+            } else {
+                let Some(topic) = topic.strip_prefix(&prefix) else {
+                    continue;
+                };
+                topic
+            };
+            let time = Time::from_nanos(i64::try_from(message.publish_time)?);
+            if topic == "simulation/ball_ground_truth_field"
+                && matches!(
+                    reference_topic,
+                    "simulation/ball_ground_truth" | "simulation/ball_ground_truth_field"
+                )
+            {
+                let value: TimeWrapper<Vec<Point3<Field>>> = decode(&message)?;
+                Reference::Field(value.inner.clone()).validate_for_optimization()?;
+                motion_references.insert(value.time, value.inner);
+            }
+            match topic {
+                "inputs/odometry" => {
+                    ensure!(
+                        odometry_payloads
+                            .insert(message.sequence, decode::<Pose2<Odometry>>(&message)?)
+                            .is_none(),
+                        "multiple odometry publishers or duplicate sequences"
+                    );
+                }
+                "inputs/odometry/announce" => {
+                    odometry_announcements.push(decode::<Announcement>(&message)?);
+                }
+                "detected_objects/announce" => {
+                    detection_announcements.push(decode::<Announcement>(&message)?);
+                }
+                "camera_matrix" => {
+                    let camera = decode_camera(&message)?;
+                    cameras.insert(camera.time, camera);
+                }
+                "detected_objects" => {
+                    let objects: TimeWrapper<Detections> = decode(&message)?;
+                    ensure!(
+                        detection_payloads
+                            .insert(message.sequence, objects.inner)
+                            .is_none(),
+                        "multiple detection publishers or duplicate sequences"
+                    );
+                }
+                "ground_to_field" => {
+                    ground_to_field.insert(time, decode::<Isometry2<Ground, Field>>(&message)?);
+                }
+                "ball_filter/field_prior_pose" => {
+                    let pose: TimeWrapper<Option<Isometry2<Ground, Field>>> = decode(&message)?;
+                    ensure!(
+                        field_prior_poses.insert(pose.time, pose.inner).is_none(),
+                        "duplicate ball_filter/field_prior_pose timestamp"
+                    );
+                }
+                "ball_filter/obstacles" => {
+                    let selected: TimeWrapper<Option<TimeWrapper<Vec<Obstacle>>>> =
+                        decode(&message)?;
+                    ensure!(
+                        selected_obstacles
+                            .insert(selected.time, selected.inner)
+                            .is_none(),
+                        "duplicate ball_filter/obstacles input timestamp"
+                    );
+                }
+                "field_dimensions" => {
+                    dimensions.insert(time, decode::<FieldDimensions>(&message)?);
+                }
+                "ball_filter/ball_position" => {
+                    estimates.insert(time, decode::<Option<BallPosition<Ground>>>(&message)?);
+                }
+                "ball_filter/update_schedule" => {
+                    let schedule: UpdateSchedule = decode(&message)?;
+                    ensure!(
+                        schedules.insert(schedule.sequence, schedule).is_none(),
+                        "duplicate filter sequence; use one episode per MCAP"
+                    );
+                }
+                topic if topic == reference_topic => {
+                    let (time, reference) = match frame {
+                        ReferenceFrame::Ground => {
+                            let value: TimeWrapper<Vec<Point3<Ground>>> = decode(&message)?;
+                            (value.time, Reference::Ground(value.inner))
+                        }
+                        ReferenceFrame::Field => {
+                            let value: TimeWrapper<Vec<Point3<Field>>> = decode(&message)?;
+                            (value.time, Reference::Field(value.inner))
+                        }
+                    };
+                    reference.validate_for_optimization()?;
+                    references.insert(time, reference);
+                }
+                _ => {}
+            }
+        }
+        ensure!(
+            !schedules.is_empty(),
+            "no ball_filter/update_schedule messages in {} (check --namespace)",
+            path.display()
+        );
+        ensure!(
+            !matches!(frame, ReferenceFrame::Field) || !ground_to_field.is_empty(),
+            "field scoring requires recorded ground_to_field messages"
+        );
+        let odometry =
+            pair_announcements(odometry_payloads, odometry_announcements, "inputs/odometry")?;
+        let detections = pair_announcements(
+            detection_payloads,
+            detection_announcements,
+            "detected_objects",
+        )?;
+        let mut cycles = Vec::new();
+        let mut previous_time = None;
+        for (index, (sequence, schedule)) in schedules.into_iter().enumerate() {
+            ensure!(
+                sequence == index as u64,
+                "missing filter update {index}; start recording before advancing the robot clock, with a fresh filter"
+            );
+            let time = schedule
+                .inputs
+                .last()
+                .ok_or_else(|| eyre!("empty filter update"))?
+                .time;
+            ensure!(
+                previous_time.is_none_or(|previous| time > previous),
+                "non-monotonic filter update"
+            );
+            let seconds =
+                previous_time.map_or(0.0, |previous| time.duration_since(previous).as_secs_f64());
+            previous_time = Some(time);
+            let mut inputs = Vec::new();
+            for stamp in schedule.inputs {
+                inputs.push(Input {
+                    time: stamp.time,
+                    odometry: stamp
+                        .odometry
+                        .then(|| required(&odometry, stamp.time, "inputs/odometry"))
+                        .transpose()?,
+                    detections: stamp
+                        .detections
+                        .then(|| required(&detections, stamp.time, "detected_objects"))
+                        .transpose()?,
+                    obstacles: if stamp.detections {
+                        selected_obstacles_at(&selected_obstacles, stamp.time)?
+                    } else {
+                        None
+                    },
+                    camera: if stamp.detections {
+                        stamp
+                            .camera_time
+                            .map(|t| required(&cameras, t, "camera_matrix"))
+                            .transpose()?
+                    } else {
+                        None
+                    },
+                });
+            }
+            cycles.push(Cycle {
+                inputs,
+                time,
+                seconds,
+                dimensions: *dimensions
+                    .range(..=time)
+                    .next_back()
+                    .ok_or_else(|| eyre!("missing field_dimensions"))?
+                    .1,
+                reference: references.get(&time).cloned(),
+                motion_reference: motion_references.get(&time).cloned(),
+                // Use a preceding pose with a bounded source-time age. Never apply
+                // an arbitrarily old transform to a fresh ball estimate.
+                ground_to_field: ground_to_field
+                    .range(..=time)
+                    .next_back()
+                    .filter(|(stamp, _)| {
+                        time.duration_since(**stamp) <= std::time::Duration::from_millis(20)
+                    })
+                    .map(|(_, transform)| *transform),
+                recorded_estimate: required(&estimates, time, "ball_filter/ball_position")?,
+                field_prior_pose: field_prior_pose_at(&field_prior_poses, time)?,
+            });
+        }
+        ensure!(
+            cycles
+                .iter()
+                .any(|c| c.reference.is_some() && c.seconds > 0.0),
+            "no timestamp-matched ground truth; unlabelled frames cannot be scored"
+        );
+        Ok(Self {
+            cycles,
+            path: path.display().to_string(),
+        })
+    }
+}
+
+// MCAP stores the payload publication sequence. The announcement carries the
+// sensor/fusion timestamp; using MCAP publish_time here changes odometry timing.
+fn pair_announcements<T>(
+    mut payloads: BTreeMap<u32, T>,
+    announcements: Vec<Announcement>,
+    topic: &str,
+) -> Result<BTreeMap<Time, T>> {
+    ensure!(
+        !announcements.is_empty(),
+        "missing {topic}/announce messages"
+    );
+    let mut publisher = None;
+    let mut result = BTreeMap::new();
+    for announcement in announcements {
+        ensure!(
+            publisher.is_none_or(|p| p == announcement.source_global_id()),
+            "multiple publishers on {topic} are not supported in one episode"
+        );
+        publisher = Some(announcement.source_global_id());
+        let sequence = u32::try_from(announcement.sequence_number())?;
+        ensure!(
+            sequence < u32::MAX,
+            "ambiguous clamped MCAP sequence on {topic}"
+        );
+        // An announced payload may not have arrived by capture end. If the filter
+        // actually consumed it, the schedule's required() lookup rejects the gap.
+        if let Some(payload) = payloads.remove(&sequence) {
+            ensure!(
+                result.insert(announcement.time(), payload).is_none(),
+                "duplicate fusion timestamp on {topic}"
+            );
+        }
+    }
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn prior_stress_does_not_move_truth_or_fill_missing_localization() {
+        use linear_algebra::{Isometry2, point};
+        let cycle = |second: i64, prior| super::Cycle {
+            inputs: Vec::new(),
+            time: super::Time::from_nanos(second * 1_000_000_000),
+            dimensions: Default::default(),
+            reference: Some(super::Reference::Ground(vec![point![1.0, 0.0, 0.1]])),
+            motion_reference: Some(vec![point![1.0, 0.0, 0.1]]),
+            ground_to_field: Some(Isometry2::identity()),
+            field_prior_pose: prior,
+            recorded_estimate: None,
+            seconds: 1.0,
+        };
+        let mut recording = super::Recording {
+            path: "stress fixture".into(),
+            cycles: vec![cycle(0, None), cycle(1, Some(Isometry2::identity()))],
+        };
+        recording.apply_prior_wobble(0.0);
+        assert_eq!(
+            recording.cycles[1].field_prior_pose,
+            Some(Isometry2::identity())
+        );
+        recording.apply_prior_wobble(0.25);
+        assert!(recording.cycles[0].field_prior_pose.is_none());
+        let changed = &recording.cycles[1];
+        assert!((changed.field_prior_pose.unwrap().inner.translation.vector.x - 0.25).abs() < 1e-6);
+        assert_eq!(changed.ground_to_field, Some(Isometry2::identity()));
+        let Some(super::Reference::Ground(truth)) = &changed.reference else {
+            panic!("ground truth")
+        };
+        assert_eq!(truth, &vec![point![1.0, 0.0, 0.1]]);
+        assert_eq!(changed.motion_reference, Some(vec![point![1.0, 0.0, 0.1]]));
+    }
+
+    use super::*;
+    use ros_z::message::WireEncoder;
+
+    #[test]
+    fn legacy_camera_wire_preserves_corrected_transforms_without_recomputing_them() {
+        let camera = CameraMatrix::from_normalized_focal_and_center(
+            nalgebra::vector![0.6, 0.7],
+            nalgebra::point![0.4, 0.5],
+            linear_algebra::vector![640.0, 480.0],
+            linear_algebra::Isometry3::from_translation(0.2, -0.1, 0.0),
+            linear_algebra::Isometry3::identity(),
+            linear_algebra::Isometry3::from_translation(0.0, 0.0, 0.8),
+        );
+        let captured = CapturedCameraMatrix {
+            ground_to_robot: camera.ground_to_robot,
+            robot_to_head: camera.robot_to_head,
+            _correction_in_robot: linear_algebra::Rotation3::from_euler_angles(0.02, -0.03, 0.01),
+            head_to_camera: camera.head_to_camera,
+            intrinsics: camera.intrinsics.clone(),
+            field_of_view: camera.field_of_view,
+            horizon: camera.horizon.clone(),
+            image_size: camera.image_size,
+            ground_to_camera: camera.ground_to_camera,
+            ground_to_pixel: camera.ground_to_pixel.clone(),
+            pixel_to_ground: camera.pixel_to_ground.clone(),
+        };
+        let bytes = SerdeCdrCodec::<CapturedCameraMatrix>::serialize(&captured).unwrap();
+        let decoded = SerdeCdrCodec::<CapturedCameraMatrix>::deserialize(&bytes).unwrap();
+        assert_eq!(decoded.into_current(), camera);
+        let current = SerdeCdrCodec::<CameraMatrix>::serialize(&camera).unwrap();
+        assert_eq!(
+            SerdeCdrCodec::<CameraMatrix>::deserialize(&current).unwrap(),
+            camera
+        );
+    }
+
+    #[test]
+    fn selected_obstacles_keep_source_frame_and_exact_live_snapshot() {
+        type Diagnostic = TimeWrapper<Option<TimeWrapper<Vec<Obstacle>>>>;
+        let image_time = Time::from_nanos(100_000_000);
+        let source_time = Time::from_nanos(80_000_000);
+        let mut snapshots = BTreeMap::new();
+        assert!(
+            selected_obstacles_at(&snapshots, image_time)
+                .unwrap()
+                .is_none()
+        );
+        for (time, selected) in [
+            (
+                image_time,
+                Some(TimeWrapper {
+                    time: source_time,
+                    inner: vec![Obstacle::robot(linear_algebra::point![1.0, -0.2], 0.2, 0.3)],
+                }),
+            ),
+            (Time::from_nanos(120_000_000), None),
+            // Network updates may replace positions at the same Ground source
+            // stamp. A timestamp-only pointer would silently choose the wrong list.
+            (
+                Time::from_nanos(140_000_000),
+                Some(TimeWrapper {
+                    time: source_time,
+                    inner: vec![Obstacle::robot(linear_algebra::point![1.4, -0.2], 0.2, 0.3)],
+                }),
+            ),
+        ] {
+            let bytes = SerdeCdrCodec::<Diagnostic>::serialize(&TimeWrapper {
+                time,
+                inner: selected,
+            })
+            .unwrap();
+            let decoded = SerdeCdrCodec::<Diagnostic>::deserialize(&bytes).unwrap();
+            snapshots.insert(decoded.time, decoded.inner);
+        }
+        let first = selected_obstacles_at(&snapshots, image_time)
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.time, source_time);
+        assert_eq!(first.inner[0].position.x(), 1.0);
+        let later = selected_obstacles_at(&snapshots, Time::from_nanos(140_000_000))
+            .unwrap()
+            .unwrap();
+        assert_eq!(later.time, source_time);
+        assert_eq!(later.inner[0].position.x(), 1.4);
+        assert!(
+            selected_obstacles_at(&snapshots, Time::from_nanos(120_000_000))
+                .unwrap()
+                .is_none()
+        );
+        assert!(selected_obstacles_at(&snapshots, Time::from_nanos(120_000_001)).is_err());
+    }
+
+    #[test]
+    fn field_prior_diagnostic_replays_exact_decisions_and_preserves_legacy_none() {
+        type Diagnostic = TimeWrapper<Option<Isometry2<Ground, Field>>>;
+        let time = Time::from_nanos(100);
+        let pose = Isometry2::from_parts(linear_algebra::vector![2.0, -1.0], 0.7);
+        let mut poses = BTreeMap::new();
+        assert!(field_prior_pose_at(&poses, time).unwrap().is_none());
+        for (stamp, selected) in [(time, Some(pose)), (Time::from_nanos(200), None)] {
+            let bytes = SerdeCdrCodec::<Diagnostic>::serialize(&TimeWrapper {
+                time: stamp,
+                inner: selected,
+            })
+            .unwrap();
+            let decoded = SerdeCdrCodec::<Diagnostic>::deserialize(&bytes).unwrap();
+            assert_eq!(decoded.time, stamp);
+            poses.insert(decoded.time, decoded.inner);
+        }
+        let replay = field_prior_pose_at(&poses, time).unwrap().unwrap();
+        let point = linear_algebra::point![0.4, -0.2];
+        assert!(((replay * point) - (pose * point)).norm() < 1e-6);
+        assert!(
+            field_prior_pose_at(&poses, Time::from_nanos(200))
+                .unwrap()
+                .is_none()
+        );
+        // Even a neighbouring diagnostic is not the actual decision for this
+        // output. Partial captures must fail instead of using a nearest pose.
+        assert!(field_prior_pose_at(&poses, Time::from_nanos(201)).is_err());
+    }
+
+    #[test]
+    fn optimization_rejects_ambiguous_multiball_labels_in_both_frames() {
+        for count in [0, 1, 2, 3] {
+            let ground = Reference::Ground(vec![linear_algebra::point![0.0, 0.0, 0.1]; count]);
+            let field = Reference::Field(vec![linear_algebra::point![0.0, 0.0, 0.1]; count]);
+            for reference in [ground, field] {
+                let result = reference.validate_for_optimization();
+                assert_eq!(result.is_ok(), count <= 1);
+                if let Err(error) = result {
+                    assert!(error.to_string().contains("optional stress preview"));
+                }
+            }
+        }
+    }
+
+    fn announcement(time: i64, sequence: i64, publisher: u8) -> Announcement {
+        serde_json::from_value(serde_json::json!({
+            "time": Time::from_nanos(time),
+            "sequence_number": sequence,
+            "source_global_id": ros_z::EndpointGlobalId::from([publisher; 16]),
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn pairs_by_publication_sequence_and_uses_announced_sensor_time() {
+        let payloads = BTreeMap::from([(7, "first"), (8, "second")]);
+        let inputs = pair_announcements(
+            payloads,
+            vec![announcement(200, 8, 1), announcement(100, 7, 1)],
+            "test",
+        )
+        .unwrap();
+        assert_eq!(
+            inputs.into_iter().collect::<Vec<_>>(),
+            vec![
+                (Time::from_nanos(100), "first"),
+                (Time::from_nanos(200), "second"),
+            ]
+        );
+    }
+
+    #[test]
+    fn robot_only_and_empty_frames_survive_recorded_detection_pairing() {
+        // A robot-only frame is an observation with potential occlusion; an
+        // empty frame is an observation without it. Neither is a missing frame.
+        // Replay must retain the same labels, geometry and exposure timestamp.
+        let robot = Object::<RobocupObjectLabel>::from([10.0, 20.0, 60.0, 90.0, 0.8, 4.0]);
+        let ball = Object::<RobocupObjectLabel>::from([30.0, 50.0, 40.0, 60.0, 0.9, 0.0]);
+        let frames = [vec![ball, robot], vec![robot], vec![]];
+        let payloads = frames
+            .iter()
+            .enumerate()
+            .map(|(index, frame)| {
+                let wrapped = TimeWrapper {
+                    time: Time::from_nanos((index as i64 + 1) * 100),
+                    inner: frame.clone(),
+                };
+                let bytes = SerdeCdrCodec::<TimeWrapper<Detections>>::serialize(&wrapped).unwrap();
+                let decoded =
+                    SerdeCdrCodec::<TimeWrapper<Detections>>::deserialize(&bytes).unwrap();
+                assert_eq!(decoded.time, wrapped.time);
+                (index as u32 + 7, decoded.inner)
+            })
+            .collect();
+        let replay = pair_announcements(
+            payloads,
+            vec![
+                announcement(300, 9, 1),
+                announcement(100, 7, 1),
+                announcement(200, 8, 1),
+            ],
+            "detected_objects",
+        )
+        .unwrap();
+        for (index, expected) in frames.iter().enumerate() {
+            let time = Time::from_nanos((index as i64 + 1) * 100);
+            let actual = required(&replay, time, "detected_objects").unwrap();
+            assert_eq!(
+                serde_json::to_value(actual).unwrap(),
+                serde_json::to_value(expected).unwrap()
+            );
+        }
+        assert!(required(&replay, Time::from_nanos(201), "detected_objects").is_err());
+    }
+
+    #[test]
+    fn refuses_ambiguous_publisher_or_timestamp() {
+        for announcements in [
+            vec![announcement(100, 7, 1), announcement(200, 8, 2)],
+            vec![announcement(100, 7, 1), announcement(100, 8, 1)],
+        ] {
+            assert!(
+                pair_announcements(BTreeMap::from([(7, 1), (8, 2)]), announcements, "test")
+                    .is_err()
+            );
+        }
+    }
+}
