@@ -25,11 +25,6 @@
   maximum_matching_cost: 0.25,
   maximum_matching_cost_validity_penalty_factor: 0.14,
   maximum_number_of_hypotheses: 15,
-  // Correct physically undersized detections using an independent supported history.
-  publication_filter_blend: 1.0,
-  publication_detection_noise: 0.2,
-  publication_maximum_age: { secs: 5, nanos: 0 },
-  publication_maximum_distance: 0.0,
   noise: {
     detection_noise: [5.0, 5.0],
     initial_covariance: [0.5, 0.5, 40.0, 40.0],

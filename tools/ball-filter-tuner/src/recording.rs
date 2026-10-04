@@ -121,6 +121,30 @@ fn selected_obstacles_at(
 }
 
 impl Recording {
+    /// Inject localization error only into the filter's optional field prior.
+    /// Call after exact replay verification; never modify scoring coordinates.
+    pub fn apply_prior_wobble(&mut self, amplitude: f32) -> usize {
+        if amplitude == 0.0 {
+            return 0;
+        }
+        let Some(first) = self.cycles.first().map(|cycle| cycle.time.as_nanos()) else {
+            return 0;
+        };
+        let mut changed = 0;
+        for cycle in &mut self.cycles {
+            let t = (cycle.time.as_nanos() - first) as f64 * 1e-9;
+            if let Some(pose) = &mut cycle.field_prior_pose {
+                let before = *pose;
+                pose.inner.translation.vector.x +=
+                    amplitude * (std::f64::consts::TAU * t / 4.0).sin() as f32;
+                pose.inner.translation.vector.y +=
+                    amplitude * (std::f64::consts::TAU * t / 7.0).sin() as f32;
+                changed += usize::from(*pose != before);
+            }
+        }
+        changed
+    }
+
     pub fn read(
         path: &Path,
         namespace: &str,
@@ -379,6 +403,41 @@ fn pair_announcements<T>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn prior_stress_does_not_move_truth_or_fill_missing_localization() {
+        use linear_algebra::{Isometry2, point};
+        let cycle = |second: i64, prior| super::Cycle {
+            inputs: Vec::new(),
+            time: super::Time::from_nanos(second * 1_000_000_000),
+            dimensions: Default::default(),
+            reference: Some(super::Reference::Ground(vec![point![1.0, 0.0, 0.1]])),
+            motion_reference: Some(vec![point![1.0, 0.0, 0.1]]),
+            ground_to_field: Some(Isometry2::identity()),
+            field_prior_pose: prior,
+            recorded_estimate: None,
+            seconds: 1.0,
+        };
+        let mut recording = super::Recording {
+            path: "stress fixture".into(),
+            cycles: vec![cycle(0, None), cycle(1, Some(Isometry2::identity()))],
+        };
+        recording.apply_prior_wobble(0.0);
+        assert_eq!(
+            recording.cycles[1].field_prior_pose,
+            Some(Isometry2::identity())
+        );
+        recording.apply_prior_wobble(0.25);
+        assert!(recording.cycles[0].field_prior_pose.is_none());
+        let changed = &recording.cycles[1];
+        assert!((changed.field_prior_pose.unwrap().inner.translation.vector.x - 0.25).abs() < 1e-6);
+        assert_eq!(changed.ground_to_field, Some(Isometry2::identity()));
+        let Some(super::Reference::Ground(truth)) = &changed.reference else {
+            panic!("ground truth")
+        };
+        assert_eq!(truth, &vec![point![1.0, 0.0, 0.1]]);
+        assert_eq!(changed.motion_reference, Some(vec![point![1.0, 0.0, 0.1]]));
+    }
+
     use super::*;
     use ros_z::message::WireEncoder;
 
