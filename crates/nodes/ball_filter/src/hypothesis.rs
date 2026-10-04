@@ -46,6 +46,8 @@ pub struct BallHypothesis {
     /// Consecutive observed leadership; cleared on missed/unknown frames and merges.
     #[serde(default)]
     pub leadership_evidence: Option<crate::competition::Evidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_guard: Option<crate::output_guard::OutputGuard>,
 }
 
 impl BallHypothesis {
@@ -58,6 +60,7 @@ impl BallHypothesis {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            output_guard: None,
             merge_observation_start: None,
         }
     }
@@ -77,6 +80,25 @@ impl BallHypothesis {
         }
     }
 
+    pub fn output_position(&self, blend: f32) -> BallPosition<Ground> {
+        let baseline = self.position();
+        let Some(guard) = &self.output_guard else {
+            return baseline;
+        };
+        if !blend.is_finite() || blend <= 0.0 {
+            return baseline;
+        }
+        let blend = blend.min(1.0);
+        let guarded = guard.position();
+        BallPosition {
+            position: (baseline.position.coords() * (1.0 - blend)
+                + guarded.position.coords() * blend)
+                .as_point(),
+            velocity: baseline.velocity * (1.0 - blend) + guarded.velocity * blend,
+            last_seen: guarded.last_seen,
+        }
+    }
+
     pub fn position_covariance(&self) -> Matrix2<f32> {
         match self.mode {
             BallMode::Resting(resting) => resting.covariance,
@@ -93,6 +115,16 @@ impl BallHypothesis {
         resting_process_noise: Matrix2<f32>,
         log_likelihood_of_zero_velocity_threshold: f32,
     ) {
+        if let Some(guard) = &mut self.output_guard {
+            guard.predict(
+                delta_time,
+                last_to_current_odometry,
+                velocity_decay,
+                moving_process_noise,
+                resting_process_noise,
+                log_likelihood_of_zero_velocity_threshold,
+            );
+        }
         match &mut self.mode {
             BallMode::Resting(resting) => {
                 if let Some(evidence) = &mut self.motion_evidence {
@@ -256,6 +288,7 @@ impl BallHypothesis {
                 .unwrap_or(self.last_seen)
                 .min(other.merge_observation_start.unwrap_or(other.last_seen)),
         );
+        self.output_guard = None;
         self.mode = mode;
         self.validity = self.validity.max(other.validity);
         self.last_seen = self.last_seen.max(other.last_seen);
@@ -363,6 +396,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            output_guard: None,
             merge_observation_start: None,
         }
     }

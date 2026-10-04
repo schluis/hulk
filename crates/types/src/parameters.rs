@@ -280,6 +280,12 @@ pub struct BallFilterParameters {
     /// Physical gate after a gap for quiet balls outside kicking reach; zero disables.
     #[serde(default)]
     pub reacquisition_matching_distance: f32,
+    /// Optional publication-only distance gate after quiet, non-kickable gaps.
+    #[serde(default)]
+    pub output_reacquisition_distance: f32,
+    /// Fraction of guarded state in publication; zero preserves baseline output.
+    #[serde(default)]
+    pub output_reacquisition_blend: f32,
     /// Maximum ratio between observed and projected ball radii, in either
     /// direction. Values <= 1 disable this optional ground-ball geometry gate.
     #[serde(default)]
@@ -339,6 +345,8 @@ impl Default for BallFilterParameters {
             maximum_matching_cost: Default::default(),
             maximum_matching_distance: Default::default(),
             reacquisition_matching_distance: Default::default(),
+            output_reacquisition_distance: 0.0,
+            output_reacquisition_blend: 0.0,
             maximum_detection_radius_ratio: Default::default(),
             radius_consistency_maximum_distance: Default::default(),
             hypothesis_uncertainty_weight: Default::default(),

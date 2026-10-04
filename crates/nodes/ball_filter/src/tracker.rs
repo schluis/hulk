@@ -181,7 +181,7 @@ impl Tracker {
         remove_invalid_and_merge_hypotheses(&mut self.filter, time, parameters, dimensions);
         self.filter
             .best_hypothesis_with_field_pose(parameters, dimensions, ground_to_field)
-            .map(|h| h.position())
+            .map(|h| h.output_position(parameters.output_reacquisition_blend))
     }
 }
 

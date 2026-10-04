@@ -1,3 +1,4 @@
+mod output_guard;
 mod reacquisition;
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
@@ -359,6 +360,13 @@ fn predict_hypotheses_from_odometry(
         .hypotheses
         .retain(|hypothesis| hypothesis.validity > filter_parameters.validity_discard_threshold);
 
+    if !filter_parameters.output_reacquisition_distance.is_finite()
+        || filter_parameters.output_reacquisition_distance <= 0.0
+    {
+        for hypothesis in &mut ball_filter.hypotheses {
+            hypothesis.output_guard = None;
+        }
+    }
     ball_filter.predict(
         delta_time,
         last_to_current,
@@ -504,6 +512,13 @@ fn advance_all_hypotheses(
             let score = match_matrix[(hypothesis_index, percept_index)];
             used_percepts.push(percept_index);
             matched[hypothesis_index] = true;
+            output_guard::observe(
+                hypothesis,
+                time,
+                ball_percepts[percept_index].percept_in_ground,
+                obstacles,
+                filter_parameters,
+            );
             hypothesis.update(
                 time,
                 ball_percepts[percept_index].percept_in_ground,
@@ -1497,6 +1512,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            output_guard: None,
             merge_observation_start: None,
         };
         let mut filter = BallFilter {
@@ -1584,6 +1600,7 @@ mod tests {
                 negative_evidence: None,
                 validity_decay_evidence: None,
                 leadership_evidence: None,
+                output_guard: None,
                 merge_observation_start: None,
             }],
         };
@@ -1688,6 +1705,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            output_guard: None,
             merge_observation_start: None,
         };
         let hypothesis2 = BallHypothesis {
@@ -1701,6 +1719,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            output_guard: None,
             merge_observation_start: None,
         };
 
