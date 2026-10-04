@@ -36,6 +36,40 @@ first, then replay the lab commits and experiments in order.
 
 ## Fresh checkout
 
+### Preferred parameter candidate (2026-10-04)
+
+`dev/ball-filter-preferred-simulator-20261004` combines the shared simulator and
+Twix tooling with the selected normal-filter parameters. The filter implementation
+is PR #2944 at `25c89eeac`, including the publication-output wiring and covariance
+safeguard. No experimental filter extension is included. The production-only
+branch is `dev/ball-filter-preferred-20261004`.
+
+To inspect the exact candidate without further optimization, use a new output
+directory and run these commands from the repository root in separate terminals:
+
+```sh
+git lfs pull
+RUSTUP_TOOLCHAIN=1.98.1 ./simulator \
+  --tune-ball-filter logs/preferred-filter-preview \
+  --tuning-trials 0 --tuning-once --keep-tuning-open
+```
+
+```sh
+RUSTUP_TOOLCHAIN=1.98.1 ./twix
+```
+
+In Twix, add **Ball-filter optimization**, click **Connect to simulator /
+optimizer**, then **Open 3D view**. The simulator first captures six reference
+recordings and verifies replay. Zero search trials preserve the selected
+parameters; the live scenarios continue until Ctrl-C. Use a different output
+directory for each fresh run. If Rust 1.98.1 is not installed, run
+`rustup toolchain install 1.98.1`, or use the repository's Nix development shell.
+
+This is the `diagnostic-pda-common-01` parameter candidate evaluated on the normal
+filter, without PDA. Saved training/development losses were 2.238213891 and
+1.825174834. The reserved final evaluation has not run, and development
+recording-level regressions remain; this branch is for local evaluation.
+
 Use the repository's `nix develop` environment, or Rust 1.98.1 and the native
 build dependencies. Run `git lfs pull` for robot models and simulator assets.
 From the repository root:
