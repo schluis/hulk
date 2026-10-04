@@ -244,6 +244,9 @@ pub struct BallFilterParameters {
     pub maximum_number_of_hypotheses: usize,
     pub ball_confidence_threshold: f32,
     pub log_likelihood_of_zero_velocity_threshold: f32,
+    /// Optional speed-based moving-to-rest transition, in m/s; zero disables.
+    #[serde(default)]
+    pub resting_velocity_threshold: f32,
     pub hypothesis_merge_distance: f32,
     pub visible_validity_exponential_decay_factor: f32,
     pub hidden_validity_exponential_decay_factor: f32,
@@ -274,14 +277,44 @@ pub struct BallFilterParameters {
     /// covariance-only association; positive values reject distant percepts.
     #[serde(default)]
     pub maximum_matching_distance: f32,
+    /// Physical gate after a gap for quiet balls outside kicking reach; zero disables.
+    #[serde(default)]
+    pub reacquisition_matching_distance: f32,
     /// Maximum ratio between observed and projected ball radii, in either
     /// direction. Values <= 1 disable this optional ground-ball geometry gate.
     #[serde(default)]
     pub maximum_detection_radius_ratio: f32,
+    /// Apply size consistency only within this Ground distance; zero means everywhere.
+    #[serde(default)]
+    pub radius_consistency_maximum_distance: f32,
     /// Ranking penalty per square metre of position covariance trace. Does not
     /// change output eligibility, stored confidence, or hypothesis retention.
     #[serde(default)]
     pub hypothesis_uncertainty_weight: f32,
+    /// Bound accumulated support for selection only; zero leaves it unbounded.
+    #[serde(default)]
+    pub selection_confidence_cap: f32,
+    /// Blend a separate geometry-filtered position estimate; baseline gates availability.
+    #[serde(default)]
+    pub publication_filter_blend: f32,
+    /// Student-t innovation reweighting strength. With auxiliary publication
+    /// enabled, adapts only that retained history and preserves main lifecycle.
+    #[serde(default)]
+    pub student_t_robustness: f32,
+
+    /// Relative pixel noise for the optional position estimator.
+    #[serde(default)]
+    pub publication_detection_noise: f32,
+    /// Maximum age of the alternate observation used for correction; zero disables this gate.
+    #[serde(default)]
+    pub publication_maximum_age: Duration,
+    /// Maximum alternate ball distance for correction; zero disables this gate.
+    #[serde(default)]
+    pub publication_maximum_distance: f32,
+    /// Additional field-boundary uncertainty buffer for the auxiliary history.
+    /// The main filter's existing margin remains a lower bound.
+    #[serde(default)]
+    pub publication_field_boundary_margin: f32,
     /// Bounded uncertainty penalty for choosing between feasible associations.
     /// Zero preserves legacy assignment; does not change the matching gate.
     #[serde(default)]
@@ -290,9 +323,6 @@ pub struct BallFilterParameters {
     /// Zero preserves center-only visibility. Uncertain visibility pauses misses.
     #[serde(default)]
     pub visibility_uncertainty_scale: f32,
-    /// Student-t innovation reweighting, zero disables.
-    #[serde(default)]
-    pub student_t_robustness: f32,
     /// Legacy compatibility field; rejected associations no longer penalize track validity.
     pub maximum_matching_cost_validity_penalty_factor: f32,
 }
@@ -314,6 +344,7 @@ impl Default for BallFilterParameters {
             maximum_number_of_hypotheses: Default::default(),
             ball_confidence_threshold: Default::default(),
             log_likelihood_of_zero_velocity_threshold: Default::default(),
+            resting_velocity_threshold: Default::default(),
             hypothesis_merge_distance: Default::default(),
             visible_validity_exponential_decay_factor: Default::default(),
             hidden_validity_exponential_decay_factor: Default::default(),
@@ -328,11 +359,19 @@ impl Default for BallFilterParameters {
             noise: Default::default(),
             maximum_matching_cost: Default::default(),
             maximum_matching_distance: Default::default(),
+            reacquisition_matching_distance: Default::default(),
             maximum_detection_radius_ratio: Default::default(),
+            radius_consistency_maximum_distance: Default::default(),
             hypothesis_uncertainty_weight: Default::default(),
+            selection_confidence_cap: Default::default(),
+            publication_filter_blend: 0.0,
+            student_t_robustness: 0.0,
+            publication_detection_noise: 0.05,
+            publication_maximum_age: Duration::ZERO,
+            publication_maximum_distance: 0.0,
+            publication_field_boundary_margin: 0.0,
             association_uncertainty_weight: Default::default(),
             visibility_uncertainty_scale: Default::default(),
-            student_t_robustness: Default::default(),
             maximum_matching_cost_validity_penalty_factor: Default::default(),
         }
     }

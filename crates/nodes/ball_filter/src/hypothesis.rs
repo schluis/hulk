@@ -46,6 +46,8 @@ pub struct BallHypothesis {
     /// Consecutive observed leadership; cleared on missed/unknown frames and merges.
     #[serde(default)]
     pub leadership_evidence: Option<crate::competition::Evidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_observation_size_plausible: Option<bool>,
 }
 
 impl BallHypothesis {
@@ -58,6 +60,7 @@ impl BallHypothesis {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            last_observation_size_plausible: None,
             merge_observation_start: None,
         }
     }
@@ -256,6 +259,18 @@ impl BallHypothesis {
                 .unwrap_or(self.last_seen)
                 .min(other.merge_observation_start.unwrap_or(other.last_seen)),
         );
+        if other.last_seen > self.last_seen {
+            self.last_observation_size_plausible = other.last_observation_size_plausible;
+        } else if other.last_seen == self.last_seen {
+            self.last_observation_size_plausible = match (
+                self.last_observation_size_plausible,
+                other.last_observation_size_plausible,
+            ) {
+                (Some(true), _) | (_, Some(true)) => Some(true),
+                (Some(false), Some(false)) => Some(false),
+                _ => None,
+            };
+        }
         self.mode = mode;
         self.validity = self.validity.max(other.validity);
         self.last_seen = self.last_seen.max(other.last_seen);
@@ -321,6 +336,27 @@ fn covariance_intersection<const N: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn merged_size_evidence_follows_newest_observation() {
+        let make = |time, plausible| {
+            let mut h = BallHypothesis::new(
+                MultivariateNormalDistribution {
+                    mean: nalgebra::Vector4::zeros(),
+                    covariance: Matrix4::identity(),
+                },
+                Time::from_nanos(time),
+            );
+            h.last_observation_size_plausible = Some(plausible);
+            h
+        };
+        let mut old = make(0, false);
+        assert!(old.merge(&make(40_000_000, true)));
+        assert_eq!(old.last_observation_size_plausible, Some(true));
+        assert!(old.merge(&make(80_000_000, false)));
+        assert_eq!(old.last_observation_size_plausible, Some(false));
+        assert!(old.merge(&make(80_000_000, true)));
+        assert_eq!(old.last_observation_size_plausible, Some(true));
+    }
 
     #[test]
     fn resting_decision_uses_velocity_uncertainty_not_position_uncertainty() {
@@ -363,6 +399,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            last_observation_size_plausible: None,
             merge_observation_start: None,
         }
     }
