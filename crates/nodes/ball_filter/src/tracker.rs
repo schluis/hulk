@@ -119,6 +119,12 @@ impl Tracker {
         } else {
             self.publication_tracker = None;
         }
+        // IMM is confined to the retained estimator; base association stays unchanged.
+        let mut main_parameters = parameters.clone();
+        if parameters.publication_filter_blend > 0.0 {
+            main_parameters.imm_transition_rate = 0.0;
+        }
+        let parameters = &main_parameters;
         if let Some(odometry) = odometry {
             self.obstacle_odometry.insert(time, odometry);
             predict_hypotheses_from_odometry(
@@ -244,7 +250,18 @@ impl Tracker {
         let hypothesis =
             self.filter
                 .best_hypothesis_with_field_pose(parameters, dimensions, ground_to_field)?;
-        let baseline = hypothesis.position();
+        let mut baseline = hypothesis.position();
+        if parameters.publication_filter_blend == 0.0
+            && let Some(imm) = &hypothesis.imm
+        {
+            let state = imm.combined();
+            let blend = parameters.imm_output_blend.clamp(0.0, 1.0);
+            baseline.position = (baseline.position.coords() * (1.0 - blend)
+                + state.mean.xy().framed() * blend)
+                .as_point();
+            baseline.velocity = baseline.velocity * (1.0 - blend)
+                + linear_algebra::vector![state.mean.z, state.mean.w] * blend;
+        }
         // A separate history is only a correction for physically inconsistent
         // detector evidence. Keep ordinary, supported observations unchanged.
         if hypothesis.last_observation_size_plausible != Some(false) {
@@ -417,6 +434,8 @@ mod tests {
         let alternate = BallFilterParameters {
             publication_filter_blend: 1.0,
             publication_detection_noise: 0.05,
+            imm_transition_rate: 1.0,
+            imm_output_blend: 1.0,
             ..parameters.clone()
         };
         let position = baseline.filter.hypotheses[0].position().position;
@@ -489,6 +508,7 @@ mod tests {
                 assert_eq!(a.position_covariance(), b.position_covariance());
                 assert_eq!(a.validity, b.validity);
                 assert_eq!(a.last_seen, b.last_seen);
+                assert!(b.imm.is_none(), "IMM must not change the main tracker");
             }
         }
         assert!(baseline.filter.hypotheses.is_empty());

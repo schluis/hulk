@@ -355,6 +355,35 @@ fn predict_hypotheses_from_odometry(
         .hypotheses
         .retain(|hypothesis| hypothesis.validity > filter_parameters.validity_discard_threshold);
 
+    for hypothesis in &mut ball_filter.hypotheses {
+        if filter_parameters.imm_transition_rate.is_finite()
+            && filter_parameters.imm_transition_rate > 0.0
+        {
+            if let Some(imm) = &mut hypothesis.imm {
+                imm.transition_rate = filter_parameters.imm_transition_rate;
+            } else {
+                let state = match hypothesis.mode {
+                    hypothesis::BallMode::Moving(state) => state,
+                    hypothesis::BallMode::Resting(state) => {
+                        let mut covariance = Matrix4::identity() * 0.01;
+                        covariance
+                            .fixed_view_mut::<2, 2>(0, 0)
+                            .copy_from(&state.covariance);
+                        types::multivariate_normal_distribution::MultivariateNormalDistribution {
+                            mean: nalgebra::vector![state.mean.x, state.mean.y, 0.0, 0.0],
+                            covariance,
+                        }
+                    }
+                };
+                hypothesis.imm = Some(hypothesis::imm::Imm::new(
+                    state,
+                    filter_parameters.imm_transition_rate,
+                ));
+            }
+        } else {
+            hypothesis.imm = None;
+        }
+    }
     ball_filter.predict(
         delta_time,
         last_to_current,
@@ -1589,6 +1618,7 @@ mod tests {
             motion_evidence: None,
             negative_evidence: None,
             validity_decay_evidence: None,
+            imm: None,
             leadership_evidence: None,
             last_observation_size_plausible: None,
             merge_observation_start: None,
@@ -1677,6 +1707,7 @@ mod tests {
                 motion_evidence: None,
                 negative_evidence: None,
                 validity_decay_evidence: None,
+                imm: None,
                 leadership_evidence: None,
                 last_observation_size_plausible: None,
                 merge_observation_start: None,
@@ -1782,6 +1813,7 @@ mod tests {
             motion_evidence: None,
             negative_evidence: None,
             validity_decay_evidence: None,
+            imm: None,
             leadership_evidence: None,
             last_observation_size_plausible: None,
             merge_observation_start: None,
@@ -1796,6 +1828,7 @@ mod tests {
             motion_evidence: None,
             negative_evidence: None,
             validity_decay_evidence: None,
+            imm: None,
             leadership_evidence: None,
             last_observation_size_plausible: None,
             merge_observation_start: None,

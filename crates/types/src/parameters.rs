@@ -294,6 +294,12 @@ pub struct BallFilterParameters {
     pub visibility_uncertainty_scale: f32,
     /// Legacy compatibility field; rejected associations no longer penalize track validity.
     pub maximum_matching_cost_validity_penalty_factor: f32,
+    /// Transition rate of the optional two-model retained estimator.
+    #[serde(default)]
+    pub imm_transition_rate: f32,
+    /// Contribution of IMM to retained geometry-supported publication.
+    #[serde(default)]
+    pub imm_output_blend: f32,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, ros_z::Message)]
