@@ -294,6 +294,18 @@ pub struct BallFilterParameters {
     /// Bound accumulated support for selection only; zero leaves it unbounded.
     #[serde(default)]
     pub selection_confidence_cap: f32,
+    /// Blend a separate geometry-filtered position estimate; baseline gates availability.
+    #[serde(default)]
+    pub publication_filter_blend: f32,
+    /// Relative pixel noise for the optional position estimator.
+    #[serde(default)]
+    pub publication_detection_noise: f32,
+    /// Maximum age of the alternate observation used for correction; zero disables this gate.
+    #[serde(default)]
+    pub publication_maximum_age: Duration,
+    /// Maximum alternate ball distance for correction; zero disables this gate.
+    #[serde(default)]
+    pub publication_maximum_distance: f32,
     /// Bounded uncertainty penalty for choosing between feasible associations.
     /// Zero preserves legacy assignment; does not change the matching gate.
     #[serde(default)]
@@ -343,6 +355,10 @@ impl Default for BallFilterParameters {
             radius_consistency_maximum_distance: Default::default(),
             hypothesis_uncertainty_weight: Default::default(),
             selection_confidence_cap: Default::default(),
+            publication_filter_blend: 0.0,
+            publication_detection_noise: 0.05,
+            publication_maximum_age: Duration::ZERO,
+            publication_maximum_distance: 0.0,
             association_uncertainty_weight: Default::default(),
             visibility_uncertainty_scale: Default::default(),
             maximum_matching_cost_validity_penalty_factor: Default::default(),

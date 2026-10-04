@@ -26,12 +26,47 @@ pub struct InputStamp {
 #[derive(Default)]
 pub struct Tracker {
     pub filter: BallFilter,
+    publication_tracker: Option<Box<Tracker>>,
     assignment_solver: AssignmentSolver,
     last_odometry: Option<Pose2<Odometry>>,
     last_prediction_time: Option<Time>,
     last_detection_time: Option<Time>,
     obstacle_odometry: crate::obstacle_input::OdometryHistory,
     field_decay_clock: crate::field_prior::ValidityDecayClock,
+}
+
+fn publication_parameters(parameters: &BallFilterParameters) -> Option<BallFilterParameters> {
+    if !parameters.publication_filter_blend.is_finite()
+        || parameters.publication_filter_blend <= 0.0
+    {
+        return None;
+    }
+    let mut alternate = parameters.clone();
+    // This guard bounds nesting to one auxiliary tracker.
+    alternate.publication_filter_blend = 0.0;
+    let noise = parameters.publication_detection_noise;
+    alternate
+        .noise
+        .detection_noise
+        .inner
+        .fill(if noise.is_finite() && noise > 0.0 {
+            noise
+        } else {
+            0.05
+        });
+    alternate.maximum_detection_radius_ratio = 1.5;
+    alternate.radius_consistency_maximum_distance = 0.0;
+    alternate.maximum_matching_cost = 9.0;
+    alternate.maximum_matching_distance = 0.5;
+    alternate.visible_missed_detection_timeout = Duration::ZERO;
+    alternate.near_visible_missed_detection_timeout = Duration::ZERO;
+    alternate.hidden_validity_decay_rate = Some(0.0);
+    alternate.visible_missed_validity_decay_rate = Some(0.0);
+    alternate.near_visible_missed_validity_decay_rate = Some(0.0);
+    alternate.competing_hypothesis_validity_decay_rate = Some(0.0);
+    alternate.nearby_spawn_validity_factor = Some(0.0);
+    alternate.validity_output_threshold = 3.0;
+    Some(alternate)
 }
 
 pub fn camera_is_recent(image_time: Time, camera_time: Time, tolerance: Duration) -> bool {
@@ -69,6 +104,15 @@ impl Tracker {
         parameters: &BallFilterParameters,
         dimensions: &FieldDimensions,
     ) -> Result<Vec<BallPercept>> {
+        if let Some(alternate) = publication_parameters(parameters) {
+            self.publication_tracker
+                .get_or_insert_with(Box::default)
+                .advance_with_obstacles(
+                    time, odometry, detections, camera, obstacles, &alternate, dimensions,
+                )?;
+        } else {
+            self.publication_tracker = None;
+        }
         if let Some(odometry) = odometry {
             self.obstacle_odometry.insert(time, odometry);
             predict_hypotheses_from_odometry(
@@ -158,6 +202,13 @@ impl Tracker {
         dimensions: &FieldDimensions,
         ground_to_field: Option<Isometry2<Ground, Field>>,
     ) -> Option<BallPosition<Ground>> {
+        let alternate = self
+            .publication_tracker
+            .as_mut()
+            .zip(publication_parameters(parameters))
+            .and_then(|(tracker, alternate)| {
+                tracker.finish_with_field_pose(time, &alternate, dimensions, ground_to_field)
+            });
         let valid_pose = ground_to_field.is_some_and(|pose| {
             pose.inner
                 .to_homogeneous()
@@ -179,9 +230,35 @@ impl Tracker {
             parameters,
         );
         remove_invalid_and_merge_hypotheses(&mut self.filter, time, parameters, dimensions);
-        self.filter
-            .best_hypothesis_with_field_pose(parameters, dimensions, ground_to_field)
-            .map(|h| h.position())
+        let hypothesis =
+            self.filter
+                .best_hypothesis_with_field_pose(parameters, dimensions, ground_to_field)?;
+        let baseline = hypothesis.position();
+        // A separate history is only a correction for physically inconsistent
+        // detector evidence. Keep ordinary, supported observations unchanged.
+        if hypothesis.last_observation_size_plausible != Some(false) {
+            return Some(baseline);
+        }
+        let alternate = alternate.filter(|ball| {
+            (parameters.publication_maximum_age.is_zero()
+                || time.as_nanos().saturating_sub(ball.last_seen.as_nanos()) as u128
+                    <= parameters.publication_maximum_age.as_nanos())
+                && (parameters.publication_maximum_distance <= 0.0
+                    || ball.position.coords().norm() <= parameters.publication_maximum_distance)
+        });
+        Some(match alternate {
+            Some(alternate) => {
+                let blend = parameters.publication_filter_blend.clamp(0.0, 1.0);
+                BallPosition {
+                    position: (baseline.position.coords() * (1.0 - blend)
+                        + alternate.position.coords() * blend)
+                        .as_point(),
+                    velocity: baseline.velocity * (1.0 - blend) + alternate.velocity * blend,
+                    last_seen: baseline.last_seen.min(alternate.last_seen),
+                }
+            }
+            None => baseline,
+        })
     }
 }
 
@@ -232,6 +309,154 @@ mod tests {
         parameters.hypothesis_timeout = Duration::from_secs(30);
         parameters.noise.detection_noise.inner.fill(0.01);
         (tracker, camera, parameters, dimensions)
+    }
+
+    #[test]
+    fn independent_publication_preserves_base_state_and_output_availability() {
+        let (mut baseline, camera, mut parameters, dimensions) = negative_evidence_fixture();
+        parameters.noise.initial_covariance.fill(1.0);
+        let (mut candidate, _, _, _) = negative_evidence_fixture();
+        let alternate = BallFilterParameters {
+            publication_filter_blend: 1.0,
+            publication_detection_noise: 0.05,
+            ..parameters.clone()
+        };
+        let position = baseline.filter.hypotheses[0].position().position;
+        let center = camera
+            .ground_with_z_to_pixel(position, dimensions.ball_radius)
+            .unwrap();
+        let depth = (camera.ground_to_camera
+            * linear_algebra::point![position.x(), position.y(), dimensions.ball_radius])
+        .z();
+        let radius = dimensions.ball_radius
+            * camera.intrinsics.focals.x.min(camera.intrinsics.focals.y)
+            / depth;
+        let mut detection = image_object(RobocupObjectLabel::Ball, 1.0);
+        detection.bounding_box.area.min = center - linear_algebra::vector![radius, radius];
+        detection.bounding_box.area.max = center + linear_algebra::vector![radius, radius];
+        for step in 1..25 {
+            let time = Time::from_nanos(step * 40_000_000);
+            let detections = if step < 6 {
+                vec![detection.clone()]
+            } else {
+                vec![]
+            };
+            let camera = TimeWrapper {
+                time,
+                inner: camera.clone(),
+            };
+            baseline
+                .advance_with_obstacles(
+                    time,
+                    None,
+                    Some(&detections),
+                    Some(&camera),
+                    Some(&TimeWrapper {
+                        time,
+                        inner: Vec::new(),
+                    }),
+                    &parameters,
+                    &dimensions,
+                )
+                .unwrap();
+            candidate
+                .advance_with_obstacles(
+                    time,
+                    None,
+                    Some(&detections),
+                    Some(&camera),
+                    Some(&TimeWrapper {
+                        time,
+                        inner: Vec::new(),
+                    }),
+                    &alternate,
+                    &dimensions,
+                )
+                .unwrap();
+            assert_eq!(
+                baseline.finish(time, &parameters, &dimensions).is_some(),
+                candidate.finish(time, &alternate, &dimensions).is_some()
+            );
+            assert_eq!(
+                baseline.filter.hypotheses.len(),
+                candidate.filter.hypotheses.len()
+            );
+            for (a, b) in baseline
+                .filter
+                .hypotheses
+                .iter()
+                .zip(&candidate.filter.hypotheses)
+            {
+                assert_eq!(a.position().position, b.position().position);
+                assert_eq!(a.position_covariance(), b.position_covariance());
+                assert_eq!(a.validity, b.validity);
+                assert_eq!(a.last_seen, b.last_seen);
+            }
+        }
+        assert!(baseline.filter.hypotheses.is_empty());
+        let auxiliary = candidate.publication_tracker.as_ref().unwrap();
+        assert!(
+            !auxiliary.filter.hypotheses.is_empty(),
+            "position history survives a baseline deletion"
+        );
+        assert!(
+            auxiliary.publication_tracker.is_none(),
+            "auxiliary nesting is bounded"
+        );
+        // A later geometrically impossible detection can revive baseline
+        // availability without replacing the independently retained true position.
+        let time = Time::from_nanos(1_040_000_000);
+        let camera = TimeWrapper {
+            time,
+            inner: camera,
+        };
+        let false_center = center + linear_algebra::vector![100.0, 0.0];
+        detection.bounding_box.area.min = false_center - linear_algebra::vector![2.0, 2.0];
+        detection.bounding_box.area.max = false_center + linear_algebra::vector![2.0, 2.0];
+        let detections = [detection];
+        baseline
+            .advance(
+                time,
+                None,
+                Some(&detections),
+                Some(&camera),
+                &parameters,
+                &dimensions,
+            )
+            .unwrap();
+        candidate
+            .advance(
+                time,
+                None,
+                Some(&detections),
+                Some(&camera),
+                &alternate,
+                &dimensions,
+            )
+            .unwrap();
+        let raw = baseline.finish(time, &parameters, &dimensions).unwrap();
+        let corrected = candidate.finish(time, &alternate, &dimensions).unwrap();
+        assert!((raw.position - position).norm() > 0.05);
+        assert!((corrected.position - position).norm() < 1e-5);
+        let mut fresh_only = alternate.clone();
+        fresh_only.publication_maximum_age = Duration::from_millis(100);
+        assert_eq!(
+            candidate
+                .finish(time, &fresh_only, &dimensions)
+                .unwrap()
+                .position,
+            raw.position,
+            "a stale alternate must not replace the baseline"
+        );
+        fresh_only.publication_maximum_age = Duration::from_secs(2);
+        assert_eq!(
+            candidate
+                .finish(time, &fresh_only, &dimensions)
+                .unwrap()
+                .position,
+            corrected.position,
+            "an alternate inside the configured age limit remains usable"
+        );
     }
 
     fn image_object(label: RobocupObjectLabel, confidence: f32) -> Object<RobocupObjectLabel> {

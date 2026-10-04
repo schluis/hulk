@@ -99,3 +99,39 @@ The candidate was frozen before inspecting the third audit (`candidate72-before-
 Use `ball-filter-tuner --trials 0 --export-baseline-training-frames` to export the exact evaluation baseline rather than the search winner. Run `python3 tools/simulate/analyze_ball_availability.py <run>/report.json --output <run>/availability.json` afterward. This checks exported correct-ball unavailability against the report, groups metrics by scenario family, separates initial acquisition from subsequent losses, and reports completed and censored reacquisition events. Reacquisition starts at a delivered projected percept within 0.5 m of current truth: this is a supporting-detection proxy, not measured physical visibility or detector identity. Keep its censor counts alongside mean/max delays. Inspecting an audit this way is diagnostic only after its frozen-candidate verdict; it must not become parameter-selection data while still described as held out.
 
 The revised 96-clip candidate (auxiliary age <=5 s, no distance cutoff) passes all development guards with 20% lower close RMSE and 10% lower RMS lag. It also passes all four live approach continuity checks; `approach96-verdict.json` includes parameter and simulator hashes. On the previously failing third-audit sideline clip, fixed exports show initial acquisition unchanged at 0.174 s and established-track unavailability improving 10.746 -> 9.806 s. The fourth audit remains pending; no production promotion.
+
+### Validated result: geometry-supported auxiliary filter
+
+The frozen age-limited candidate passed **all 24 fourth-audit recordings and all v8 per-recording/aggregate guards**. It is integrated in the main worktree and enabled in `etc/parameters/base/ball_filter.json5`. The 96 development recordings were used for selection; the final 24 recordings were new seeds across all eight scenario families. Fast-crossing was replaced once after a coverage/upright rejection, before model metrics were inspected. The frozen candidate and binary hashes are in `candidate96-before-fourth-audit-manifest.json`; coverage provenance is in `fourth-audit-complete-manifest.json`; the verdict is `fourth-audit-verdict.json`.
+
+Independent aggregate results:
+
+| Metric | Baseline | Candidate |
+|---|---:|---:|
+| Close-range RMSE | 0.311333 m | 0.247224 m |
+| RMS spatial lag | 0.845534 s | 0.720110 s |
+| Correct-ball unavailable | 165.902 s | 152.818 s |
+| Close correct-ball unavailable | 21.140 s | 16.620 s |
+| Established-track unavailable | 116.290 s | 103.206 s |
+| Initial acquisition unavailable | 49.612 s | 49.612 s |
+| Wrong selected output | 76.410 s | 63.326 s |
+| False-track time | 104.820 s | 104.820 s |
+
+Per-family independent results (three recordings each):
+
+| Family | Close RMSE, m (base → candidate) | RMS spatial lag, s (base → candidate) | Correct-ball unavailable, s (base → candidate) |
+|---|---:|---:|---:|
+| approach | 0.102 → 0.102 | 0.447 → 0.314 | 3.648 → 2.168 |
+| brief-gaps | 0.355 → 0.310 | 0.214 → 0.213 | 12.772 → 12.372 |
+| contested | 0.093 → 0.093 | 0.296 → 0.282 | 56.270 → 54.070 |
+| empty-false | — → — | — → — | 0.000 → 0.000 |
+| fast-crossing | 0.174 → 0.174 | 1.659 → 1.420 | 18.588 → 17.948 |
+| long-occlusion | — → — | — → — | 12.108 → 8.588 |
+| sideline | 0.267 → 0.103 | 0.324 → 0.301 | 49.888 → 49.124 |
+| stationary-close | 0.390 → 0.305 | — → — | 12.628 → 8.548 |
+
+Reacquisition diagnostics use delivered supporting percepts, not physical visibility: completed-event mean 0.162752 -> 0.155210 s; maximum 3.064 -> 2.854 s; zero supported censored events in either run. Event counts differ (133 -> 119) because the candidate prevents some losses, so the means are not matched-event latency measurements. Full per-recording values are in `fourth-audit-diagnostics-{baseline,candidate}/availability.json`.
+
+Implementation: an independent Kalman history admits observations consistent with physical ball size and survives spurious clearing of the ordinary track. It corrects only selected tracks whose latest detector image is implausibly small; ordinary supported observations retain their original output. Main output presence remains authoritative, so this change does not create extra false tracks. The chosen history uses detection-noise scale 0.2, full correction blend 1, maximum observation age 5 s, and no distance cutoff. Corrections retain the older observation timestamp. All four controls are serialized simulator/robot parameters; `publication_filter_blend=0` disables the auxiliary history for old configurations.
+
+Scope: these results validate the filter against synthetic detector noise and physically simulated trajectories, not the CNN detector or real-robot accuracy. The four live approach checks cover fixed-pose kick-command continuity during gaps/delivery delay, not physical kick success. Student-t, IMM and PDA alternatives remain separate experiments; none earned promotion in their matched comparison.
