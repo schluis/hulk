@@ -837,3 +837,36 @@ movement, forward displacement from an injected walk, and behavior takeover afte
 clearing the injection. No display is needed. The test is opt-in because it needs
 the native runtimes and model files; the ordinary motion tests cover paused-time
 status updates and source-timestamp freshness without loading ONNX models.
+
+### Monitor standalone offline searches in Twix
+
+On the machine running offline `ball-filter-tuner` workers, publish their completed
+reports without starting another search or simulator:
+
+```bash
+cargo +1.98.1 run --release -p ball-filter-tuner --bin ball-filter-monitor -- \
+  logs/my-search --prefix worker- \
+  --reference-report logs/my-search/worker-00/report.json
+```
+
+The reference report fixes the dataset, objective and baseline: incompatible
+reports are excluded from ranking and trial counts. Repeat `--prefix` to include
+multiple worker-name prefixes. The monitor discovers running workers through
+Linux `/proc`, refreshes every two seconds, and reports completed-round trial
+counts and the best training result with its held-out metrics. Workers that do
+not write intermediate reports only update the result when their round finishes.
+This is a read-only progress service; simulator controls and 3D preview are not
+available. It stays online after workers finish. Use `--once` to inspect a JSON
+snapshot without starting the service.
+
+For a local Twix connected to a remote monitor, keep this tunnel running locally:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:7448:127.0.0.1:7448 schluis@remote-compiler
+```
+
+In Twix, open **Ball-filter optimization** and click **Connect to simulator /
+optimizer**. Only one service can listen on port 7448. If captures also need that
+port, start the monitor with `--listen tcp/127.0.0.1:7449` and change the tunnel's
+remote port to 7449, keeping its local port at 7448.
