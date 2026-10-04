@@ -110,8 +110,11 @@ def main():
         score = comparison['baseline']
         if not math.isclose(unavailable, score['correct_track_missing_seconds'], abs_tol=1e-6):
             raise ValueError(f'Frame/report availability mismatch in {recording}: {unavailable} vs {score["correct_track_missing_seconds"]}')
+        family = Path(recording).parent.name.split('-retry')[0]
+        for prefix in ['fresh-', 'retry-', 'final-']:
+            family = family.removeprefix(prefix)
         entries.append({'recording': recording,
-                        'family': Path(recording).parent.name.split('-retry')[0],
+                        'family': family,
                         'score': score, 'availability': availability})
     result = {'definition': __doc__, 'report': str(args.report),
               'aggregate': summarize(entries),
