@@ -244,6 +244,9 @@ pub struct BallFilterParameters {
     pub maximum_number_of_hypotheses: usize,
     pub ball_confidence_threshold: f32,
     pub log_likelihood_of_zero_velocity_threshold: f32,
+    /// Optional speed-based moving-to-rest transition, in m/s; zero disables.
+    #[serde(default)]
+    pub resting_velocity_threshold: f32,
     pub hypothesis_merge_distance: f32,
     pub visible_validity_exponential_decay_factor: f32,
     pub hidden_validity_exponential_decay_factor: f32,
@@ -274,6 +277,9 @@ pub struct BallFilterParameters {
     /// covariance-only association; positive values reject distant percepts.
     #[serde(default)]
     pub maximum_matching_distance: f32,
+    /// Physical association gate after a >120 ms observation gap; zero disables.
+    #[serde(default)]
+    pub reacquisition_matching_distance: f32,
     /// Maximum ratio between observed and projected ball radii, in either
     /// direction. Values <= 1 disable this optional ground-ball geometry gate.
     #[serde(default)]
@@ -285,6 +291,9 @@ pub struct BallFilterParameters {
     /// change output eligibility, stored confidence, or hypothesis retention.
     #[serde(default)]
     pub hypothesis_uncertainty_weight: f32,
+    /// Bound accumulated support for selection only; zero leaves it unbounded.
+    #[serde(default)]
+    pub selection_confidence_cap: f32,
     /// Bounded uncertainty penalty for choosing between feasible associations.
     /// Zero preserves legacy assignment; does not change the matching gate.
     #[serde(default)]
@@ -314,6 +323,7 @@ impl Default for BallFilterParameters {
             maximum_number_of_hypotheses: Default::default(),
             ball_confidence_threshold: Default::default(),
             log_likelihood_of_zero_velocity_threshold: Default::default(),
+            resting_velocity_threshold: Default::default(),
             hypothesis_merge_distance: Default::default(),
             visible_validity_exponential_decay_factor: Default::default(),
             hidden_validity_exponential_decay_factor: Default::default(),
@@ -328,9 +338,11 @@ impl Default for BallFilterParameters {
             noise: Default::default(),
             maximum_matching_cost: Default::default(),
             maximum_matching_distance: Default::default(),
+            reacquisition_matching_distance: Default::default(),
             maximum_detection_radius_ratio: Default::default(),
             radius_consistency_maximum_distance: Default::default(),
             hypothesis_uncertainty_weight: Default::default(),
+            selection_confidence_cap: Default::default(),
             association_uncertainty_weight: Default::default(),
             visibility_uncertainty_scale: Default::default(),
             maximum_matching_cost_validity_penalty_factor: Default::default(),

@@ -10,6 +10,8 @@ use types::{ball_position::BallPosition, parameters::BallFilterParameters};
 pub const MISSING_PENALTY_MULTIPLIER: f64 = 1.25;
 pub const OUT_OF_FIELD_DECAY_METRES: f64 = 0.3;
 pub const CLOSE_RANGE_LOSS_WEIGHT: f64 = 4.0;
+/// Diagnostic association radius; this does not relax the existing raw guards.
+pub const CORRECT_TRACK_RADIUS_METRES: f64 = 0.5;
 
 /// Stored with every report so scores from different objectives are not confused.
 #[derive(Serialize)]
@@ -49,6 +51,11 @@ pub struct Score {
     pub unlabelled_seconds: f64,
     pub present_seconds: f64,
     pub missing_seconds: f64,
+    /// Present truth but selected output is farther than 0.5 m away.
+    pub wrong_track_seconds: f64,
+    /// Missing output or output farther than 0.5 m from present truth.
+    pub correct_track_missing_seconds: f64,
+    pub longest_correct_track_gap_seconds: f64,
     /// Includes initial acquisition and unavailable field transforms, not just lost tracks.
     pub missing_runs: u64,
     pub longest_missing_seconds: f64,
@@ -75,6 +82,8 @@ pub struct Score {
     squared_error: f64,
     #[serde(skip)]
     current_missing_seconds: f64,
+    #[serde(skip)]
+    current_correct_track_gap_seconds: f64,
     #[serde(skip)]
     close_range_squared_error: f64,
     #[serde(skip)]
@@ -419,11 +428,30 @@ impl Score {
         let Some(reference) = reference else {
             self.unlabelled_seconds += seconds;
             self.current_missing_seconds = 0.0;
+            self.current_correct_track_gap_seconds = 0.0;
             return;
         };
         self.labelled_seconds += seconds;
         if reference.is_empty() || estimate.is_some() {
             self.current_missing_seconds = 0.0;
+        }
+        let correct_track_missing = reference.first().is_some_and(|truth| {
+            estimate.as_ref().is_none_or(|ball| {
+                let squared = f64::from((truth.xy() - ball.position).norm_squared());
+                !squared.is_finite() || squared > CORRECT_TRACK_RADIUS_METRES.powi(2)
+            })
+        });
+        if correct_track_missing {
+            self.correct_track_missing_seconds += seconds;
+            self.current_correct_track_gap_seconds += seconds;
+            self.longest_correct_track_gap_seconds = self
+                .longest_correct_track_gap_seconds
+                .max(self.current_correct_track_gap_seconds);
+            if estimate.is_some() {
+                self.wrong_track_seconds += seconds;
+            }
+        } else {
+            self.current_correct_track_gap_seconds = 0.0;
         }
         match (reference.first(), estimate) {
             (Some(truth), Some(estimate)) => {
@@ -531,6 +559,7 @@ pub fn evaluate(
     for recording in recordings {
         // Separate recordings do not establish a continuous observation gap.
         score.current_missing_seconds = 0.0;
+        score.current_correct_track_gap_seconds = 0.0;
         let mut previous_reference = None;
         let mut tracker = Tracker::default();
         for cycle in &recording.cycles {
@@ -601,6 +630,8 @@ pub fn export_frames(
             "time": cycle.time.as_nanos(), "seconds": cycle.seconds,
             "truth": truth, "estimate": estimate,
             "motion_truth": cycle.motion_reference,
+            "ground_to_field": cycle.ground_to_field,
+            "odometry": cycle.inputs.last().map(|input| input.odometry),
             "percepts": percepts, "hypotheses": tracker.filter.hypotheses,
         });
         serde_json::to_writer(&mut writer, &row)?;
@@ -673,6 +704,26 @@ mod tests {
         assert!(preserves_baseline_quality(&candidate, &baseline));
         candidate.false_track_seconds = baseline.false_track_seconds + 0.04;
         assert!(!preserves_baseline_quality(&candidate, &baseline));
+    }
+
+    #[test]
+    fn wrong_output_is_not_correct_ball_retention() {
+        let truth = [linear_algebra::point![<Ground>, 0.0, 0.0, 0.1]];
+        let estimate = |x| BallPosition {
+            position: linear_algebra::point![x, 0.0],
+            velocity: linear_algebra::Vector2::zeros(),
+            last_seen: Time::zero(),
+        };
+        let mut score = Score::default();
+        score.observe(Some(&truth), Some(estimate(2.0)), 1.0, 2.0);
+        score.observe(Some(&truth), None, 2.0, 2.0);
+        score.observe(Some(&truth), Some(estimate(0.1)), 1.0, 2.0);
+        score.observe(Some(&truth), None, 1.0, 2.0);
+        assert_eq!(score.wrong_track_seconds, 1.0);
+        assert_eq!(score.missing_seconds, 3.0);
+        assert_eq!(score.correct_track_missing_seconds, 4.0);
+        assert_eq!(score.longest_correct_track_gap_seconds, 3.0);
+        assert_eq!(score.longest_missing_seconds, 2.0);
     }
 
     #[test]

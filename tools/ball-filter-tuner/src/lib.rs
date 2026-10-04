@@ -109,7 +109,7 @@ struct Report<'a> {
 // Positive covariance entries use logarithmic bounds. Probabilities/thresholds use
 // linear bounds. Timeouts, output thresholds, field geometry and detector confidence stay
 // fixed. Optional confidence settings are searched only on enabled baselines.
-const BOUNDS: [(f64, f64, bool); 18] = [
+const BOUNDS: [(f64, f64, bool); 21] = [
     (0.02, 5.0, true),
     (1e-7, 0.03, true),
     (1e-7, 0.1, true),
@@ -128,8 +128,11 @@ const BOUNDS: [(f64, f64, bool); 18] = [
     (0.0, 1.0, false),   // uncertainty penalty between feasible associations
     (0.0, 3.0, false),   // covariance margin for clear missed-detection evidence
     (0.0, 5.0, false),   // distance limit for radius consistency
+    (0.0, 30.0, false),  // selection confidence cap, zero disables
+    (0.0, 2.0, false),   // physical association gate after observation gaps
+    (0.0, 0.5, false),   // optional speed-based resting transition, m/s
 ];
-fn encode(parameters: &BallFilterParameters) -> [f64; 18] {
+fn encode(parameters: &BallFilterParameters) -> [f64; 21] {
     let values = [
         parameters.noise.detection_noise.x(),
         parameters.noise.process_noise_resting[0],
@@ -153,6 +156,9 @@ fn encode(parameters: &BallFilterParameters) -> [f64; 18] {
         parameters.association_uncertainty_weight,
         parameters.visibility_uncertainty_scale,
         parameters.radius_consistency_maximum_distance,
+        parameters.selection_confidence_cap,
+        parameters.reacquisition_matching_distance,
+        parameters.resting_velocity_threshold,
     ];
     std::array::from_fn(|i| {
         let (lo, hi, log) = BOUNDS[i];
@@ -164,8 +170,8 @@ fn encode(parameters: &BallFilterParameters) -> [f64; 18] {
         }
     })
 }
-fn decode(base: &BallFilterParameters, values: [f64; 18]) -> BallFilterParameters {
-    let v: [f32; 18] = std::array::from_fn(|i| {
+fn decode(base: &BallFilterParameters, values: [f64; 21]) -> BallFilterParameters {
+    let v: [f32; 21] = std::array::from_fn(|i| {
         let (lo, hi, log) = BOUNDS[i];
         if log {
             (lo.ln() + values[i] * (hi.ln() - lo.ln())).exp() as f32
@@ -196,6 +202,9 @@ fn decode(base: &BallFilterParameters, values: [f64; 18]) -> BallFilterParameter
     p.association_uncertainty_weight = v[15];
     p.visibility_uncertainty_scale = v[16];
     p.radius_consistency_maximum_distance = v[17];
+    p.selection_confidence_cap = v[18];
+    p.reacquisition_matching_distance = v[19];
+    p.resting_velocity_threshold = v[20];
     p
 }
 
@@ -228,7 +237,7 @@ fn active_dimensions(base: &BallFilterParameters) -> Vec<usize> {
         .chain(base.competing_hypothesis_validity_decay_rate.map(|_| 8))
         .chain(base.near_visible_missed_validity_decay_rate.map(|_| 9))
         .chain(base.nearby_spawn_validity_factor.map(|_| 10))
-        .chain([11, 12, 13, 14, 15, 16, 17])
+        .chain([11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
         .collect()
 }
 
@@ -666,8 +675,8 @@ mod tests {
         assert!((imported.noise.detection_noise.x() - 1.5).abs() < 1e-6);
         for candidate in [
             imported,
-            decode(&baseline, [0.0; 18]),
-            decode(&baseline, [1.0; 18]),
+            decode(&baseline, [0.0; 21]),
+            decode(&baseline, [1.0; 21]),
         ] {
             let mut actual = serde_json::to_value(candidate).unwrap();
             let mut expected = serde_json::to_value(&baseline).unwrap();
@@ -691,8 +700,8 @@ mod tests {
             initial.good_localization = !enabled;
             for candidate in [
                 warm_start(&baseline, &initial),
-                decode(&baseline, [0.0; 18]),
-                decode(&baseline, [1.0; 18]),
+                decode(&baseline, [0.0; 21]),
+                decode(&baseline, [1.0; 21]),
             ] {
                 assert_eq!(candidate.good_localization, enabled);
             }
@@ -716,8 +725,8 @@ mod tests {
             initial.field_boundary_margin = 10.0;
             for candidate in [
                 warm_start(&baseline, &initial),
-                decode(&baseline, [0.0; 18]),
-                decode(&baseline, [1.0; 18]),
+                decode(&baseline, [0.0; 21]),
+                decode(&baseline, [1.0; 21]),
             ] {
                 assert_eq!(candidate.field_boundary_margin, margin);
             }
@@ -740,8 +749,8 @@ mod tests {
             "../../../etc/parameters/base/ball_filter.json5"
         ))
         .unwrap();
-        let low = decode(&base, [0.0; 18]);
-        let high = decode(&base, [1.0; 18]);
+        let low = decode(&base, [0.0; 21]);
+        let high = decode(&base, [1.0; 21]);
         assert_eq!(low.hidden_validity_decay_rate, Some(0.0));
         assert_eq!(low.visible_missed_validity_decay_rate, Some(0.0));
         assert_eq!(low.competing_hypothesis_validity_decay_rate, Some(0.0));
@@ -752,7 +761,7 @@ mod tests {
         assert_eq!(high.competing_hypothesis_validity_decay_rate, Some(2.0));
         assert_eq!(high.near_visible_missed_validity_decay_rate, Some(40.0));
         assert_eq!(high.nearby_spawn_validity_factor, Some(1.0));
-        assert_eq!(active_dimensions(&base), (0..18).collect::<Vec<_>>());
+        assert_eq!(active_dimensions(&base), (0..21).collect::<Vec<_>>());
         assert!(tuned_parameter_pointers(&base).contains(&"/hidden_validity_decay_rate"));
         assert!(tuned_parameter_pointers(&base).contains(&"/visible_missed_validity_decay_rate"));
         assert!(tuned_parameter_pointers(&base).contains(&"/nearby_spawn_validity_factor"));
@@ -763,32 +772,38 @@ mod tests {
         base.hidden_validity_decay_rate = None;
         assert_eq!(
             active_dimensions(&base),
-            vec![0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+            vec![
+                0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+            ]
         );
         assert!(!tuned_parameter_pointers(&base).contains(&"/hidden_validity_decay_rate"));
         assert!(tuned_parameter_pointers(&base).contains(&"/visible_missed_validity_decay_rate"));
         for value in [0.0, 0.5, 1.0] {
-            assert_eq!(decode(&base, [value; 18]).hidden_validity_decay_rate, None);
+            assert_eq!(decode(&base, [value; 21]).hidden_validity_decay_rate, None);
         }
         base.visible_missed_validity_decay_rate = None;
         assert_eq!(
             active_dimensions(&base),
-            vec![0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+            vec![
+                0, 1, 2, 3, 4, 5, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+            ]
         );
         base.competing_hypothesis_validity_decay_rate = None;
         assert_eq!(
             active_dimensions(&base),
-            vec![0, 1, 2, 3, 4, 5, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+            vec![
+                0, 1, 2, 3, 4, 5, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+            ]
         );
         base.near_visible_missed_validity_decay_rate = None;
         assert_eq!(
             active_dimensions(&base),
-            vec![0, 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17]
+            vec![0, 1, 2, 3, 4, 5, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
         );
         base.nearby_spawn_validity_factor = None;
         assert_eq!(
             active_dimensions(&base),
-            vec![0, 1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 16, 17]
+            vec![0, 1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
         );
         assert!(!tuned_parameter_pointers(&base).contains(&"/visible_missed_validity_decay_rate"));
         let imported = warm_start(&base, &high);

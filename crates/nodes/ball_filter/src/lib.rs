@@ -366,6 +366,20 @@ fn predict_hypotheses_from_odometry(
         Matrix2::from_diagonal(&filter_parameters.noise.process_noise_resting),
         filter_parameters.log_likelihood_of_zero_velocity_threshold,
     );
+    let resting_speed = filter_parameters.resting_velocity_threshold;
+    if resting_speed.is_finite() && resting_speed > 0.0 {
+        for hypothesis in &mut ball_filter.hypotheses {
+            if let hypothesis::BallMode::Moving(state) = hypothesis.mode
+                && state.mean.z.hypot(state.mean.w) <= resting_speed
+            {
+                hypothesis.mode = hypothesis::BallMode::Resting(MultivariateNormalDistribution {
+                    mean: state.mean.xy(),
+                    covariance: state.covariance.fixed_view::<2, 2>(0, 0).into_owned(),
+                });
+                hypothesis.motion_evidence = None;
+            }
+        }
+    }
 }
 
 #[expect(
@@ -406,6 +420,24 @@ fn advance_all_hypotheses(
                     .coords;
             if residual.norm_squared() > maximum_squared {
                 *cost = f32::NEG_INFINITY;
+            }
+        }
+    }
+    // A diffuse retained prediction must not turn an isolated distant false
+    // detection into high-confidence history after an observation gap. Gating
+    // leaves that history intact and lets the percept spawn its own hypothesis.
+    let reacquisition_distance = filter_parameters.reacquisition_matching_distance;
+    if reacquisition_distance.is_finite() && reacquisition_distance > 0.0 {
+        for ((row, column), score) in match_matrix.indexed_iter_mut() {
+            let hypothesis = &ball_filter.hypotheses[row];
+            if time > hypothesis.last_seen
+                && time.duration_since(hypothesis.last_seen) > Duration::from_millis(120)
+                && (ball_percepts[column].percept_in_ground.mean
+                    - hypothesis.position().position.inner.coords)
+                    .norm_squared()
+                    > reacquisition_distance.powi(2)
+            {
+                *score = f32::NEG_INFINITY;
             }
         }
     }
@@ -1347,6 +1379,97 @@ mod tests {
                 if parent_seen { 11.0 } else { 9.0 }
             );
             assert_eq!(filter.hypotheses[1].position().position, point![0.1, 0.0]);
+        }
+    }
+
+    #[test]
+    fn speed_transition_can_rest_a_quiet_uncertain_ball_without_stopping_fast_motion() {
+        for (threshold, speed, resting) in [(0.0, 0.0, false), (0.1, 0.01, true), (0.1, 1.0, false)]
+        {
+            let parameters = BallFilterParameters {
+                resting_velocity_threshold: threshold,
+                log_likelihood_of_zero_velocity_threshold: f32::INFINITY,
+                ..Default::default()
+            };
+            let mut filter = BallFilter {
+                hypotheses: vec![BallHypothesis::new(
+                    MultivariateNormalDistribution {
+                        mean: nalgebra::vector![1.0, 0.0, speed, 0.0],
+                        covariance: Matrix4::identity() * 50.0,
+                    },
+                    Time::zero(),
+                )],
+            };
+            predict_hypotheses_from_odometry(
+                &mut filter,
+                Time::zero(),
+                Pose2::new(point![0.0, 0.0], 0.0),
+                &mut None,
+                &mut None,
+                &parameters,
+            );
+            assert_eq!(
+                matches!(filter.hypotheses[0].mode, BallMode::Resting(_)),
+                resting
+            );
+            assert_eq!(filter.hypotheses[0].position().position, point![1.0, 0.0]);
+            assert_eq!(filter.hypotheses[0].validity, 1.0);
+        }
+    }
+
+    #[test]
+    fn reacquisition_gate_preserves_prior_and_requires_an_observation_gap() {
+        for (gate, millis, should_branch) in [(0.0, 200, false), (0.1, 40, false), (0.1, 200, true)]
+        {
+            let mut parameters = BallFilterParameters::default();
+            parameters.reacquisition_matching_distance = gate;
+            parameters.maximum_matching_cost = 1.0;
+            parameters.hidden_validity_exponential_decay_factor = 1.0;
+            parameters.validity_discard_threshold = 0.2;
+            parameters.noise.initial_covariance.fill(1.0);
+            let mut old = BallHypothesis::new(
+                MultivariateNormalDistribution {
+                    mean: nalgebra::Vector4::zeros(),
+                    covariance: Matrix4::identity() * 10.0,
+                },
+                Time::zero(),
+            );
+            old.validity = 5.0;
+            let mut filter = BallFilter {
+                hypotheses: vec![old],
+            };
+            let percept = BallPercept {
+                percept_in_ground: MultivariateNormalDistribution {
+                    mean: nalgebra::vector![0.5, 0.0],
+                    covariance: Matrix2::identity() * 0.01,
+                },
+                image_location: Circle::new(point![0.0, 0.0], 8.0),
+            };
+            advance_all_hypotheses(
+                &mut filter,
+                &mut AssignmentSolver::default(),
+                Time::from_nanos(millis * 1_000_000),
+                &[percept],
+                None,
+                None,
+                &[],
+                &parameters,
+                &FieldDimensions::SPL_2025,
+            )
+            .unwrap();
+            assert_eq!(filter.hypotheses.len(), if should_branch { 2 } else { 1 });
+            if should_branch {
+                assert_eq!(filter.hypotheses[0].last_seen, Time::zero());
+                assert_eq!(filter.hypotheses[0].position().position, point![0.0, 0.0]);
+                assert_eq!(filter.hypotheses[1].validity, 1.0);
+                assert_eq!(filter.hypotheses[1].position().position, point![0.5, 0.0]);
+            } else {
+                assert_eq!(
+                    filter.hypotheses[0].last_seen,
+                    Time::from_nanos(millis * 1_000_000)
+                );
+                assert!(filter.hypotheses[0].position().position.x() > 0.49);
+            }
         }
     }
 
