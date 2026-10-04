@@ -355,6 +355,51 @@ fn predict_hypotheses_from_odometry(
         .hypotheses
         .retain(|hypothesis| hypothesis.validity > filter_parameters.validity_discard_threshold);
 
+    for hypothesis in &mut ball_filter.hypotheses {
+        if filter_parameters.imm_transition_rate.is_finite()
+            && filter_parameters.imm_transition_rate > 0.0
+        {
+            if let Some(imm) = &mut hypothesis.imm {
+                imm.transition_rate = filter_parameters.imm_transition_rate;
+            } else {
+                let state = match hypothesis.mode {
+                    hypothesis::BallMode::Moving(state) => state,
+                    hypothesis::BallMode::Resting(state) => {
+                        let mut covariance = Matrix4::identity() * 0.01;
+                        covariance
+                            .fixed_view_mut::<2, 2>(0, 0)
+                            .copy_from(&state.covariance);
+                        types::multivariate_normal_distribution::MultivariateNormalDistribution {
+                            mean: nalgebra::vector![state.mean.x, state.mean.y, 0.0, 0.0],
+                            covariance,
+                        }
+                    }
+                };
+                hypothesis.imm = Some(hypothesis::imm::Imm::new(
+                    state,
+                    filter_parameters.imm_transition_rate,
+                ));
+            }
+        } else {
+            hypothesis.imm = None;
+        }
+        if let Some(imm) = &mut hypothesis.imm {
+            let scale = |value: f32| {
+                if value.is_finite() && value > 0.0 {
+                    value
+                } else {
+                    1.0
+                }
+            };
+            imm.measurement_scale = scale(filter_parameters.output_imm_measurement_scale);
+            imm.process_scale = scale(filter_parameters.output_imm_process_scale);
+            imm.output_blend = if filter_parameters.output_imm_blend.is_finite() {
+                filter_parameters.output_imm_blend.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+        }
+    }
     ball_filter.predict(
         delta_time,
         last_to_current,
@@ -1592,6 +1637,7 @@ mod tests {
             leadership_evidence: None,
             last_observation_size_plausible: None,
             merge_observation_start: None,
+            imm: None,
         };
         let mut filter = BallFilter {
             hypotheses: vec![old_track],
@@ -1680,6 +1726,7 @@ mod tests {
                 leadership_evidence: None,
                 last_observation_size_plausible: None,
                 merge_observation_start: None,
+                imm: None,
             }],
         };
         let mut solver = AssignmentSolver::default();
@@ -1785,6 +1832,7 @@ mod tests {
             leadership_evidence: None,
             last_observation_size_plausible: None,
             merge_observation_start: None,
+            imm: None,
         };
         let hypothesis2 = BallHypothesis {
             mode: BallMode::Moving(MultivariateNormalDistribution {
@@ -1799,6 +1847,7 @@ mod tests {
             leadership_evidence: None,
             last_observation_size_plausible: None,
             merge_observation_start: None,
+            imm: None,
         };
 
         let percept1 = BallPercept {

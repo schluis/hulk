@@ -244,7 +244,7 @@ impl Tracker {
         let hypothesis =
             self.filter
                 .best_hypothesis_with_field_pose(parameters, dimensions, ground_to_field)?;
-        let baseline = hypothesis.position();
+        let baseline = hypothesis.output_position();
         // A separate history is only a correction for physically inconsistent
         // detector evidence. Keep ordinary, supported observations unchanged.
         if hypothesis.last_observation_size_plausible != Some(false) {

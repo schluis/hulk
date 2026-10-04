@@ -16,6 +16,7 @@ use types::{
 mod motion_evidence;
 pub use motion_evidence::MotionEvidence;
 
+pub mod imm;
 pub mod moving;
 pub mod resting;
 
@@ -27,6 +28,8 @@ pub enum BallMode {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Message)]
 pub struct BallHypothesis {
+    #[serde(default)]
+    pub imm: Option<imm::Imm>,
     pub mode: BallMode,
     pub last_seen: Time,
     /// Conservative interval of merged observation support through last_seen.
@@ -62,6 +65,7 @@ impl BallHypothesis {
             leadership_evidence: None,
             last_observation_size_plausible: None,
             merge_observation_start: None,
+            imm: None,
         }
     }
 
@@ -77,6 +81,34 @@ impl BallHypothesis {
                 velocity: vector![moving.mean.z, moving.mean.w],
                 last_seen: self.last_seen,
             },
+        }
+    }
+
+    /// Optional independent estimator for publication. Association, existence,
+    /// field eligibility and selection continue to use the baseline state.
+    pub fn output_position(&self) -> BallPosition<Ground> {
+        match &self.imm {
+            Some(imm)
+                if imm.output_blend > 0.0
+                    && self.position().velocity.norm() <= 0.2
+                    && imm.combined().mean.fixed_rows::<2>(2).norm() <= 0.2 =>
+            {
+                let baseline = self.position();
+                let original = nalgebra::vector![
+                    baseline.position.x(),
+                    baseline.position.y(),
+                    baseline.velocity.x(),
+                    baseline.velocity.y()
+                ];
+                let mean =
+                    original * (1.0 - imm.output_blend) + imm.combined().mean * imm.output_blend;
+                BallPosition {
+                    position: mean.xy().framed().as_point(),
+                    velocity: vector![mean.z, mean.w],
+                    last_seen: self.last_seen,
+                }
+            }
+            _ => self.position(),
         }
     }
 
@@ -96,6 +128,15 @@ impl BallHypothesis {
         resting_process_noise: Matrix2<f32>,
         log_likelihood_of_zero_velocity_threshold: f32,
     ) {
+        if let Some(imm) = &mut self.imm {
+            imm.predict(
+                delta_time,
+                last_to_current_odometry,
+                velocity_decay,
+                moving_process_noise,
+                resting_process_noise,
+            );
+        }
         match &mut self.mode {
             BallMode::Resting(resting) => {
                 if let Some(evidence) = &mut self.motion_evidence {
@@ -164,6 +205,9 @@ impl BallHypothesis {
         self.negative_evidence = None;
         self.validity_decay_evidence = None;
         self.validity += validity_bonus;
+        if let Some(imm) = &mut self.imm {
+            imm.update(measurement);
+        }
 
         match &mut self.mode {
             BallMode::Resting(resting) => {
@@ -272,6 +316,7 @@ impl BallHypothesis {
             };
         }
         self.mode = mode;
+        self.imm = None; // Reinitialize from the conservative merged state next prediction.
         self.validity = self.validity.max(other.validity);
         self.last_seen = self.last_seen.max(other.last_seen);
         self.negative_evidence = None;
@@ -359,6 +404,83 @@ mod tests {
     }
 
     #[test]
+    fn independent_imm_never_changes_association_state_or_confidence() {
+        let state = MultivariateNormalDistribution {
+            mean: nalgebra::vector![0.0, 0.0, 0.0, 0.0],
+            covariance: Matrix4::identity(),
+        };
+        let mut baseline = BallHypothesis::new(state, Time::from_nanos(0));
+        let mut candidate = baseline.clone();
+        let mut estimator = imm::Imm::new(state, 1.0);
+        estimator.measurement_scale = 0.001;
+        estimator.process_scale = 0.01;
+        candidate.imm = Some(estimator);
+        for step in 1..20 {
+            for hypothesis in [&mut baseline, &mut candidate] {
+                hypothesis.predict(
+                    Duration::from_millis(40),
+                    Isometry2::identity(),
+                    0.998,
+                    Matrix4::identity() * 0.005,
+                    Matrix2::identity() * 0.001,
+                    0.5,
+                );
+                hypothesis.update(
+                    Time::from_nanos(step * 40_000_000),
+                    MultivariateNormalDistribution {
+                        mean: nalgebra::vector![step as f32 * 0.03, 0.0],
+                        covariance: Matrix2::identity(),
+                    },
+                    1.0,
+                );
+            }
+            assert_eq!(candidate.position().position, baseline.position().position);
+            assert_eq!(candidate.position().velocity, baseline.position().velocity);
+            assert_eq!(
+                candidate.position_covariance(),
+                baseline.position_covariance()
+            );
+            assert_eq!(candidate.validity, baseline.validity);
+            assert_eq!(candidate.last_seen, baseline.last_seen);
+        }
+        candidate.imm.as_mut().unwrap().output_blend = 0.0;
+        assert_eq!(
+            candidate.output_position().position,
+            baseline.position().position
+        );
+    }
+
+    #[test]
+    fn output_correction_requires_agreed_slow_motion() {
+        let mut hypothesis = resting_hypothesis();
+        let state = MultivariateNormalDistribution {
+            mean: nalgebra::vector![0.1, 0.0, 0.0, 0.0],
+            covariance: Matrix4::identity(),
+        };
+        let mut estimator = imm::Imm::new(state, 1.0);
+        estimator.moving_probability = 0.05;
+        estimator.output_blend = 0.5;
+        hypothesis.imm = Some(estimator);
+        assert!((hypothesis.output_position().position.x() - 0.05).abs() < 1e-6);
+        hypothesis.imm.as_mut().unwrap().states[0].mean.z = 1.0;
+        hypothesis.imm.as_mut().unwrap().states[1].mean.z = 1.0;
+        assert_eq!(
+            hypothesis.output_position().position,
+            hypothesis.position().position
+        );
+        hypothesis.imm.as_mut().unwrap().states[0].mean.z = 0.0;
+        hypothesis.imm.as_mut().unwrap().states[1].mean.z = 0.0;
+        hypothesis.mode = BallMode::Moving(MultivariateNormalDistribution {
+            mean: nalgebra::vector![0.0, 0.0, 1.0, 0.0],
+            ..state
+        });
+        assert_eq!(
+            hypothesis.output_position().position,
+            hypothesis.position().position
+        );
+    }
+
+    #[test]
     fn resting_decision_uses_velocity_uncertainty_not_position_uncertainty() {
         for (position_variance, velocity_variance, should_rest) in
             [(100.0, 0.01, true), (0.01, 100.0, false)]
@@ -401,6 +523,7 @@ mod tests {
             leadership_evidence: None,
             last_observation_size_plausible: None,
             merge_observation_start: None,
+            imm: None,
         }
     }
 

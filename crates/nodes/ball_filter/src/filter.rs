@@ -243,6 +243,7 @@ impl BallFilter {
             leadership_evidence: None,
             last_observation_size_plausible: None,
             merge_observation_start: None,
+            imm: None,
         };
 
         self.hypotheses.push(new_hypothesis)
