@@ -25,7 +25,7 @@ pub struct BallFilter {
 
 impl BallFilter {
     pub fn best_hypothesis(&self, validity_threshold: f32) -> Option<&BallHypothesis> {
-        self.select_hypothesis(validity_threshold, |_| 1.0, 0.0, 0.0)
+        self.select_hypothesis(validity_threshold, |_| 1.0, 0.0, f32::MAX)
     }
 
     pub fn best_hypothesis_with_field_pose(
@@ -68,19 +68,14 @@ impl BallFilter {
                 effective_validity,
             ))
         });
-        // Preserve accumulated confidence and the existing soft field prior by
-        // default. The experimental selection cap retains confirmation and
-        // eligibility requirements and never changes stored confidence.
-        let cap_enabled = confidence_cap.is_finite() && confidence_cap > 0.0;
-        let rank = |hypothesis: &BallHypothesis, validity: f32| {
-            let validity = if cap_enabled {
-                hypothesis
-                    .validity
-                    .min(confidence_cap.max(confirmation_confidence))
-                    * confidence_weight(hypothesis)
-            } else {
-                validity
-            };
+        // A non-binding cap leaves ordinary ranking and confirmation unchanged.
+        // Zero is a literal cap on ranking support, not a request for no cap.
+        let cap_binding = candidates
+            .clone()
+            .any(|(hypothesis, _, _)| hypothesis.validity > confidence_cap);
+        let rank = |hypothesis: &BallHypothesis, _validity: f32| {
+            let validity =
+                hypothesis.validity.min(confidence_cap.max(0.0)) * confidence_weight(hypothesis);
             let weight = if uncertainty_weight.is_finite() {
                 uncertainty_weight.max(0.0)
             } else {
@@ -89,7 +84,7 @@ impl BallFilter {
             validity / (1.0 + weight * hypothesis.position_covariance().trace().max(0.0))
         };
         let established_incumbent = ((uncertainty_weight.is_finite() && uncertainty_weight > 0.0)
-            || cap_enabled)
+            || cap_binding)
             && candidates
                 .clone()
                 .max_by(|(_, _, a), (_, _, b)| a.total_cmp(b))
@@ -289,14 +284,14 @@ mod tests {
         };
         assert_eq!(
             filter
-                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0)
+                .select_hypothesis(0.5, |_| 1.0, 0.0, f32::MAX)
                 .unwrap()
                 .validity,
             10.0
         );
         assert_eq!(
             filter
-                .select_hypothesis(0.5, |_| 1.0, 1.0, 0.0)
+                .select_hypothesis(0.5, |_| 1.0, 1.0, f32::MAX)
                 .unwrap()
                 .validity,
             5.0
@@ -304,14 +299,56 @@ mod tests {
         // Penalizing uncertainty cannot hide the only eligible track.
         assert_eq!(
             filter
-                .select_hypothesis(6.0, |_| 1.0, 1.0, 0.0)
+                .select_hypothesis(6.0, |_| 1.0, 1.0, f32::MAX)
                 .unwrap()
                 .validity,
             10.0
         );
-        assert!(filter.select_hypothesis(11.0, |_| 1.0, 1.0, 0.0).is_none());
+        assert!(
+            filter
+                .select_hypothesis(11.0, |_| 1.0, 1.0, f32::MAX)
+                .is_none()
+        );
         assert_eq!(filter.hypotheses[0].validity, 10.0);
         assert_eq!(filter.hypotheses[1].validity, 5.0);
+    }
+
+    #[test]
+    fn zero_cap_caps_support_and_large_cap_preserves_uncapped_ranking() {
+        let filter = BallFilter {
+            hypotheses: vec![track(1.0, 50.0, 0), track(2.0, 4.0, 0)],
+        };
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 1_000_000.0)
+                .unwrap()
+                .validity,
+            50.0
+        );
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0)
+                .unwrap()
+                .validity,
+            4.0
+        );
+        let filter = BallFilter {
+            hypotheses: vec![track(1.0, 50.0, 0), track(2.0, 2.0, 0)],
+        };
+        let weight = |h: &BallHypothesis| {
+            if h.position().position.x() == 1.0 {
+                0.01
+            } else {
+                1.0
+            }
+        };
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, weight, 0.0, 1_000_000.0)
+                .unwrap()
+                .validity,
+            2.0
+        );
     }
 
     #[test]

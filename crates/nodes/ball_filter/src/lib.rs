@@ -367,7 +367,7 @@ fn predict_hypotheses_from_odometry(
     if resting_speed.is_finite() && resting_speed > 0.0 {
         for hypothesis in &mut ball_filter.hypotheses {
             if let hypothesis::BallMode::Moving(state) = hypothesis.mode
-                && state.mean.z.hypot(state.mean.w) <= resting_speed
+                && state.mean.z.hypot(state.mean.w) < resting_speed
             {
                 hypothesis.mode = hypothesis::BallMode::Resting(MultivariateNormalDistribution {
                     mean: state.mean.xy(),
@@ -404,8 +404,6 @@ fn advance_all_hypotheses(
         mahalanobis_matrix_of_hypotheses_and_percepts(&ball_filter.hypotheses, ball_percepts);
     // Uncertainty grows during occlusion. It must not authorize an arbitrarily
     // distant false percept to update a retained track when this gate is enabled.
-    if filter_parameters.maximum_matching_distance.is_finite()
-        && filter_parameters.maximum_matching_distance > 0.0
     {
         let maximum_squared = filter_parameters.maximum_matching_distance.powi(2);
         for ((hypothesis, percept), cost) in match_matrix.indexed_iter_mut() {
@@ -415,7 +413,9 @@ fn advance_all_hypotheses(
                     .position
                     .inner
                     .coords;
-            if residual.norm_squared() > maximum_squared {
+            if !(filter_parameters.maximum_matching_distance >= 0.0
+                && residual.norm_squared() <= maximum_squared)
+            {
                 *cost = f32::NEG_INFINITY;
             }
         }
@@ -424,14 +424,15 @@ fn advance_all_hypotheses(
     // detection into high-confidence history after an observation gap. Gating
     // leaves that history intact and lets the percept spawn its own hypothesis.
     let reacquisition_distance = filter_parameters.reacquisition_matching_distance;
-    if reacquisition_distance.is_finite() && reacquisition_distance > 0.0 {
+    {
         for ((row, column), score) in match_matrix.indexed_iter_mut() {
             let hypothesis = &ball_filter.hypotheses[row];
             if reacquisition::protect_prior(hypothesis, time, obstacles, filter_parameters)
-                && (ball_percepts[column].percept_in_ground.mean
-                    - hypothesis.position().position.inner.coords)
-                    .norm_squared()
-                    > reacquisition_distance.powi(2)
+                && !(reacquisition_distance >= 0.0
+                    && (ball_percepts[column].percept_in_ground.mean
+                        - hypothesis.position().position.inner.coords)
+                        .norm_squared()
+                        <= reacquisition_distance.powi(2))
             {
                 *score = f32::NEG_INFINITY;
             }
@@ -567,7 +568,7 @@ fn advance_all_hypotheses(
                     .observe_clear_miss(time, filter_parameters.visible_missed_detection_timeout);
                 let near = negative_evidence::near_enabled(filter_parameters)
                     && position.position.coords().norm()
-                        <= filter_parameters.near_visible_missed_detection_distance;
+                        < filter_parameters.near_visible_missed_detection_distance;
                 if near {
                     let (near_expired, interval) = evidence.observe_near_miss(
                         time,
@@ -759,10 +760,7 @@ fn project_detected_balls(
                     return None;
                 }
                 let maximum_distance = parameters.maximum_detection_distance;
-                if maximum_distance.is_finite()
-                    && maximum_distance > 0.0
-                    && position.coords().norm() > maximum_distance
-                {
+                if !(position.coords().norm() <= maximum_distance) {
                     return None;
                 }
 
@@ -773,10 +771,8 @@ fn project_detected_balls(
                 }
                 let maximum_ratio = parameters.maximum_detection_radius_ratio;
                 let radius_distance = parameters.radius_consistency_maximum_distance;
-                let check_size = !radius_distance.is_finite()
-                    || radius_distance <= 0.0
-                    || position.coords().norm() <= radius_distance;
-                if maximum_ratio.is_finite() && maximum_ratio > 1.0 && check_size {
+                let check_size = position.coords().norm() <= radius_distance;
+                if check_size {
                     let in_camera = camera_matrix.ground_to_camera
                         * linear_algebra::point![position.x(), position.y(), ball_radius];
                     let depth = in_camera.z();
@@ -792,8 +788,8 @@ fn project_detected_balls(
                         / depth;
                     if !expected.is_finite()
                         || expected <= 0.0
-                        || detected_ball_radius > maximum_ratio * expected
-                        || expected > maximum_ratio * detected_ball_radius
+                        || !(detected_ball_radius <= maximum_ratio * expected
+                            && expected <= maximum_ratio * detected_ball_radius)
                     {
                         return None;
                     }
@@ -1089,8 +1085,8 @@ mod tests {
         assert_eq!(tracker.filter.hypotheses.len(), 1);
         assert!((tracker.filter.hypotheses[0].position().position.x() - 10.0).abs() < 1e-3);
 
-        // Legacy baselines with the range gate disabled retain finite far percepts.
-        parameters.maximum_detection_distance = 0.0;
+        // A large literal distance retains finite far percepts.
+        parameters.maximum_detection_distance = 1000.0;
         let percepts = project_detected_balls(
             Some(&[test_ball_detection(too_far)]),
             Some(&camera),
@@ -1179,6 +1175,39 @@ mod tests {
                     .unwrap();
             assert_eq!(output.len(), usize::from(distance > 1.5));
         }
+    }
+
+    #[test]
+    fn zero_detection_limits_are_literal_not_unbounded() {
+        let camera = horizontal_test_camera();
+        let radius = FieldDimensions::SPL_2025.ball_radius;
+        let center = camera
+            .ground_with_z_to_pixel(point![2.0, 0.0], radius)
+            .unwrap();
+        let detection = test_ball_detection(center);
+        let mut parameters = crate::test_parameters();
+        let count = |p: &BallFilterParameters| {
+            project_detected_balls(
+                Some(std::slice::from_ref(&detection)),
+                Some(&camera),
+                p,
+                radius,
+            )
+            .unwrap()
+            .len()
+        };
+        parameters.maximum_detection_distance = 0.0;
+        assert_eq!(count(&parameters), 0);
+        parameters.maximum_detection_distance = 1000.0;
+        parameters.maximum_detection_radius_ratio = 0.0;
+        parameters.radius_consistency_maximum_distance = 1000.0;
+        assert_eq!(count(&parameters), 0);
+        parameters.radius_consistency_maximum_distance = 0.0;
+        assert_eq!(
+            count(&parameters),
+            1,
+            "a zero check radius does not cover a ball two metres away"
+        );
     }
 
     #[test]
@@ -1360,7 +1389,13 @@ mod tests {
 
     #[test]
     fn distant_percept_cannot_capture_an_uncertain_track_with_distance_gate() {
-        for (distance_gate, expected_tracks) in [(0.0, 1), (0.3, 2), (2.0, 1)] {
+        for (distance_gate, percept_x, expected_tracks) in [
+            (0.0, 0.0, 1),
+            (0.0, 1.0, 2),
+            (0.3, 1.0, 2),
+            (2.0, 1.0, 1),
+            (1000.0, 1.0, 1),
+        ] {
             let parameters = BallFilterParameters {
                 hidden_validity_exponential_decay_factor: 1.0,
                 maximum_matching_cost: 1.0,
@@ -1380,7 +1415,7 @@ mod tests {
             };
             let percept = BallPercept {
                 percept_in_ground: MultivariateNormalDistribution {
-                    mean: vector![1.0, 0.0],
+                    mean: vector![percept_x, 0.0],
                     covariance: Matrix2::identity() * 0.001,
                 },
                 image_location: Circle::new(point![0.0, 0.0], 1.0),
@@ -1401,7 +1436,10 @@ mod tests {
             if expected_tracks == 2 {
                 assert_eq!(filter.hypotheses[0].position().position, point![0.0, 0.0]);
                 assert_eq!(filter.hypotheses[0].last_seen, Time::from_nanos(40_000_000));
-                assert_eq!(filter.hypotheses[1].position().position, point![1.0, 0.0]);
+                assert_eq!(
+                    filter.hypotheses[1].position().position,
+                    point![percept_x, 0.0]
+                );
             }
         }
     }
@@ -1512,8 +1550,12 @@ mod tests {
 
     #[test]
     fn reacquisition_gate_preserves_prior_and_requires_an_observation_gap() {
-        for (gate, millis, should_branch) in [(0.0, 200, false), (0.1, 40, false), (0.1, 200, true)]
-        {
+        for (gate, millis, should_branch) in [
+            (0.0, 200, true),
+            (1000.0, 200, false),
+            (0.1, 40, false),
+            (0.1, 200, true),
+        ] {
             let mut parameters = crate::test_parameters();
             parameters.reacquisition_matching_distance = gate;
             parameters.maximum_matching_cost = 1.0;
@@ -1573,7 +1615,6 @@ mod tests {
         let mut parameters = crate::test_parameters();
         parameters.hidden_validity_exponential_decay_factor = 1.0;
         parameters.maximum_matching_cost = 0.25;
-        parameters.maximum_matching_cost_validity_penalty_factor = 0.14;
         parameters.validity_discard_threshold = 0.2;
         parameters.validity_output_threshold = 0.5;
         parameters.maximum_number_of_hypotheses = 15;
