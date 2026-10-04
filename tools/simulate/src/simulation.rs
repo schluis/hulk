@@ -1,0 +1,267 @@
+use std::time::Duration;
+
+use bevy::prelude::*;
+use ros_z::time::Time as RosTime;
+
+use crate::{
+    bevy_mujoco::{MujocoModelUpdateSet, MujocoStepSet, MujocoWorld, SimulationMode},
+    parameters::{CurrentSimulatorParameters, SimulatorParameterSyncSet},
+    robot_io::RobotBinding,
+    robotics::Robotics,
+    scene::{robot, visual::ObjectVisualAssets},
+};
+
+#[derive(Component)]
+pub struct ControlledRobot;
+
+#[derive(Default, Resource)]
+pub struct SimulationControl {
+    pub reset: bool,
+    pub message: Option<String>,
+}
+
+#[derive(Default, Resource)]
+struct Binding {
+    generation: Option<u64>,
+    robot: Option<RobotBinding>,
+    last_input: Option<f64>,
+}
+
+pub struct MotionSimulationPlugin;
+impl Plugin for MotionSimulationPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Binding>()
+            .init_resource::<SimulationControl>()
+            .insert_resource(SimulationMode::Paused)
+            .add_systems(Startup, spawn_robot)
+            .add_systems(
+                PreUpdate,
+                (bind_robot, reset_robot)
+                    .chain()
+                    .after(MujocoModelUpdateSet),
+            )
+            .add_systems(
+                FixedUpdate,
+                (hold_for_stack, apply_command)
+                    .chain()
+                    .before(MujocoStepSet),
+            )
+            .add_systems(
+                PreUpdate,
+                publish_field_dimensions.after(SimulatorParameterSyncSet),
+            )
+            .add_systems(
+                FixedUpdate,
+                (publish_observation, publish_perception, publish_world)
+                    .chain()
+                    .after(MujocoStepSet),
+            )
+            .add_systems(
+                Update,
+                publish_world.run_if(|mode: Res<SimulationMode>| *mode == SimulationMode::Paused),
+            );
+    }
+}
+
+fn publish_field_dimensions(parameters: Res<CurrentSimulatorParameters>, io: Res<Robotics>) {
+    if parameters.is_changed() || io.is_changed() {
+        io.publish_field_dimensions(&parameters.parameters.field_dimensions)
+            .expect("publish simulator field dimensions");
+    }
+}
+
+fn spawn_robot(mut commands: Commands, assets: Res<ObjectVisualAssets>) {
+    let robot = robot::spawn(&mut commands, &assets.robot, Transform::default());
+    commands.entity(robot).insert(ControlledRobot);
+}
+
+fn bind_robot(
+    world: Res<MujocoWorld>,
+    robot: Single<Entity, With<ControlledRobot>>,
+    mut binding: ResMut<Binding>,
+    io: Res<Robotics>,
+) {
+    if binding.generation == Some(world.generation) || !world.contains_object(*robot) {
+        return;
+    }
+    let robot = RobotBinding::new(world.data(), &format!("object_{}_", robot.to_bits()))
+        .expect("controlled K1 must contain the configured joints and sensors");
+    // Includes the initial observation while paused; recompilation can relocate all MuJoCo indices.
+    io.publish_observation(
+        robot.observe(world.data()),
+        simulation_time(world.data().time()),
+    )
+    .expect("publish initial robot observation");
+    io.publish_inputs().expect("publish initial UI inputs");
+    binding.robot = Some(robot);
+    binding.generation = Some(world.generation);
+}
+
+fn apply_command(
+    mut world: ResMut<MujocoWorld>,
+    binding: Res<Binding>,
+    io: Res<Robotics>,
+    mode: Res<SimulationMode>,
+) {
+    if *mode == SimulationMode::Paused {
+        return;
+    }
+    if let Some(robot) = &binding.robot {
+        robot.apply(world.data_mut(), io.latest_command().as_ref());
+    }
+}
+
+fn publish_observation(
+    mut world: ResMut<MujocoWorld>,
+    mut binding: ResMut<Binding>,
+    io: Res<Robotics>,
+    mode: Res<SimulationMode>,
+) {
+    if *mode == SimulationMode::Paused {
+        return;
+    }
+    let Some(robot) = &binding.robot else {
+        return;
+    };
+    world.data_mut().forward();
+    let time = world.data().time();
+    io.publish_observation(robot.observe(world.data()), simulation_time(time))
+        .expect("publish robot observation");
+    // Repeat the selected inputs for subscribers that start after the UI publishers.
+    if binding
+        .last_input
+        .is_none_or(|previous| time - previous >= 0.02 - 1e-9)
+    {
+        io.publish_inputs().expect("publish UI inputs");
+        binding.last_input = Some(time);
+    }
+}
+
+fn reset_robot(
+    mut world: ResMut<MujocoWorld>,
+    robot: Single<Entity, With<ControlledRobot>>,
+    mut binding: ResMut<Binding>,
+    mut io: ResMut<Robotics>,
+    mut control: ResMut<SimulationControl>,
+    mut mode: ResMut<SimulationMode>,
+    assets: Res<ObjectVisualAssets>,
+) {
+    if !control.reset {
+        return;
+    }
+    control.reset = false;
+    *mode = SimulationMode::Paused;
+    let Some(robot_binding) = &binding.robot else {
+        return;
+    };
+    robot_binding.reset_joints(world.data_mut());
+    world
+        .set_object_pose(
+            *robot,
+            Transform::from_xyz(0.0, assets.robot.ground_offset(), 0.0),
+        )
+        .expect("reset robot pose");
+    // Preserve monotonic MuJoCo time; restart nodes to clear controller histories and cached commands.
+    if let Err(error) = io.restart() {
+        control.message = Some(format!("Could not restart motion stack: {error:#}"));
+        return;
+    }
+    control.message = Some("Robot and stack reset; current parameter settings retained.".into());
+    io.publish_observation(
+        robot_binding.observe(world.data()),
+        simulation_time(world.data().time()),
+    )
+    .expect("publish reset observation");
+    binding.last_input = None;
+}
+
+fn simulation_time(seconds: f64) -> RosTime {
+    RosTime::from_nanos(Duration::from_secs_f64(seconds).as_nanos() as i64)
+}
+
+fn publish_world(
+    world: Res<MujocoWorld>,
+    binding: Res<Binding>,
+    io: Res<Robotics>,
+    balls: Res<crate::scene::ball::SpawnedBalls>,
+    objects: Query<(Entity, &crate::scene::object::ObjectKind), Without<ControlledRobot>>,
+) {
+    let Some(robot) = &binding.robot else {
+        return;
+    };
+    let ball = crate::scene::ball::first_position(&world, &balls)
+        .ok()
+        .zip(crate::scene::ball::first_velocity(&world, &balls).ok());
+    let data = world.data();
+    let obstacles = objects
+        .iter()
+        .filter(|(_, kind)| **kind == crate::scene::object::ObjectKind::Robot)
+        .filter_map(|(entity, _)| {
+            let body = data.body(&format!("object_{}_Trunk", entity.to_bits()))?;
+            let p = body.view(data).xpos;
+            Some([p[0], p[1], p[2]])
+        })
+        .collect();
+    io.publish_world(
+        robot.ground_to_world(data),
+        ball,
+        obstacles,
+        [0.25, 0.3], // Conservative articulated K1 foot/hip collision footprint.
+        simulation_time(data.time()),
+    )
+    .expect("publish behavior ground truth");
+}
+
+fn publish_perception(
+    world: Res<MujocoWorld>,
+    binding: Res<Binding>,
+    mut io: ResMut<Robotics>,
+    balls: Res<crate::scene::ball::SpawnedBalls>,
+    parameters: Res<CurrentSimulatorParameters>,
+    mode: Res<SimulationMode>,
+) {
+    if *mode == SimulationMode::Paused {
+        return;
+    }
+    // Sampling must not mark Robotics changed and resend global parameters every tick.
+    let io = io.bypass_change_detection();
+    let side = io.input_game.global_field_side;
+    let (Some(robot), Some(perception)) = (&binding.robot, &mut io.ball_perception) else {
+        return;
+    };
+    let data = world.data();
+    let positions = balls
+        .0
+        .iter()
+        .filter_map(|entity| {
+            let body = data.body(&format!("object_{}_ball", entity.to_bits()))?;
+            let p = body.view(data).xpos;
+            Some(linear_algebra::Point3::wrap(
+                robot.point_in_ground(data, [p[0], p[1], p[2]]),
+            ))
+        })
+        .collect();
+    perception
+        .publish(
+            simulation_time(data.time()),
+            crate::behavior_inputs::ground_to_field(robot.ground_to_world(data), side),
+            &robot.observe(data).camera_matrix,
+            positions,
+            parameters.parameters.field_dimensions.ball_radius,
+            &parameters.parameters.ball_perception,
+        )
+        .expect("publish simulated ball perception");
+}
+
+fn hold_for_stack(
+    io: Res<Robotics>,
+    mut mode: ResMut<SimulationMode>,
+    mut control: ResMut<SimulationControl>,
+) {
+    if *mode == SimulationMode::Running
+        && let Some(reason) = io.physics_blocker()
+    {
+        *mode = SimulationMode::Paused;
+        control.message = Some(reason);
+    }
+}

@@ -1,0 +1,55 @@
+{
+  "family": "sideline",
+  "ball_position": [
+    1.2,
+    2.7
+  ],
+  "robot_position": [
+    0,
+    2.1
+  ],
+  "robot_yaw": 0,
+  "perception": {
+    "frame_period": 0.04,
+    "delivery_delay_seconds": 0.05,
+    "delivery_jitter_seconds": 0.015,
+    "center_noise_pixels": 2.0,
+    "false_positive_probability": 0.04,
+    "seed": 42
+  },
+  "steps": [
+    {
+      "until": 8,
+      "name": "sideline",
+      "ball_present": true,
+      "ball_impulse": null
+    },
+    {
+      "until": 18,
+      "name": "sideline",
+      "ball_present": true,
+      "ball_impulse": [
+        -0.1,
+        -0.03
+      ]
+    },
+    {
+      "until": 28,
+      "name": "sideline",
+      "ball_present": true,
+      "ball_impulse": [
+        0.1,
+        0.02
+      ]
+    },
+    {
+      "until": 40,
+      "name": "sideline",
+      "ball_present": true,
+      "ball_impulse": null
+    }
+  ],
+  "minimum_coverage": {
+    "ball_travel_metres": 0.2
+  }
+}

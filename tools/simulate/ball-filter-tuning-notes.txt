@@ -1,0 +1,1408 @@
+FINAL STATUS — 2026-10-04
+The optimization is validated and enabled at source commit28ff65b02. Final24fresh clips pass every ordinary/.1/.25/.5m-wobble guard: closeRMSE .461851->.366802m (20.6%), RMSlag .819072->.678751s (17.1%), correctunavailable229.670->219.390s, false109.576s unchanged. Parameters: publication blend.7, detectionnoise.2, maxage5s, maxdistance0, auxiliaryfieldmargin1.5m. Mainfieldmargin/eligibility stay unchanged. All168ordinary recording scores exactly reproduce the frozen candidate after integration. 108filter+38tuner tests, strictlibraryClippy, simulatorbuild and allfour liveapproach cases pass. See ball-filter-method-comparison.md for full per-family/stress/initial-acquisition/reacquisition results, research variants and limitations. This supersedes historical pending/rejected/reverted checkpoints below.
+
+Ball filter realism and optimization work log
+===========================================
+
+Objective
+Automatically improve the production ball filter from ordinary ROS-Z MCAP
+recordings, with the same replay path usable for real robot recordings.
+Current invariant: optimization uses exactly one reference ball; multiple balls
+are an explicit unscored live-preview stress test only (user clarification).
+Keep production kinematics and absolute simulator torso reference; simulation
+does not depend on visual localization. User explicitly authorized a soft live
+field-boundary confidence prior using the available field pose (2026-10-03).
+Maintain git checkpoints as work progresses.
+User authorizes unsigned checkpoints if authentication blocks unattended work;
+use per-command git -c commit.gpgsign=false, without changing global settings.
+User also authorizes 100% remote-compiler CPU use. Keep memory limits and preserve
+other work. The goal needs no further design decisions to proceed unattended.
+
+Retention policy follow-up (2026-10-03)
+- User rejected the latest optimizer timeout reduction20s->2.801s: losing sight
+  is not evidence that a ball ceases to exist. Latest completed round493 used
+  126,208 candidate slots; trainloss1.477901->.929037, holdout1.408064->1.209676,
+  but holdoutmissing4.798->12.566s, closemissing.564->2.720s,
+  closeRMSE.471809->.495106m, and longestgap3.504->5.320s.
+- Correct the optimizer policy rather than hard-code a second timeout in the
+  filter. Fix timeout, both validity decays and outputthreshold at capturebaseline
+  for EVERY candidate and warmstart. Import only searched dimensions from oldbest.
+- Six search dimensions/five parameter groups remain: detectornoise, restingnoise,
+  movingposition/velocitynoise, matchingcost, velocitydecay. Twix metadata follows.
+- Guard missingtime, closemissingtime and longestgap against capturebaseline per
+  trainingrecording and aggregate; use roundofftolerance only. Heldout remains
+  evaluationonly. This is a constrained search, not a new scoreformula.
+- Keeping a stored hypothesis and publishing a confident ball are distinct:
+  fieldprior/outputthreshold can hide an output before deletion. Deletion also
+  uses rawvalidity, range and capacity; covariance growth itself never deletes.
+- Remaining filterissue: imagebounds-only visibility marks opponent-occluded balls
+  as visible. At25Hz baseline .96 decay takes validity2 belowoutput.5 in1.36s;
+  confirmedvalidity25 takes3.83s. Policyfreeze prevents optimizer weakening but
+  does not solve this physicalvisibilityproblem. Need real occluder evidence,
+  not simulator-only truth, before claiming robust protection during fights.
+- Remaining dataissue: physical ball removal at28-34s rewards early forgetting;
+  use genuinely empty false-positive scenes independently from disappearance
+  after a tracked ball. Keep groundtruth present during visibility-only occlusion.
+- User requests remote-compiler for future optimization. Use dedicated remote
+  snapshot/data/results directories; never overwrite sharedworktree or use the
+  legacy remote_workspace helper's --delete against another agent's checkout.
+  Local laptop may run unitchecks/viewer; candidate search moves to remotehost.
+  Initial SSH probe failed because keyagent could not sign; retry after user
+  authorization succeeded. Remote32CPUs/64GiB, existing /home/schluis/hulk has
+  unrelated untracked work and Rust1.88; preserve it and use an isolated snapshot
+  with explicit Rust1.98.1 matching the local recording build.19 tunerunit tests
+  pass, including retention-preserving warmstarts and continuity regressions.
+
+Remote execution validation (2026-10-03)
+- Retention policy checkpoint7645244b6;19 tunerunit tests pass. Remotehelper7 tests
+  pass, including SSHquoting/tmuxcommand construction and exclusionofpartialrounds.
+- Rust1.98.1 installed alongside remote default1.88; no default/toolchainoverride
+  or existing /home/schluis/hulk sources/target changed. Dedicatedbuildcache lives
+  under ~/.cache/hulk-ball-filter-tuning, immutable run retention-20261003.
+- Source+data snapshot uploaded; standalone releasebuild succeeded in1m50s.
+  Eight independent continuousworkers use256 candidates perround. Tmuxsession:
+  ball-filter-retention-20261003-838f06d5. Attach via:
+  ssh -t remote-compiler tmux attach-session -t =ball-filter-retention-20261003-838f06d5
+- Local manifest: logs/remote-ball-tuning-retention-20261003/manifest.json;
+  source/data hashes and archivedsnapshot preserve exactuploadedinputs.
+- First completedrounds downloaded withhelperfetch to
+  logs/remote-ball-tuning-retention-first-results. Training-selected winner among
+  first3 completedreports: worker04 round1. Replayexact;timeout20s, bothdecays and
+  outputthreshold remainidenticaltobaseline;25 lowerlosscandidates rejectedfor
+  continuityregression. Trainloss1.477901->1.371674, missing2.156->2.148s;
+  holdoutloss1.408064->1.138067, missing4.798->1.476s, longestgap3.504->.640s.
+- This is earlyevidence only: holdout closeRMSE .471809->.530216m and equivalent
+  motionlag .104775->.122465s stillworsen. Episode/nearball objectives below remain
+  necessary; improvedavailability doesnotestablish improvedkickingaccuracy.
+- Remoteprogress/liveparameterapplication is notyetwiredintoTwix; use tmux,
+  status/fetch and savedreports. Remotejobs surviveSSH/laptop disconnects.
+- SSH keyagent transientlyfailed; retryworked. Helpermultiplexes authenticated
+  connections for30min; tmuxworkers remainindependent if thecontrolsocketexpires.
+
+Full CPU expansion (2026-10-03)
+- Added explicit --full-cpu override to helper CPU headroom/load limits;
+  memory guard remains active. Eight helper tests pass, including override limits.
+- Existing eight workers remain running; additional24 workers now searching in
+  run retention-fullcpu-20261003, seed8000031,256trials/round. Seeds continue the
+  original worker sequence, giving32 independent continuous searches in total.
+- Verified32 tuner processes and100.0% aggregate CPU busy over a2second sample.
+- Additional tmux session: ball-filter-retention-fullcpu-20261003-9a179258.
+  Manifest: logs/remote-ball-tuning-retention-fullcpu-20261003/manifest.json.
+  Both runs use identical filter/scoring code and recordings; only helper/docs
+  changed in the new snapshot. Compare training-selected reports across both.
+
+Twix remote bridge and launch controls (2026-10-03)
+- User requests connecting Twix to remote searches and launching either local or
+  remote optimization from the panel. Preserve all32 existing remote workers.
+- Local Python launcher supervises only local bridge/preview processes; remote
+  searches remain detached in tmux. Existing remote controller files need no
+  replacement. Reuse ROS-Z Progress and the existing live simulator/viewer path.
+- Bridge reads completed remote checkpoints, validates dataset/binary/objective
+  compatibility, and selects by training loss only. Snapshot age measures last
+  successful SSH observation independently of the local ROS-Z heartbeat.
+- New simulator modes: --capture-ball-tuning captures six ROS-Z recordings only;
+  --remote-ball-tuning reads a bridge snapshot and previews parameters with no
+  local candidate search. Parameters are applied to the preview's temporary
+  layer; production configuration and capture baseline remain unchanged.
+- Actual read-only poll reached both existing runs:32 workers,1,067,776 completed
+  trial slots, training winner1.2319715. Both binaries have identical SHA256;
+  source snapshot differences concern only helper/docs.
+- Validation passed:54 simulator tests (one existing ignored),79 Twix tests,
+  and31 Python tests. Both application binaries built; formatting/diff checks pass.
+  Logs: logs/remote-bridge-{combined-tests,python-tests,app-build,format}.log.
+- Live Twix launcher connected both remote manifests in
+  logs/remote-twix-1791006039. Verified fresh remote status with32 workers and
+  1,488,384 completed trials, candidate retention-20261003/worker-01/round-000189,
+  loss1.2319703, and a saved local preview parameter checkpoint. The 3D viewer
+  displayed that candidate, walking robot, physical ball and moving opponents.
+- Later SSH timeout retained the previous snapshot/parameters and exposed the
+  error. Local machine restarted before final checkpoint; reconnect local bridge
+  to existing remote runs without starting any additional remote search workers.
+- Implementation checkpoint c141f5175. Post-restart reconnect succeeded with
+  fresh32-worker status, no SSH error, selected worker-03/round-000188 and live
+  preview parameter application. Twix reopened; local session location/PID are in
+  logs/remote-bridge-current-session.json (currently remote-twix-reconnect-1791009737).
+- Remote startup capacity is sampled, not reserved. Full-history checkpoint
+  inspection should eventually use a validated immutable-round cache as runs grow.
+
+Negative evidence and confidence visualization (2026-10-03, implementation validated)
+- User requests pruning candidates after looking without finding a ball, using
+  reliable robot detections to protect occluded candidates. One second of clear
+  image evidence is separate from the unchanged20s unseen-hypothesis timeout.
+  Only actual detection exposures with fresh geometry count, not odometry ticks
+  or delivery gaps. Matches reset evidence; hidden intervals pause accumulation.
+- User specifically clarified detected Robot entries in WorldState.obstacles.
+  behavior_node/node.rs copies this list directly from the obstacles topic.
+  Reuse that exact model, not a second robot detector or synthetic image boxes.
+  Obstacle.position is Point2<Ground>, not Field despite the WorldState name.
+  Historical Ground positions require timestamped odometry to reach current
+  Ground. Current field localization applied to old Ground coordinates is wrong.
+- Producer prerequisite: obstacle_filter subscribed to a delta-odometry topic
+  whose only in-tree publisher never publishes. Even one latest delta per image
+  would miss intervening motion. Move producer to full absolute-odometry deltas,
+  keep network updates in its current Ground frame, publish state source time.
+  Do not falsely certify stale/mixed-frame positions by changing only timestamps.
+  User explicitly requests source-side current Ground updates: consume sorted
+  odometry-only events as well, so positions move and tracks expire during camera
+  silence. Keep delayed images ordered through FutureMap; charge process noise
+  per detection, not per500Hz odometry tick. Output frame timestamp and last
+  visual observation time are different concepts; obstacle hypotheses retain
+  last_update, while the existing Vec<Obstacle> output does not expose it.
+- New visible_missed_detection_timeout defaults0 for historical baselines, while
+  current base enables1s. maximum_obstacle_time_difference defaults100ms; both
+  stay fixed during tuning. Unknown/stale obstacle coverage pauses clear misses.
+  Selected obstacle snapshots are recorded verbatim at each image for exact
+  replay, including explicitNone and original source time. Ignore non-Robot kinds
+  for this first robot-occlusion feature. Existing Robot provenance can include
+  network/localization inputs; splitting provenance needs a separate model change.
+- Simulator already supplies world-state robot obstacles, now with the configured
+  physical cylinder radius at both foot and hip height. Its obstacle locations are
+  ideal physical references; noisy robot detection/model tracks remain a follow-up.
+- Fresh capture overlays preserve omitted JSON keys, inheriting newly introduced
+  production settings. Historical replay still uses legacy defaults. Explicit
+  zero timeout remains an intentional disable, including in fresh captures.
+- Confidence arrows show actual raw validity at1m/unit, including selected blue
+  and other grey hypotheses. Validity is accumulated, can exceed1, and is not a
+  probability; field-prior-adjusted selection confidence is a separate quantity.
+- Runtime checkpoint40eded63c completed six fresh captures and diagnostic audit:
+  119,922 states and selected outputs share timestamps;1,364 false markers have
+  correct exposure stamps; maximum15 hypotheses. Old legacy32-worker controllers
+  stopped only after replacement built paused; all artifacts retained, unfinished
+  final rounds remain incomplete. New protocol run refreshed-20261003-1791011886
+  searches continuously with21 memory-budgeted workers. Its baseline predates
+  negative evidence; capture again after implementing and validating this change.
+- Final combined Rust tests:52 ball_filter,10 obstacle_filter,22 tuner,64 simulator,
+  and82 Twix pass; one pre-existing simulator test ignored. Includes source-side
+  walking/turning, camera silence expiry, duplicate exposure/noise regression,
+  occlusion/clear-miss retention, recording compatibility and confidence arrows.
+  Logs: logs/obstacle-ground-updates-tests.log; apps built successfully in
+  logs/ball-negative-evidence-build.log. No physical-robot test performed.
+- Current local runtime metadata: logs/ball-negative-evidence-current.json.
+  Supersedes logs/ball-refresh-integration-current.json.
+  Owned periodic supervisor now adopts the existing21-worker run. First fresh
+  generation is being exercised at a1-minute refresh interval, then switch to
+  the shorter5-minute schedule requested by the user. Old remote search remains active during capture
+  and replacement build; all checkpoints and recordings are retained.
+
+Visualization, history and fresh capture follow-up (2026-10-03, checkpointed)
+- User asks all hypotheses as grey soccer balls/arrows, every injected false
+  detection as a brief marker, past-run history/deletion in Twix, regular fresh
+  captures using best parameters, and configurable opponent count/width in Twix.
+- Parallel ownership: viewer/perception diagnostics; history/deletion/UI;
+  recurring remote generation lifecycle. Root integrates capture/config/physics.
+- False markers are diagnostic-only, never physical balls or ground truth.
+  Orange uses ball-radius plane, red represents an above-horizon pixel3m down
+  its camera ray. All received events queue for200ms. Grey tracks include weak
+  stored hypotheses. Full filter-state source timestamp corrected to state time.
+- Opponents range0..8, diameter0.1..1.2m; identical width in physics, avoidance,
+  perception occlusion and rendering. Live edits restart an episode; captures
+  freeze their scenario. Capture parameters override only temporary filter layer.
+- Overnight result at2,121,472 candidate slots: heldoutloss1.4081->1.0718,
+  missing4.798->1.076s, longestgap3.504->.680s, spatiallag.1048->.0857s, but
+  closeRMSE.4718->.7837m and false-tracktime7.920->8.320s. Retention improved,
+  kicking quality remains worse. Snapshot saved logs/ball-overnight-results-20261003.json.
+- Fresh generations must stay separate in history/scoring. Futureremote protocol
+  builds next snapshot paused while current workers continue, then finishes old
+  rounds before activating next. Existing legacy32-worker sessions need explicit
+  migration only after next generation is prepared; preserve all checkpoints.
+- Combined Rust validation: 41 ball_filter, 62 simulator and 82 Twix tests pass;
+  one existing simulator test remains ignored. See logs/ball-run-history-tests.log.
+- History read-only integration discovers14 local runs and both active remote
+  searches. Active/unknown runs and externally referenced recordings cannot be
+  trashed. No real run was deleted during validation.
+- Current camera simulation projects physical balls into ideal camera pixels,
+  injects detection errors, then uses production measured kinematics/projection.
+  No rendered camera images or neural detector inference; image realism and
+  sensor calibration/timing perturbations remain in the backlog below.
+- Restarted the old local monitor after source edits invalidated its generated
+  inspection script. Remote workers were untouched. Fresh verified candidate
+  retention-fullcpu-20261003/worker-18/round-000220 saved for new capture in
+  logs/ball-refresh-integration-1791011886/baseline.json5 (seed offset10000).
+
+Next evaluation direction (user priorities, 2026-10-03)
+- Further remote progress confirms scalar loss is insufficient: around round20,
+  training-selected loss1.26348 has closeRMSE1.210m versus baseline.715m;
+  heldout closeRMSE.989m versus.472m, despite missingtime improving4.798->.956s.
+  Do not deploy this as a kicking improvement. Remote searches are offline;
+  training winner is an experimental candidate, not automatic production approval.
+- Try genuinely different tuning approaches after defining task-level outcomes.
+  Current retention guards are an immediate safeguard, not the complete target.
+- Reacquisition: measure time from a usable post-occlusion observation to a stable,
+  accurate selected track. Report timeblind separately; no score should demand
+  impossible recovery before evidence. Count wrong-track persistence, failed
+  recovery episodes and latency tails, not only global mean missingtime.
+- Closed-loop robotfindingtime is different: fixedMCAP replay cannot change head
+  scanning, walking or behavior. Use fixedinput replay forfilterlatency and a
+  separate closed-loop simulation benchmark for the complete search behavior.
+- Hypothesis quality: nearest stored-hypothesis error versus selected-output
+  error identifies generation/prediction problems versus selection problems.
+  Also report uncertainty coverage/calibration, trackcount and false confident
+  hypotheses so spraying hypotheses does not win an oracle-nearest metric.
+  Tracker replay exposes all hypotheses; existing capture currently stores
+  selected output/percepts but not fullfilter_state. Keep ROS-Z for all additions.
+- Close ball: position and velocity errors, signed lag, high-percentile errors,
+  missingtime, and prediction error at expected kickcontacttime. Evaluate
+  stationary alignment, fastpass/redirect, contestedkick and reacquisition as
+  separate episodes. Choose distance/horizon thresholds from robotbehavior needs
+  before optimization; do not tune evaluation thresholds on heldout results.
+- Missing labels: existing fieldtruth/camera/schedule support much of this,
+  but true occlusion/firstobservable time and kickcontact events need reliable
+  annotation or ROS-Z diagnostics shared by simulation/realrecordings. Imagebounds
+  alone do not establish visibility. Record required changes outsidefilter here.
+- Once episode metrics exist, compare current greedy coordinate/randomsearch
+  against population-based or multiobjective search under equal evaluationbudget
+  and common seeds. Multiple independent remote workers improve exploration now;
+  they do not by themselves constitute a different optimization algorithm.
+- Freeze heldoutscenarios, add separate finaltest captures, report distributions
+  and failurecases. More trials on six clips cannot substitute for scenario
+  diversity (especially overrepresented out-of-field/teleport-absent scenes).
+- User requests tmux for remote runs: named sessions, attachable progress, durable
+  artifacts independent of SSH connection; separate from future Twix/live bridge.
+
+Completed plan: filter-only follow-up (2026-10-03)
+- User requested continuation focused on the filter, a written plan, and parallel
+  subagents. Production changes stay inside crates/nodes/ball_filter. Required
+  downstream/simulator/tuner changes are recorded here and in the timing audit.
+- Starting checkpoint: 21393f411, clean tree. Last prior-enabled search completed
+  76 rounds: training1.728322->1.121538, holdout1.980566->2.107127. Holdout missing
+  time increased1.276s->6.742s. Optimization improvement is not yet generalizable.
+- Agent fight_scenarios: confirmed-fresh track selection without reducing raw
+  validity/occlusion lifetime. Own filter.rs, lib.rs, field_prior.rs.
+- Agent filter_continuity: evidence-based resting-to-moving recovery, with
+  odometry-aware history and false-positive rejection. Own hypothesis.rs and
+  any new evidence module. Coordinate constructor/schema changes with ranking.
+- Agent scoring_audit: elapsed-time-aware decay/process noise. Own moving.rs
+  and resting.rs; coordinate delta_time signature with continuity agent.
+- Root: integration, same-input recorded-data comparison, combined tests,
+  checkpoints, fresh capture/exact replay, continuous optimizer and live viewer.
+- Validate isolated false detections, stationary noisy ball with translating and
+  rotating robot, occluded kicks and reacquisition, multiple competing tracks,
+  irregular/zero-duration updates, covariance validity, and field-prior behavior.
+- Keep parameter schemas stable. Preserve the existing500Hz reference for decay
+  and noise; document any numerical changes. Any new full-hypothesis diagnostic
+  fields must match Message and serde schemas; serde(skip) is not safe here.
+- Launch optimizer plus simulated robot with:
+  ./simulator --tune-ball-filter logs/NEW-RUN --tuning-trials 256
+  Use a new output directory. In Twix select Ball-filter optimization, Connect,
+  then Open3D view; alternatively ./simulator --watch-ball-tuning in another terminal.
+  --ball-perception is interactive perception mode and does not start a search.
+
+Filter integration findings (2026-10-03)
+- Prediction now integrates damping/process covariance over elapsed time using
+  the existing 2ms reference period. No parameter schema change. Default .998
+  velocity factor remains exact at2ms; position integration differs about0.1%.
+- Resting hypotheses can recover motion from three associated, statistically
+  significant, direction/speed-consistent observations. History follows Ground
+  odometry; long gaps restart evidence rather than averaging across unknown kicks.
+- Successful merges retain the newest last_seen; rejected mode merges do nothing.
+- Selection recovery must preserve ordinary accumulated-confidence competition.
+  A global confidence cap regressed training closeRMSE .892->1.248. A120ms grace
+  alone did not resolve this. Final narrow stale-track recovery:
+  only a confirmed fresher challenger can override an incumbent unobserved120ms.
+  Compare prior-weighted capped confidence only for that recovery decision.
+- Identical-input evaluation uses the six existing single-prior MCAPs, unchanged
+  baseline and round76 parameter sets, and the existing scoring implementation.
+  This is algorithm comparison, not a claim that new output exactly reproduces
+  an old algorithm's recorded output. Fresh captures still need exact replay.
+- Current detection_noise is a radius-relative pixel standard deviation, not
+  pixels:5*observed_radius. For the simulator's0.105m ball this can imply roughly
+  .525m lateral Ground sigma. Three-sigma adjacent-frame motion evidence is then
+  deliberately hard to establish. Calibrate uncertainty instead of weakening
+  the significance guard to fit a recording; old optimized noise is also~5.
+- Association uses prediction covariance P alone rather than innovation P+R.
+  This can couple noise tuning to association through posterior inflation.
+  Follow-up inside filter: uncertainty-aware association and separate validation
+  of false bursts, contacts, and low-noise coherent motion.
+- Track identity/switch hysteresis remains a follow-up: a recently selected
+  challenger can lose confidence during occlusion and revert to an older track.
+  Fixed-image false bursts can imitate Ground motion while the head moves.
+- Duplicate observations do not add per-track confidence or motion evidence,
+  but duplicate whole batches still decay confidence. Current FutureMap emits
+  finalized batches once; this is not general replay idempotence.
+- Image-time Ground and latest odometry-time Ground can differ between samples.
+  Normally<=2ms at500Hz; missing odometry can make this large. Follow-up inside
+  filter: explicit exposure-time alignment or bounded evidence age/reset.
+- New MotionEvidence is explicit in serde and Message diagnostic schemas.
+  Rebuild full-filter diagnostic consumers (including Twix map layer) together.
+  BallPosition, percept, parameter, and recording input schemas are unchanged.
+
+Same-input final comparison (2026-10-03 filter checkpoint)
+- Dataset logs/ball-tuning-20261003-single-prior; baseline and round76 optimized
+  parameters are fixed. Main evidence logs/ball-filter-followup-final-comparison.json.
+- Baseline parameters, old->new: trainingloss1.728322->1.738479 (+0.6%),
+  closeRMSE.892112->.886064m; holdoutloss1.980566->1.939761 (-2.1%),
+  closeRMSE1.365431->.886783m. Missing12.132->12.124s train,1.276s unchangedholdout.
+- Old optimized parameters, old->new: trainingloss1.121538->1.168663 (+4.2%),
+  closeRMSE.853284->.728810m; holdoutloss2.107127->2.140975 (+1.6%),
+  closeRMSE.740153->.744654m. Missing durations unchanged31.276/6.742s.
+- These are mixed results, not demonstrated general improvement. Recapture and
+  retune for changed algorithm; never promote old best as newly validated.
+- Temporary replay instrumentation counted0 resting associated updates and0
+  Resting->Moving promotions across all six recordings under both fixed configs.
+  Thus recorded improvements are NOT evidence for direct motion recovery; its
+  guarantees currently come from focused regressions. Zero eligible updates also
+  means these captures cannot measure direct-promotion false/true-positive rates.
+- Initial175 package tests passed; final changed filter41 and tuner14 tests pass.
+  Normal simulator/tuner/Twix build, cargo fmt check, and diff checks pass.
+- Further filter work: calibrated innovation covariance, stable track identity
+  across occlusion, and contact/rolling-deceleration model mismatch. Exponential
+  damping is now time-consistent but is not a full rolling/contact dynamics model.
+
+Fresh runtime validation (2026-10-03 filter checkpoint)
+- New run: logs/ball-tuning-20261003-filter-recovery. Previous user run is preserved
+  in logs/ball-tuning-new; stopped gracefully only after replacement binaries were
+  tested. Continuous search now runs256 candidates per round without tuning-once.
+- All six fresh captures exactly replay the live output. Each contains one ball
+  and at least one opponent kick hidden by an in-view opponent. Walked6.04-10.20m
+  per episode, peak ball speeds6.14-6.87m/s. Coverage JSONs sit beside MCAPs.
+- First new search round: trainingloss1.477901->1.102339 (-25.4%);
+  holdoutloss1.408064->1.370336 (-2.7%). These are new-capture tuning results,
+  not an algorithm A/B comparison against a different behavior trajectory.
+- Round2 automatically started; live application confirmed in
+  logs/ball-tuning-filter-recovery-runtime.log. Ongoing later rounds may differ.
+- Updated Twix reconnected and its Open3D button launched the updated viewer.
+  Blue model/velocity, physical robot/opponents and live progress verified.
+- Logs: ball-filter-followup-tests.log (initial175),
+  ball-filter-followup-final-tests.log (final41 filter+14 tuner),
+  ball-filter-followup-build.log; previous51 simulator/73 Twix tests also passed.
+- Temporary algorithm-comparison harness archived under ignored
+  logs/ball-filter-followup-harness and removed from production source paths.
+  Production edits in this checkpoint remain inside crates/nodes/ball_filter.
+
+Changes needed elsewhere (notes only in this follow-up)
+- Behavior/kicking: preserve source timestamps and odometry-compensate historical
+  Ground states; use position and velocity from one track at one time. See the
+  detailed ball-filter-timing-audit.txt; this is not fixed by filter tuning.
+- ROS-Z: sensor source-time publication/cache semantics need attention before
+  implementing that downstream compensation. Keep actual acquisition timestamps.
+- Simulator: more sustained in-field contests; fewer long outside-field rolls;
+  correlated sensor/calibration errors, exposure/delivery jitter, partial occlusion
+  and blur, realistic articulated opponent contacts/surface variation.
+- Twix: map caption currently calls the stream an unscored live simulation even
+  during training capture. Make the caption reflect recording versus preview.
+- Optimizer: availability/long-gap tradeoffs and validation generalization need
+  improvement. Training-best live updates do not imply a better holdout result.
+- Real data: collect labelled ROS-Z recordings and assess uncertainty calibration
+  and field-pose coverage. Full-hypothesis schema changes require consumers to
+  rebuild together; old diagnostic CDR is not made compatible by serde(default).
+
+Previous status (2026-10-03; historical entries below are retained)
+- Source checkpoint 3f716f859. All153 tests and six fresh exact MCAP replay
+  checks passed. Twix Open3D verified after replacing the running executable.
+- Continuous optimizer and both UIs are running against
+  logs/ball-tuning-20261003-single-prior, 256 candidates per round. Multiple
+  rounds and immediate live application of new best parameters are verified.
+- Early search improves training loss but worsens holdout loss. Do not describe
+  this as a demonstrated general performance gain. Next priorities: sustained
+  in-field contests, preserving useful output through hidden kicks, and the
+  timestamp/identity handoff documented in ball-filter-timing-audit.txt.
+
+Highest-priority next scenario
+Contested balls: controlled robot and another robot near the ball, camera
+occlusion, an unseen kick, and useful tracking through reacquisition. Avoid
+premature searching or an optimizer that wins by suppressing difficult tracks.
+
+Checkpoint: 2026-10-02, branch codex/ball-filter-realism-20261002
+Existing implementation includes ROS-Z recording/replay, bounded camera matrix
+matching, Twix tuning panel, physical ball impulses and bouncy walls, live best
+parameter updates, blue model and velocity vectors, and continuous search.
+Newest additions: 1 m wall margin, 4%/8% false positives, 1-3 physical balls,
+two moving cylinder opponents with camera-ray occlusion, and a correction to
+the localization-independent ball range gate. Multi-ball scores use the nearest
+physical ball. These newest changes still need fresh runtime recordings.
+
+Validation
+Serial package tests completed successfully on 2026-10-02; detailed output is
+in ignored logs/ball-tuning-multi-tests.log. Normal build is in progress in
+logs/ball-tuning-multi-build.log. Exact baseline replay is mandatory: the range
+gate change means old recordings must be recaptured before assessing it.
+
+Known issues to investigate
+- Association currently penalizes a hypothesis for an unrelated gated percept.
+- Numerically unstable candidate parameters are rejected; production covariance
+  update stability still deserves investigation.
+- Existing loss can trade missing output for smaller conditional position RMSE.
+- Generic crossing cylinder opponents are not yet deliberate ball challenges.
+- Continuous round transitions, multi-ball rendering and new occlusion need
+  end-to-end verification with the newly built executable.
+
+Runtime and data
+Old live backend uses logs/ball-tuning-20261002-live-best and replays the older
+logs/ball-tuning-20261002-walls dataset. It completed 4096 trials and continues
+previewing. Preserve these ignored MCAP recordings; do not apply their tuned
+parameters to real robot defaults. New captures need a fresh output directory.
+Launcher ./simulator configures native MuJoCo and ONNX runtime libraries.
+Use ./simulator --tune-ball-filter OUTPUT to capture and search continuously;
+--tuning-trials controls candidates per round; --tuning-once is finite opt-out.
+Use ./simulator --watch-ball-tuning for the independent live 3D viewer.
+Twix router: tcp/127.0.0.1:7448, namespace /ball_tuning.
+
+Collaboration
+Other documentation agent works separately on update-docs / PR 2912. Preserve
+its work and existing notes.md. Keep local commits scoped to this feature.
+Subagents must not commit or run competing broad builds; root integrates and
+creates checkpoints. Root owns ball_tuning.rs and live runtime coordination.
+
+
+Follow-up work after initial checkpoint 527843fe9
++ Agent investigations found rejected association penalty, incorrect new-track
+  position initialization and wrong covariance block in moving/resting likelihood.
+  Focused production fixes and regressions are being validated.
++ Added actual opponent shielding/physical kicks and coverage diagnostics.
++ Objective now bounds position cost below missing cost; retains uncapped RMSE,
+  total missing time and longest gap. Objective values change version.
++ User emphasized model lag causes missed foot contact. Measure close-range error
+  and signed along-motion lag, separately from timestamp age. Ball-state composer
+  currently discards source time and pairs delayed state with latest pose.
++ Velocity decay and process noise are per odometry tick; .998 at 500 Hz compounds
+  to .3675 per second. Do not silently change parameter semantics without a
+  migration and fresh captures. Resting-to-moving recovery needs further audit.
+
+Realism backlog, after contested-ball baseline is measured
+- Camera/exposure and detector delivery latency/jitter, retaining acquisition time.
+- Motion blur and partial occlusion rather than binary center-ray occlusion.
+- Correlated encoder zero offsets, camera extrinsic/intrinsic calibration errors,
+  IMU bias and ground estimate errors; retain pristine physical camera/truth.
+- Surface/friction variation and articulated opponent contacts. Current opponent
+  cylinders are kinematic and effectively infinite mass; controlled robot must
+  retain clearance and real fall detection.
+- Measure field-prior pose coverage on real recordings. Production ground_to_field
+  follows timestamped visual-odometry/localization outputs, unlike the simulator's
+  frequent absolute reference. If the 20ms gate yields poor coverage, consider
+  explicit odometry propagation to filter time rather than reusing stale Ground
+  transforms. Keep the exact selected pose diagnostic for deterministic replay.
+- Timestamp-aware behavior handoff using odometry to bring historical Ground
+  coordinates forward; do not depend on visual localization or extrapolate using
+  last_seen (that is detection time, not filter state time).
+- Capture repeatable held-out contested cases and compare near-foot errors,
+  unseen-kick reacquisition, false tracks and availability together.
+- New wall-stress capture train42 spends much of its labelled time outside the
+  lines (14,158 output-aligned outside truth samples with active prior). Weighted
+  scoring accounts for rarity, but future scenario distribution should include
+  more sustained in-field contests and fewer long wall-side rolls. Preserve real
+  physics; any re-entry should be an explicit kick/throw-in scenario, not teleport
+  or an invisible continuous attraction to the field center.
+
+Validation update
+- Filter fixes committed as 597f0833a after initial checkpoint 527843fe9.
+- Combined simulate/tuner/Twix/ball_filter tests passed (143 tests), including
+  native physics and live ROS-Z integration. Log: ball-tuning-contested-tests-final.log.
+- Normal combined build passed. Fresh runtime: logs/ball-tuning-20261002-contested,
+  continuous 256-candidate rounds. Twix and 3D viewer are open.
+- First two single-ball captures passed exact live/replay verification via a
+  separate one-candidate smoke run. Each contained a kick both geometrically
+  occluded and inside the camera image. First capture: 12.77 m robot walking,
+  peak ball 6.22 m/s. Full 6-capture validation/continuous rounds still pending.
+- Read ball-filter-timing-audit.txt for unresolved timing and kick selection
+  problems before making claims about foot-contact accuracy. Kick inputs are
+  now included as original ROS-Z topics in captures.
+
+User correction: single-ball optimization
+- Normal play is one ball. Nearest-of-many errors can hide target selection
+  mistakes. All future training/holdout captures and default previews use one.
+- --tuning-preview-balls 2 or 3 affects only the unscored live preview.
+- Tuner rejects multi-ball labels at MCAP read and scoring. Objective now records
+  single_ball_bounded_position_and_availability_v2.
+- Earlier mixed dataset logs/ball-tuning-20261002-contested is preserved only as
+  diagnostics. It passed all six exact replay checks, multiple continuous rounds
+  and live parameter updates, but its scores are not the normal-play benchmark.
+- Replacement single-ball dataset will be logs/ball-tuning-20261002-single.
+
+User correction: rare outside-field balls and live confidence prior (2026-10-03)
+- Scoring v3 uses exp(-whole-ball clearance / 0.3m) reference weights; raw
+  diagnostics remain unweighted. Rectangle corners use Euclidean clearance.
+- User explicitly requested the same kind of soft prior in the live filter.
+  Raw track validity/state remain intact; effective confidence controls ranking
+  and output thresholds. Missing/stale field pose disables it for that output.
+- Field poses use source time and a bounded history, with maximum age 20ms.
+  ball_filter/field_prior_pose records the exact selected pose or None. Replay
+  requires an exact diagnostic for every output in new recordings; legacy
+  recordings retain no-prior behavior.
+- field_boundary_confidence_decay_distance is fixed at 0.3m, not searched;
+  nonpositive values disable it. It is independent of the scoring weight.
+- logs/ball-tuning-20261002-single completed six single-ball captures, exact
+  replay checks and a one-trial smoke run before the live prior. Preserve it.
+- Final fresh capture and continuous search planned at
+  logs/ball-tuning-20261003-single-prior; must leave optimization running.
+- Real robot default MCAP topics now include filter output/schedule/prior pose,
+  percepts, field dimensions/pose and odometry announcements for the same replay
+  path. Real data still needs reference labels and baseline parameters.
+- Twix Open 3D failure reproduced: running executable was deleted/replaced.
+  Launcher now falls back to /proc/self/exe on Linux, preserving the running
+  version, and logs child output to OUTPUT/3d-viewer.log. Targeted self-unlink
+  experiment passed; final GUI button verification follows the combined build.
+- Build and native dependency caches were missing during this continuation.
+  Restored checksummed MuJoCo3.9.0 and ONNXRuntime1.22.0 archives; current
+  combined test build is rebuilding dependencies in full.
+- Checkpoint 3f716f859 contains the soft prior, single-ball weighting and viewer
+  fix. Formatting checks passed; final combined Cargo tests/build still pending.
+  Old finite preview backend was stopped cleanly before the new launch.
+
+Validation: single-ball/live-prior update
+- All 153 combined tests passed (filter15, tuner14, simulate51, Twix73), including
+  native physics, ROS-Z geometry integration and the replaced-executable viewer
+  regression. Log: logs/ball-tuning-single-prior-tests.log.
+- cargo fmt --all -- --check and git diff --check passed.
+- Normal application binaries are rebuilding from the now-complete dependency
+  cache. Final prior-enabled captures, continuous rounds and GUI test follow.
+- Normal application build passed. Continuous backend started with 256 candidates
+  per round at logs/ball-tuning-20261003-single-prior; Twix connected.
+- Actual button regression verified: replaced the running backend's executable
+  path atomically with an identical copy; /proc/PID/exe showed "(deleted)".
+  Clicking Open 3D view in Twix successfully launched the viewer through procfs.
+  Screenshot /tmp/ball-prior-viewer-fixed.png shows the live robot and blue model.
+- First new capture: 19,987 outputs and matching prior diagnostics, zero missing
+  diagnostics, duplicate timestamps or source-time mismatches; 19,901 Some poses
+  (99.6%), all matching a recorded source pose within20ms. Nontrivial outside
+  confidence reduction observed. Inspector: /tmp/inspect_ball_prior.py, uv --with
+  mcap. First scenario has an in-view occluded kick, 12.42m walking, 6.22m/s peak.
+- All six captures completed with one ball and at least one in-view occluded
+  opponent kick each. Exact replay verified for all training and holdout data.
+- Full pose audit: 119,928 outputs and matching diagnostics; 119,401 Some poses,
+  527 explicitNone; zero duplicates, source-time mismatches, missing diagnostics
+  or selected poses without a matching recorded source within20ms. Audit saved
+  as logs/ball-tuning-20261003-single-prior/prior-pose-validation.txt.
+- Continuous rounds and live updates verified through round3/trial768. Round2
+  training loss 1.728322 -> 1.162705, holdout 1.980566 -> 2.097985 (worse).
+  Training missing time rises and close-range availability also needs attention;
+  lower conditional RMSE alone is not sufficient. Keep reporting these tradeoffs.
+- Twix screenshot /tmp/ball-prior-twix-running.png shows continuous round3 and
+  best parameters applied through trial759. Both Twix and viewer remain open.
+
+Field decay and detection rejection follow-up (2026-10-03, tests passed)
+- User asks stronger decay outside the field, above-horizon rejection and a
+  maximum detection distance. Add bounded time-based extra validity decay
+  using the existing soft field-distance weight, only with fresh field geometry.
+  Base maximum extra decay2/s; in-field tracks neutral. New detection range15m
+  checked before assignment; retain legacy defaults0 for replay compatibility.
+  Existing projection already rejects above-horizon rays; strengthen finite
+  geometry checks and regression coverage rather than inventing another horizon.
+- User shortened fresh-capture interval from30min to5min. Live best updates
+  continue independently. A full refresh has already captured6 newclips, checked
+  exact6000 selected obstacle snapshots, built and activated remote generation
+  20261003-100045-8cbe5911 with19 memory-budgeted workers. Previous21-worker
+  generation stopped cooperatively after completed rounds; all data retained.
+- Latest codecheckpoint fa1d667c7; datasetbaseline includes negative evidence
+  but predates these new field-decay/range parameters. It remains an honest
+  historical baseline; capture again with fresh defaults once code is validated.
+- Current local preview/bridge are temporary direct-binary processes while
+  editing; metadata logs/ball-negative-evidence-current.json. Resume owned
+  supervisor with5min refresh after final build.
+- Launcher metadata follow-up (outside filter scope): after a successful handoff,
+  active_generation/manifests select the new run correctly, but the old entry in
+  generations still says active. Remote controller status correctly says stopped.
+  Mark historical entries retired in a future lifecycle cleanup; review shared
+  capture-reference deletion rules before changing retained session references.
+- Combined final tests for these changes:57 ball_filter,10 obstacle_filter,
+  22 tuner,64 simulator,82 Twix pass (235 total; one existing ignored). Launcher
+  Python22 tests pass. Logs: logs/ball-field-gates-tests.log. Application build
+  is ongoing in logs/ball-field-gates-build.log. Runtime promotion follows.
+
+Learnable visibility decay and smaller arrows (2026-10-03, in progress)
+- User now requests learnable hidden-inside-field and visible-but-unmatched
+  confidence decay. Use optional per-second rates: hidden_validity_decay_rate
+  (production0.01) and visible_missed_validity_decay_rate (production1.0). None
+  preserves legacy per-frame behavior; Some0 means intentionally no decay.
+  These replace unmatched-track legacy decay, allowing optimization to reduce
+  decay as well as increase it. Matched tracks retain existing confidence updates.
+- Hidden is the ordinary retention rule, independent of localization. Outside
+  tracks additionally receive the separate bounded field penalty. Only consecutive
+  same-category known exposures within120ms count; unknown/fringe/stale geometry
+  pauses new rates. Robot occlusion is hidden, never a clear-view miss.
+- Add two search dimensions (hidden0..0.3/s; visible0..4/s), retain per-recording
+  and aggregate continuity constraints and fixed20s retention/1s clear-miss timers.
+  LegacyNone policies remain disabled through warm starts, reported truthfully.
+- User finds rawconfidence arrows too tall: reduce linear scale to0.02m/unit
+  (25=.5m,50=1m), label accurately; no normalization or silent saturation.
+- All preceding fieldgate code tested235 Rust tests+22 launcher tests and saved
+  ccc43593d; combined and standalone application builds succeeded. New requests
+  arrived before promotion, so nextcapture will include these changes together.
+  Prepared logs/ball-field-gates-live-1791015503 is not yet launched. Current
+  remote run20261003-100045-8cbe5911 and interimlocalpreview remain active.
+
+Additional user requests during visibility-decay implementation (2026-10-03)
+- Sustained confident observations of one ball should accelerate decay of other
+  hypotheses: implement a soft, tunable single-ball preference. Protect all
+  currently matched candidates, require persistent observations, and stop the
+  extra penalty during loss of sight so a missed kick can still be recovered.
+- Expose walking speed as a HUMAN scenario control in Twix, recording and preview;
+  do not let filter optimization alter scenario difficulty. Keep normal Playing
+  behavior and physical locomotion. Check the current policy limits explicitly.
+- Work split: filter_continuity owns filter/rate semantics and regressions;
+  scoring_audit owns tuning dimensions and Twix; fight_scenarios owns physical
+  walking-control plumbing and launcher. Root owns parameter defaults, capture
+  compatibility checks, validation, runtime promotion and Git checkpoints.
+- Agreed single-ball parameter: competing_hypothesis_validity_decay_rate,
+  optional, base0.5/s, learned0..2/s. Require observedleader1s/rawvalidity>=10;
+  protect every matched candidate. LegacyNone and explicitSome0 remain distinct.
+- Walking scale default1/range0.1..3, separate ROS-Z human control and requested/
+  active progress values. Scale normal behavior speeds in temporary parameter
+  layer; preserve approach fades/turning and policycaps (forward2m/s, backward/
+  lateral1m/s, angular1.5rad/s). Persist with opponents; apply on preview restart
+  and next periodic capture. Next runtime validation will use scale2.
+- User requests wrapping the long first Twix status line: explicit wrapped label
+  constrained to panel width, with startup status wrapping too.
+- Standalone focused Cargo invocation was canceled during networking dependency
+  rebuild; no test result claimed. Reuse combined cached feature graph for final
+  validation after all agents freeze sources.
+- Validation passed:248 Rust tests (65filter,10obstacle,24tuner,66simulate,83Twix),
+  one existing ignored;64Python helper/history/launcher tests; full cargo fmt and
+  git diff checks. Logs: logs/ball-decay-speed-{tests,python-tests,format}.log.
+  Combined application build running; runtime promotion still pending.
+- Audited previous six MCAP behavior/motion_command streams: all requested Walk
+  speeds <=1m/s. Saved logs/ball-walking-speed-baseline-audit.json for comparison
+  with the planned2x capture. Decoder reads recordedROS-Z CDR and schemas.
+- Existing root-owned Twix/viewer processes78885/82901 have exited; remotebridge
+  and preview remain healthy. New matching windows will open after application
+  build. SavedTwix30min preference migratedto5min with backup
+  logs/twix-before-five-minute-refresh.ron; unrelated preferences preserved.
+
+Runtime follow-ups after f5b4866d0 (2026-10-03)
+- Combined248Rust+64Python checks and bothappbuilds passed. Initiallive2x preview
+  exposed actual inference rejection outside trainedwalking envelope; policy
+  does NOT automatically clamp pathplanner velocities. Revertedpreview to1x
+  while implementing upstream generated-command limits, preserving inference
+  rejection for invalid/directcommands. Need validate2x physicalcapturebefore
+  promotion. Notes correcting earlier capdescription: isotropicpathspeed can
+  exceed backward/lateral1m/s despite legal forward2m/s.
+- User requests confidencearrows3x previoussmallscale: now0.06m/rawunit,
+  score25=1.5m,score50=3m. Updatedlegend,documentation,andexistinggeometrytest.
+  Latestadjustmentnotyetbuilt/reopened inviewer.
+- Useraskedwhy19workers: measured32cores/load19.3,39.94GiBMemAvailable,
+  workerRSS232MiB/peak270MiB. Default2GiB/workerestimate overlyconservative
+  forthisdataset. Addexplicitper-workerbudget1GiB forthisrun, retaindefault
+  2GiB forunknownlongdata and2GiBheadroom; target32nextgeneration.
+- Manualcurrentpreviewmetadata remains logs/ball-negative-evidence-current.json;
+  newviewer142153/Twix142152 opened withf5binary; previewresumed1x PID146898.
+  No automaticowner/newcapturerunningyet;19remotejobscontinuehealthily.
+- Workerbudget plumbing nowvalidated69Python tests; nextownedlauncherwilluse
+  --workers32 --worker-memory-mib1024. Helperdefault2048 remains; manifest
+  recordsbudget, resumeinheritsunlessexplicitlyoverridden, andpausedreplacement
+  targetsrequested32ratherthanfreezinghistorical19. ActivationrechecksCPUslots
+  andspecifiedmemorybudgetafteroldworkersfinish. Theseareadmissionestimates,
+  notenforcedRSSlimits. Runtimeisstill19untilhandoff.
+
+Kick-range clear misses and visual-only kick authorization (2026-10-03, in progress)
+- User: never kick a ball supported only by the model. An empty, unobstructed
+  near view must rapidly reduce confidence. Found a concrete model-only fallback
+  in the behavior kick helper; remove it.
+- The visual selector currently holds observations for 250 ms and timestamps them
+  with transport publication time. The filter publishes aggregated percepts on
+  fusion batches, including odometry-only empty batches. Change the existing
+  ball_filter/ball_percepts topic to one Vec message per actual detector frame,
+  stamped with image exposure time. Public schema and topic remain the same;
+  MCAP already records it, and optimizer replay uses original detected_objects.
+- The selector will revoke permission on a true empty frame and retain exposure
+  timestamps. Behavior independently requires an actual visual observation within
+  100 ms. Do not invent an exception for committed kicks: the current policy
+  interface has no committed/completed phase contract.
+- Near-field evidence gets an independent clock of contiguous, known clear
+  misses within 1 m. Reset it on match, hidden/unknown view, range exit or long gap.
+  near_visible_missed_detection_timeout: base 120 ms, legacy 0.
+  near_visible_missed_detection_distance: base 1 m, legacy 0.
+- USER OVERRIDE: the kick-range decay MUST be learnable.
+  near_visible_missed_validity_decay_rate: optional, legacy None, base Some(20),
+  searched over 0..40/s as the tenth dimension. It adds to ordinary visible decay;
+  Some(0) applies no extra decay. This replaces the proposed fixed 20/s minimum.
+  The near clear-miss timeout remains fixed at 120 ms. Visual kick authorization
+  is independent of learned confidence and cannot be optimized away.
+- Root added types, defaults and capture inheritance regression. Filter agent
+  owns near evidence and per-exposure publication; scorer owns kick authorization,
+  selector, tuner, Twix dimension count and docs. Viewer agent audits future data.
+  Motion limiter edits are frozen but not Cargo-tested. Run combined checks once
+  all of these changes are stable, then build and exercise physical recording.
+- Checkpoints: f5b4866d0 (original nine rates/speed/UI wrapping), c6a5d0802
+  (arrows at 0.06 m/unit), 60993e3f4 (memory budget and 32-worker target; 69 Python
+  tests pass). Existing 19 remote jobs remain healthy. No fresh capture or periodic
+  supervisor has started. Preview is temporarily at 1x pending the motion fix.
+  Arrow rescaling will become live with the next simulator build.
+- Follow-up outside this filter change: MotionExecution does not identify a
+  committed kick phase or completion. A future execution contract should separate
+  permission to start a kick from safely finishing one if the foot obscures the
+  camera. Current strict behavior rechecks every request; no unsupported exception
+  based merely on the previous command was added.
+- Visual kick points retain their exposure Ground coordinates during the short
+  freshness window. Explicit odometry compensation to the current kick-command
+  frame is a separate follow-up for moving-robot kick accuracy; model fallback
+  would not solve it. Keep the recorded exposure timestamp for that future work.
+
+Base-parameter promotion audit (2026-10-03)
+- User asked whether search winners have updated checked-in base parameters.
+  Git history confirms no complete learned winner was promoted: checkpoints
+  527843fe9, 3f716f859, fa1d667c7, ccc43593d and f5b4866d0 added feature defaults.
+  Winners have instead been applied in temporary live layers and fresh recordings.
+- Promotion remains outstanding. Revalidate with the current filter implementation
+  on independent seeds, including close-ball error/lag, missed-ball reacquisition
+  and retention. An old winner is not validation of the newly changed algorithm.
+- Combined checks found the faster-walking startup bug: ROS-Z only allows one
+  writable parameter binding per node. Fixed by a read-only startup-layer snapshot
+  API; inference remains its configuration owner. Added a layer-precedence and
+  ownership regression; rerunning integration checks before runtime promotion.
+- Current old-generation winner (worker-18/round-000128) is not suitable for
+  promotion: holdout missing time 4.546 -> 1.276 s, but close RMSE 1.581 ->
+  1.704 m, motion lag 0.435 -> 0.496 s and false-track time 9.318 -> 12.000 s.
+  Holdout close coverage is only 1.324 s out of 79.996 labelled seconds.
+- Scoring follow-up: motion lag is conditional along-motion error divided by
+  speed, not recovery latency; longest missing means absent output, not time to
+  regain the correct ball. Add paired time-to-correct-reacquisition after hidden
+  kicks and sustained close/moving coverage before deciding base promotion.
+  Current validation has only three opponent kicks, all occluded and in-view in
+  validation-4250; validation-4243 has none. Winner retains a false track during
+  all 12 labelled empty seconds. Keep those diagnostics visible and avoid
+  claiming total-loss improvement means the kicking priorities improved.
+- Proposed promotion gate (not yet implemented): freeze code and recording hashes,
+  collect untouched benchmark seeds, verify exact replay, and evaluate production
+  defaults versus candidate on identical close/moving frames. Require better close
+  accuracy without per-clip regressions in retention, false tracks and correct
+  recovery time. Consider correct recovery as <=10 cm error sustained for 100 ms
+  after reappearance; validate this threshold against robot kicking needs.
+  The present old-generation baseline is itself a prior search winner, not the
+  checked-in defaults, so its improvement is not a direct base comparison.
+- Metric implementation references: tools/ball-filter-tuner/src/scoring.rs
+  (close selection near148, conditional lag196, any-output missing reset251,
+  absent-reference false tracks267, close RMSE denominator390). Reports'
+  validation_improved flag only means lower total loss and is not promotion.
+- Validation after the startup repair: 268 Rust tests passed (70 filter,
+  24 tuner, 2 behavior, 9 motion, 10 obstacle, 66 simulator, 83 Twix, 4 visual
+  kick selector), with one existing simulator test ignored. Formatting passes.
+  Log: logs/ball-near-kick-motion-tests.log. ROS-Z parameter integration suite
+  and matching application builds are next; fresh 2x capture remains pending.
+- ROS-Z parameter integration suite now passes all 19 tests, including read-only
+  snapshot ownership and layer precedence. Log: logs/ball-near-kick-parameters-tests.log.
+- 09:16 UTC deadline change: user needs game parameters, current-main check, push
+  to schluis and a short draft PR within 15 minutes. Prioritize verified parameter
+  comparison and clean committed code; defer fresh viewer/32-worker handoff if
+  necessary. Existing remote search and 1x live preview continue.
+
+Pregame delivery, robotics-only scope (2026-10-03 09:28 UTC)
+- User requested parameters/code within 15 minutes, then narrowed PR to robotics
+  code and parameters only. Full development branch is preserved. New branch
+  codex/ball-filter-pregame-20261003 is based directly on current main d4474cb5b.
+  Worktree: /tmp/hulk-ball-filter-pregame. Commit a88f174d9, pushed to schluis.
+- Draft PR https://github.com/HULKs/hulk/pull/2917 has exactly 19 robot/filter/
+  parameter files. Supersedes closed broad PR2916. No simulator, optimizer, Twix,
+  inherited motion rewrite, policy assets, or unrelated localization changes.
+  Port keeps main VisualKick and existing fall-down-state input. Ground-to-field
+  publication preserves source time. Main robot cargo check and formatting pass;
+  scoped unit tests still compiling in logs/ball-pregame-narrow-tests.log.
+- Selected parameter: hidden_validity_decay_rate0.01 ->0.0, all other current
+  defaults unchanged, including20s timeout. Existing6clips verify exactly against
+  capture parameters; all per-clip missing/close-missing/longest gaps non-regress.
+  Reused validation missing10.288->10.246s, lag0.565866->0.561914s, closeRMSE
+  unchanged0.963973m and false-track10.252s unchanged. This is a tiny retention
+  benefit, not a solved kicking accuracy result. No larger candidate passed.
+  Reports: logs/promotion-audit-20261003/recommended-{report,perclip}.json and
+  recommended-ball_filter.json. Data was reused during screening, not untouched
+  holdout. User will deploy the branch; no robot deployment was attempted.
+- Full-branch evaluation helper checkpoint072e0c2dc preserves capture-baseline
+  strict verification separately from current evaluation defaults. It is excluded
+  from robotics PR. Concurrent opencode effort-statistics changes remain untouched.
+- Final robotics branch commit d4ffb70d5 adds two documented argument-count lint
+  expectations after CI flagged explicit sensor input signatures. Pushed. Narrowed
+  branch substantive commit a88f174d9 passed CI: 1,260 tests, 2 skipped. Formatting
+  and robot compile check pass. Final lint-only CI rerun in progress at09:30UTC.
+- Final commit Clippy and formatting checks now pass; final CI test/build rerun
+  remains pending at09:30:53UTC. Prior substantive commit passed1,260tests.
+
+Git workflow preference (2026-10-03)
+- User: always rebase, never merge. Repository pull.rebase is now true.
+- Replaced the development branch merge with a linear rebase onto main. Verified
+  the rebased committed tree is identical before updating the branch reference;
+  concurrent uncommitted edits were preserved. Original history is checkpointed
+  in codex/ball-filter-before-rebase-20261003.
+- Pregame PR2917 was already based directly on main, contains no merge commit,
+  and all eight CI checks now pass. Its deployment commit remains d4ffb70d5.
+
+Continued search / localization trust (2026-10-03)
+- User requested continuing from the pregame values. Full branch base now matches
+  pregame hidden decay0.0; updated capture-inheritance regression. Existing19
+  remote workers remain healthy;32-worker paused handoff awaits fresh valid data.
+- First fresh capture used seed offset1791021089, walking2x, two opponents.
+  It failed at5.6s (fall), with zero walking-envelope errors; baseline matched.
+  Behavior requested Kick continuously4.760--5.600s, so an immediately cancelled
+  kick is not supported by the recording. IMU roll reached33deg, then pitch-44deg.
+  Full evidence: logs/ball-pregame-search-1791021089/fall-audit.json. Preservefailed
+  data; retry a lower walking speed but do not assume that proves the cause.
+- Follow-up outside filter scope: record motion/execution, inference status and
+  fall-detection status to diagnose actual kick phase/contact failures. Current
+  six-clip capture aborts falls rather than pretending they are valid tracking data.
+- User requested good_localization=true as explicit trust flag. Fieldpose topic
+  has no calibrated confidence value. Gate both field ranking and stored validity
+  decay; false must reset the integration clock. Camera/Ground tracking gates stay
+  active. Legacy serde and RustDefault use true. Add fixed-tuner/capture regressions.
+- PR2917 now also removes the dead fake_odometry crate/startup and Closes#2918
+  (production cbe52c308; full-branch equivalent b2e1006d7). No fake/delta consumers
+  remain. All history updates use rebase/cherry-pick, never merge commits.
+
+Game branch freeze (2026-10-03)
+- User explicitly froze codex/ball-filter-pregame-20261003 after 0cdd4ac5f.
+  Do not update that branch again without a new explicit request, including
+  follow-up fixes discovered by CI. Continue work only on the development branch.
+- User wants Twix optimization panel and 3D viewer opened when the new instance
+  is ready. Current replacement capture is retry-01, same seeds, walking 1.5x.
+
+Validated replacement capture (2026-10-03)
+- retry-01 contains six complete ROS-Z captures using the exact 0cdd4ac5f
+  baseline, original seed offset 1791021089, walking multiplier 1.5, two
+  opponents, and one ball. All capture audits pass; no falls or policy faults.
+- All 6000 detector exposures match percept and selected-obstacle diagnostics.
+  Eleven opponent kicks are occluded; nine are within the camera view.
+- Capture and detailed audit: logs/ball-pregame-search-1791021089/retry-01/.
+  fall-followup-notes.txt records an unproven kick-policy input discontinuity
+  hypothesis; investigating it needs motion/inference diagnostics beyond filter
+  scope. Do not weaken contest coverage to hide falls.
+- A single local validation round reproduced live output exactly while waiting
+  for remote SSH. Its candidate is NOT suitable for deployment: holdout loss
+  1.9027 -> 1.8227 but lag 0.257 -> 0.722 s and close RMSE 0.619 -> 1.286 m.
+  Training lag and close RMSE also regress. Current continuity guard constrains
+  missing time, not these errors; do not promote solely on aggregate loss.
+- Follow-up in tuner code: constrain training close accuracy and motion lag,
+  preserve held-out evaluation independence, and add correct-ball reacquisition
+  metrics. The current validation has only 1.9 s close-range exposure; expand
+  future capture coverage before trusting a close-range result.
+- Combined simulator/Twix and standalone simulator builds passed. Targeted tests:
+  248 Rust tests and 71 Python tests passed; formatting passed. Game branch is
+  frozen at 0cdd4ac5f with all eight CI checks passing.
+
+Development follow-up in progress (2026-10-03)
+- New 32-worker remote search is active from retry-01; old 19-worker generation
+  cooperatively finished its rounds and stopped. Remote preflight and exact replay
+  passed, and 32 exact worker processes were observed.
+- Owned local launcher PID332453 is temporarily SIGSTOPped to prevent automatic
+  capture while robotics files are being edited. Its bridge/preview children and
+  all remote workers CONTINUE. Resume or replace this supervisor after validation!
+  State file: logs/ball-pregame-search-current.json. Twix/viewer PIDs322581/322582.
+- User requested improved merging and a simpler delayed field-boundary penalty.
+  New field_boundary_margin=.5m begins beyond whole-ball clearance, retaining the
+  original exponential shape. Legacy omitted margin is0; old remote candidates
+  will still apply0 until a fresh generation/baseline is installed. Do not claim
+  the new buffer is active merely because development base parameters changed.
+- Live snapshot confirmed hidden decay0, field extra rate2/s, distance.3m, margin0.
+  This independently explains rapid loss of an occluded near-border hypothesis.
+- Merge implementation is addressing moving duplicates, correlated covariance,
+  recent kick history, and persistent protection of same-exposure distinct balls.
+- User forwarded OpenCode review of production head d4ffb70d5 (robotics only,
+  parameters excluded): obstacle pose timestamps, stalled-frame expiry, legacy
+  duplicate detector decay, and high-rate redundant obstacle merging. Evaluate
+  and fix confirmed issues on DEVELOPMENT ONLY. Game branch remains frozen.
+
+Follow-up implementation validated (2026-10-03)
+- Development checkpoints 75c5b159a (merge, detector deduplication, border margin)
+  and eeed078cf (obstacle review fixes). Game branch remains 0cdd4ac5f.
+- Ball/tuner/simulator/Twix tests: 263 passed, one pre-existing simulator test
+  ignored. Obstacle tests: 15 passed. Formatting passed. Two independent targeted
+  agent-review checks (semantic usefulness and runtime performance) are clear.
+- Ball merging now uses covariance intersection for compatible same-mode tracks;
+  moving tracks need confirmed support and compatible velocities. Stored merge
+  time intervals protect independent same-exposure tracks across later finishes.
+  Interleaved intervals deliberately defer merging until a genuinely new match.
+- All four forwarded robotics findings were confirmed and fixed in development:
+  source-time pose history; node-clock expiry with stale-frame clear output;
+  unconditional detector deduplication; measurement-triggered obstacle merging
+  and subscriber-gated diagnostic cloning. Expiry timer skips missed deadlines.
+- UI/runtime rebuild and fresh-generation migration remain in progress. Supervisor
+  PID332453 is still paused intentionally; remote32 and bridge/preview run. Resume
+  once binaries are ready, then verify fresh capture and active margin0.5 before
+  reporting the buffer live. New diagnostic schemas require matching Twix/viewer.
+
+Static artifacts, confidence transfer and game replay (2026-10-03)
+- User requested correlated false detections be static physical artifacts. Existing
+  bursts were fixed pixels and moved in the world with the camera. New detector
+  anchors each burst in Field, reprojects per exposure, retains Gaussian pixel
+  noise and publishes fixed-anchor provenance; occlusion/out-of-view omit emissions.
+  Independent one-frame image outliers remain unchanged. Tests are pending below.
+- User requested tunable confidence support for nearby newborn candidates.
+  nearby_spawn_validity_factor is optional (legacy None), base0.5, search0..1 as
+  dimension11. Eligible unmatched parent is within0.2m and seen within250ms with
+  confidence>=3. Transfer factor*min(parent_validity-1,2), rather than clone it;
+  preserve new measured position/unknown velocity and exclude same-frame matches.
+- These follow-ups are uncommitted pending final combined tests/builds. External
+  CPU-effort edits remain separate. Root started serial test/build/build/clippy
+  pipeline; inspect logs/ball-static-spawn-{tests,build,standalone-build}.log and
+  logs/ball-robotics-review-clippy.log. A test-only point-type annotation was fixed.
+- Actual game symptom: robot43 sometimes does not approach a nearby ball, but
+  other branches played. Do NOT attribute to our filter without replay evidence.
+- Ole replay fetched: oleflb/feat/localization-improvements @1cd26ef600b032f3824e02f23219924dcc0c87ea,
+  detached /tmp/hulk-ole-replay-20261003. Contains replay tool and Twix Timeline,
+  not game MCAPs. Matching replay uses port7450, isolated Twix state; helper prep
+  in logs/game43-replay-20261003. No replay build yet (root owns Cargo slot).
+- User log server http://10.1.24.108:8000/ has today's directory
+  2026-10-03-HULKs-vs-HTWK/. Went offline; user expects return ~20min after11:25UTC,
+  so retry around11:45UTC. Robot43; gamefile/player-event times still unavailable.
+  Nürnberg Telegram chat is where Konrad posts links, but direct server suffices;
+  no messages sent and no Telegram session accessed.
+- Supervisor332453 STILL intentionally SIGSTOPped; childbridge/oldpreview and
+  remote32 keep running. MUST resume/replace once current binaries validated,
+  reopen matching Twix/viewer and audit new generation with margin0.5 plus new
+  confidence parameter. Watcher355052 awaits generation0001 and needs adjustment
+  for the newly added nearby_spawn setting (fresh default0.5, not legacyNone).
+- Follow-up checkpoints: bba84e727 (nearby confidence transfer/search dimension11)
+  and 48b905fad (static correlated artifacts). Final validation passed:288 tests,
+  one pre-existing ignored simulator test, combinedapps build, standalone simulator
+  build and strict library clippy for ball_filter/obstacle_filter. Earlier broad
+  all-targets clippy also flagged pre-existing test fixture style; CI-style library
+  checks now pass after narrow explicit-input argument-count expectations.
+- At11:33UTC root is releasing Cargo for Ole replay/Twix in its isolated cached
+  target, and resuming the local refresh supervisor to record/activate newcode.
+
+Fresh generation active and game evidence downloaded (2026-10-03, 11:44UTC)
+- Supervisor332453 resumed; generation1 capture and audit passed all six clips.
+  All6000 exposures/percept diagnostics/selected obstacle snapshots align;
+  927 consecutive fixed-field artifact repeats include893 with changed pose.
+  Ten opponent kicks were occluded, eight in view; no falls/policy faults.
+  Exact baseline overlay includes field margin0.5, nearby transfer0.5, good=true.
+- Automatic handoff activated remote32 run20261003-133911-b595c277 at development
+  14d4b57b6. New live best contains margin0.5 and searched nearby transfer factor.
+  Root development commits pushed through14d4b57b6; game branch stays frozen.
+  Matching optimizer Twix/viewer opened (PIDs417268/417269). Source of truth for
+  later generations is retry-01/session/session.json, not these checkpoint PIDs.
+- User revised game scope to compare both halves. First used our branch, second
+  did not; another change is mentioned but clarification pending. Server includes
+  actual source snapshots. First half differs from frozen game worktree (ball
+  source/head-yaw fields, own/team retention). Do not decode with assumed structs.
+- Robot43 MCAPs saved under logs/game43-replay-20261003/{first-half,second-half}/;
+  complete transfers2.42GB/1.74GB with SHA256 receipts. Both missing valid MCAP
+  footer/index: recover into separate indexed copies, keep originals and quantify
+  unrecoverable tail. No game diagnosis yet. Ole replay build remains isolated.
+- Actual-source candidate mechanism: first-half kick authorization requires fresh
+  visual<=100ms. A missing/stale visual while already kicking falls back to Stand,
+  cancels SDK visual kick and needs>250ms to restart. Second permits model fallback.
+  Check real blackboard/trace/command/SDK timestamps before assigning causality;
+  raw vision delay may also cross100ms. Full predicates in game43 behavior-gates.txt.
+
+Robot43 game comparison completed (2026-10-03)
+- Recovered both original MCAPs into separate indexed copies; complete payloads,
+  schemas and source/delivery timestamps preserved, CRCs checked. First5,187,320
+  messages; second4,516,482. Incomplete tails23,028/165,635bytes; lost-message
+  counts unknown. Originals and transfer SHA receipts retained under game43 logs.
+- Native-schema decode:69,169/48,743 behavior ticks, zero errors. Same strict
+  close<=1m/Playing/upright/striker/nooverride metric: first Stand42.914/125.542s
+  (34.18%), second0/75.847s. These are command times using model distance, not
+  physical immobility or metric ground truth; deployments/game situations differ.
+- First62 Playing kick-Failure -> stand-Success transitions:32 visual age>100ms,
+  30 missing visual after a recent raw frame without confident ball.49 close<=1m.
+  Second0 equivalent failures; its source permits model fallback. Source absence
+  can legitimately prohibit a kick; don't classify all62 cancellations as mistakes.
+- Independently validated exact11:06:02.694157505UTC event/sequence35117: own
+  model0.655m, visual101.032ms old, trace explicitly fails kick then succeeds Stand.
+  Next20ms tick visual is fresh but250ms motion-switch lockout blocks restart;
+  first allowed restart260.238ms later. Nine fresh ticks blocked, three intervening
+  None ticks. Finite pose/point, upright/closest/Playing/nooverride exclude other
+  kick gates for this event. Recorder arrival is not subscriber-processing proof.
+- Raw detector latency median51.89ms first/51.00ms second; not general slowdown.
+  Actual camera frames show real ball in contest and beside line near episodes;
+ 2Hz images cannot establish visibility at exact transition or calibrated distance.
+- Behavior/selector follow-up (NOT implemented; preserve filter focus/game freeze):
+  keep visual authorization, distinguish latency/brief occlusion from sustained
+  negative evidence, avoid unconditional Stand plus restart penalty for safe
+  approach. Regression cases:101ms threshold crossing, opponent occlusion, fresh
+  return during lockout, truly absent close ball. Raising timeout alone incomplete.
+- Full report logs/game43-replay-20261003/comparison.txt and .json; exact timeline
+  chart first-half/hesitation-timeline.{png,svg}. Ole replay/Twix successfully built
+  isolated and opened actual first-half panels paused11:06:00UTC. Timeline Space
+  plays; arrows step100ms. Image panel expects RosImage but archive StereoImagePair;
+  use extracted native camera PNGs for now, note adapter outside filter scope.
+
+Other game change identified (2026-10-03)
+- User named ben/ballsearch. Fetched public BenSampaolo/hulk ball-search-behavior
+  @dd84ffafd02294e277d971b69124685477916629 into refs/remotes/ben/ball-search-behavior
+  without checkout/merge. PR2723. Eight relevant archived first-half files match
+  byte-for-byte; second half differs and lacks search_heatmap. Thus this change
+  was present first half only, independently of the user not specifying half.
+- Attribution: coordinated search-priority heatmap/cell approach, Own/Team source,
+  behavior retention500ms/1s (formerly250ms), Blackboard head_yaw. These explain
+  previously unidentified source/schema differences. Aggregate comparison remains
+  observational. Exact101ms stop still directly caused by visual-kick age gate:
+  own ball present, trace in kick path, not search. Don't infer other interactions
+  absent merely from this event. Evidence game43/ballsearch-branch-comparison.json;
+  comparison.txt updated. No robotics/game-branch changes.
+
+Scope correction and replacement robotics PR (2026-10-03)
+- User explicitly restricts robotics work to the ball filter and its supporting
+  inputs. The 100ms kick authorization and immediate visual-selector revocation
+  were an overreach in 46f5e2a0b. Development checkpoint e0e12b304 restores all
+  three affected files exactly to before that change, including 250ms retention.
+  switch_motion_type had no delta in game PR2917; its existing restart delay
+  amplified the new kick rejection. No new behavior rule is introduced.
+- Closed PR2917 and opened draft https://github.com/HULKs/hulk/pull/2921 at
+  5a0526d47, isolated worktree /tmp/hulk-ball-filter-robotics-20261003, based on
+  latest main3d313c10c. Exactly22 robotics/config files; no simulator/optimizer/
+  Twix, behavior or visual-selector changes. Includes later border margin,
+  conservative merging, unconditional exposure dedup, nearby confidence transfer
+  and all four obstacle review fixes. Existing main SDK fall-state semantics
+  retained when porting the obstacle changes; no motion-stack rewrite included.
+- New PR validation:92 ball-filter +15 obstacle tests; strict library Clippy;
+  workspace fmt; full hulk_ros_z cargo check. All passed. Fixes issue2918.
+  The archived game branch remains at0cdd4ac5f; it was not rewritten.
+- Viewer failure reproduced: old optimizer launches its still-running executable
+  via procfs after a rebuild; that executable read newer checkout JSON and
+  rejected delivery_delay_seconds. Viewer now embeds schema-matched defaults,
+  then receives live parameters from its matching producer. Separate dev fix.
+- Operational restart receipt logs/ball-viewer-supervisor-restart.json. Released
+  paused old supervisor332453 and let it close only local children. Replacement
+ 508241 resumes SAME session/history/active generation3 via temporary operational
+  helper logs/resume-ball-supervisor.py; detached32 remote workers never stopped.
+  Session/session.json remains source of truth. Bridge refreshed without error.
+- Simulator regression remains under validation: native delayed announcements/
+  payloads and deterministic1/2/3-frame near-ball gaps;75 tests passed previously.
+  First harness attempt caught startup-order error; second correctly failed for
+  insufficient coverage because base behavior injected zero-velocity Walk.
+  Fixed harness now creates a local override setting that injection to null;
+  production behavior code remains unchanged. Run all four cases before claiming
+  coverage. Reports/MCAPs retained in logs/ball-approach-*.
+- Final fixed-pose check logs/ball-approach-normal-behavior-20261003/report.json:
+  all four cases pass; each5.36s in Kick, zero Kick->Stand. Gap cases each cover
+  five1-frame, five2-frame and five3-frame bursts.75 simulator tests pass, one
+  pre-existing ignored. This checks commands with a stationary synthetic truth
+  ball, not physical kick success; the old restricted binary comparison was not
+  completed because harness setup failed before the later harness corrections.
+- New PR2921 CI is entirely green, including Test, Clippy, fmt and all builds.
+- Typed OpenViewer request with ROS-Z attachment exercised actual launcher and
+  opened native window PID516189 on preview attempt0011; schema error resolved.
+  Matching Twix rebuild still finishing; reopen only optimizer Twix, preserve
+  Ole replay UI. External CPU-effort/map/UI changes are not staged in our commit.
+- UI build completed successfully. Optimizer Twix reopened with a normal X11
+  close/save of prior window: PID519572. A read-only viewer in its own process
+  group (PID519838) remains open across local capture/preview handoffs. Generation6
+  is recording with restored behavior, delayed detector delivery and brief gaps.
+  The normal OpenViewer command path was separately verified before the scheduled
+  capture rotation closed its child window. Remote32 continued throughout.
+- Viewer lifecycle follow-up outside filter scope: a viewer opened by the button
+  shares the producer process group and closes during scheduled recapture; an
+  independently launched viewer can reconnect. Keep this separate from the fixed
+  schema/defaults failure. Do not add simulator/Twix to robotics PR2921.
+
+2026-10-03 Close-range accuracy objective migration
+- User requires low close-range error. Old v3 training winner regressed near RMSE
+  from 0.422m to 1.10m; do not promote this as the next search baseline.
+- v4 adds four times separately normalized loss for truth within 1m, with full
+  weight even near/outside field; missing still costs more than finite error.
+- Per-training-recording and aggregate gates preserve near RMSE, RMS spatial lag,
+  absolute mean spatial lag and all previous continuity guards. Validation stays
+  evaluation-only. New scores cannot be compared with v3.
+- Migrate on generation6 recordings/baseline, preserve all old history. Supervisor
+ 508241 temporarily SIGSTOPped (receipt logs/close-accuracy-refresh-pause.json);
+  remote workers continue until cooperative handoff. Restore automatic recapture
+  using a fresh same-session supervisor after migration.
+- Validation: all31 tuner tests pass; strict library clippy passes after replacing
+  an existing clone-on-Copy in recording field dimensions with a dereference.
+  Implementation checkpoint ec50dda71; paused remote v4 upload/build underway.
+- Migration complete: generation8 close-accuracy-v4-20261003 is searching on32
+  remote workers. Old generation7 stopped cooperatively after finishing rounds.
+  Same-session supervisor PID568792 resumed five-minute recapture; generation8
+  uses generation6 recordings and baseline deliberately. Twix bridge/preview
+  healthy at tcp/127.0.0.1:7448; previous user windows are closed.
+- Early snapshot logs/close-accuracy-first-results.json at16,384 evaluations:
+  training near RMSE0.421612->0.421097m; held-out0.560322m unchanged. Training
+  missing9.666->9.386s, near missing0.52s unchanged; held-out missing2.202s
+  unchanged. Insufficient accuracy improvement for promotion. Full report in
+  logs/close-accuracy-best-report.json confirms v4 and90 quality rejections;
+  RMS spatial lag2.144->2.095s. Continue search; do not claim low close error yet.
+- HULK coordination board connected via Streamable HTTP; identity BoldCave,
+  project /github/hulks/hulk. Current MistyElk onboarding guide is message9;
+  requested old message7 was not found/visible. START message10, task thread
+  ball-filter-close-accuracy. Check topic and inbox at checkpoints. Native Codex
+  server hulk-agent-board added without changing prior settings; this session
+  uses logs/hulk_board_client.py. Registration token stored privately outside
+  repository under ~/.local/state/hulk-agent-board (never publish the token).
+
+2026-10-03 PR2921 new adversarial review and ownership boundary
+- Board peer CobaltCave reported four NEW findings, distinct from fixed PR2917.
+- Confirmed/reproduced FutureMap recv cancellation:20ms caller heartbeat resets
+  old50ms timer indefinitely. Regression failed before, passes with timer stored
+  across calls and reset only after completed tick. Dev ddd1e942c.
+- Same-exposure accepted Robot boxes now veto clear visibility before navigation
+  obstacles mature. Projected disk intersection includes partial occlusion;
+  malformed geometry is Unknown. Ground obstacles still compensate odometry;
+  navigation maturity unchanged. Protects visible/near decay and competition,
+  preserves real matched ball measurements. Dev3acde261c;95 unit tests pass.
+- Explored20ms filter percept heartbeat; live-node regression demonstrated normal
+ 250ms retention/expiry even under total silence. REVERTED: expiry belongs in the
+  visual selector. User explicitly declined selector changes; do not move this
+  lifecycle into ball_filter to evade scope. Dev45d269af3 reverted bye3934d02d.
+- KNOWN BLOCKER: detector silence can retain visual target indefinitely; late old
+  positive delivery can revive it. Consumer-clock expiry/admission fix remains
+  unimplemented. Proposed reviewable patch logs/proposed-visual-expiry.patch and
+  integration reproduction logs/proposed-visual-expiry-integration-test.rs.
+  Existing kick/selector files unchanged. No new100ms policy.
+- Robotics PR branch split into8 coherent commits and rebased onto latest main
+ 9174e6b26. HEADb30ea678f: fusioncf15cf3de, occlusion42e4dd8ab, recorderb30ea678f.
+  Backup checkpoint/ball-filter-robotics-before-review-fixes retains original
+ 5a0526d47.115 tests+3doctests, strict library clippy, full hulk_ros_z check and
+  fmt pass on final head (logs/review-production-*-final.log). An exploratory
+  all-target clippy found pre-existing field_reassign_with_default test-fixture
+  lints; library check is clean. No behavior/selector/simulator/Twix PR diff.
+- Recorder topics were already present in dev but omitted from robotics port.
+  Added9 missing input/context/output topics to production recorder config.
+- Robot43 first-half inventory lacks field_dimensions, update_schedule, selected
+  obstacles/prior and ball_filter/ball_position: cannot retrospectively claim
+  exact live replay or truth-labelled near error. Keep actual archived hesitation
+  analysis and 1/2/3-frame gap regressions; future games need new recorder config.
+- Outside-filter simulator follow-up: synthetic detections currently emit balls,
+  while opponents are modelled as Ground obstacles/physical occluders. They do not
+  emit same-exposure Robot boxes. Unit regressions cover the new robot-box path;
+  fresh simulator optimization alone does not validate robot detector maturity.
+- Old supervisor568792 temporarily SIGSTOPped during fixes; remote search stays
+  active. Resume via fresh same-session supervisor after rebuilding simulator,
+  force new capture generation before optimizer replacement, retain all history.
+- Requested robotics test branch pushedb30ea678f; all GitHub CI green. PR2921
+  explicitly lists visual expiry/admission as unresolved. Old game branch intact.
+- Post-fix brief-gap harness logs/ball-approach-reviewed-filter-20261003/report.json:
+  all4 cases pass with zero close Kick->Stand. These are fixed-pose command checks,
+  not proof of successful physical kicks or absence of long-silence selector bug.
+- Same-session supervisor restarted PID620092; generation10 fresh capture active
+  with correctedfilter, FutureMap, current v4 winner baseline and seed1801021089.
+  Remote generation9 continues until new paused build/replay checks are ready.
+- CobaltCave owns separate minimal localization source-time PR, per his user's
+  instruction. Do not duplicate extraction or drop runtime fix from test branch.
+  Link dependency when supplied; rebase after merge to remove duplicated diff.
+- Next accuracy interpretation: distinguish visible close-range measurement error
+  from occluded close-range prediction error. Hidden opponent kicks are inherently
+  unobserved; diagnose which subset dominates RMSE before further algorithm changes.
+- Localization extraction is PR2924, commit93e404b0f (CobaltCave); PR2921 now links
+  that dependency. Test branch retains identical localization code until rebase.
+- Generation10 handoff completed: remote run20261003-160254-a99961ec,32workers;
+  all6 exact baseline replays succeeded (completed optimizer rounds), all6 capture
+  approach reports have zero close Kick->Stand. Supervisor620092 active with5min
+  refresh, bridge/preview healthy; oldgeneration9 stopped cooperatively.
+- Early new-data snapshot logs/reviewed-filter-first-results.json at32768 trials:
+  close RMSE training0.926758m, held-out
+  0.424578m. No near accuracy gain yet;
+  different recordings from generation8, so do not compare their raw errors as
+  algorithm improvement/regression. Search remains continuous; no new robot base
+  parameters promoted from these results. Low-close-error objective remains open.
+
+2026-10-03 Continued-observation comparison; parameter search stopped
+- Luis stopped parameter search and automatic recapture. Final controller receipt
+  logs/ball-filter-continuous-probe-d91e/final-stop-verification.json confirms
+  stopped, zero workers, and no search or recapture processes. This supersedes
+  earlier operational notes saying that search should continue or resume.
+- Fixed experiments use the six saved generation10 recordings and original
+  tuned/default parameter files. Baseline source is c07b354b07d9b699ad27acd2834a48604b1dee2a.
+  Later experiments reuse the validation clips diagnostically; they are no longer
+  independent acceptance evidence. No production filter or parameter promotion.
+- Retaining velocity improves the three initially accurate targets' predictions
+  at the end of a 600 ms imposed gap. The earlier single-exposure probe overstated the
+  significance of immediate reacquisition failure: in train43 the moving-noise
+  variant's 43 cm selected error becomes 6.2 cm at the next genuine detection,
+  40 ms later. Accurate selected output starts 56 ms after the first exposure;
+  a 200 ms accurate run is confirmed at 262 ms. All eight distinct recovery cases
+  from the three accurate origins confirm recovery under subsequent observations.
+- Complete replay tests a fixed experimental policy: at each natural transition
+  to Resting, retain the exact 4D state and use the existing resting position-noise
+  block from the NEXT prediction. Moving velocity noise, cross terms and damping
+  remain unchanged. This lineage policy persists through updates and merges;
+  unrelated spawns remain ordinary until their own trigger. It is not adaptive Q.
+- On reused validation clips, exact Ground close-ball success within 20 cm rises
+  73.905% -> 76.681%, within 10 cm 64.963% -> 65.590%; missing output falls
+  1.98 -> 1.42 s, close missing 0.96 -> 0.40 s. Close means truth distance <= 1 m;
+  missing output counts as failure on the shared 17.222 s close-truth denominator.
+  Output while the ball is absent remains 7.08 s. Training adds 0.08 s of such
+  false output (16.88 -> 16.96 s), with unchanged missing time.
+- The trade-off is real: close RMSE on identical published frames worsens
+  0.425016 -> 0.478759 m over 16.262 s, although correct time within 20 cm on
+  those frames improves by 0.158 s. The old validation4243 gap at 24.40-24.96 s
+  gains 0.56 s of output, 0.320 s within 20 cm and about 0.181 m RMS error.
+- The main RMSE regression occurs with no genuine detections in the inspected
+  3.0-4.6 s interval of validation4243. Both variants accept false-only input at
+  3.322 s. At 3.522 s the original selects a confirmed alternative; the candidate
+  has lost that alternative and only spawns a new validity-1 track, retaining its
+  older, more inaccurate incumbent. Both outputs are wrong. Why the competing
+  graph diverged earlier remains unresolved; do not claim a merge caused it.
+  Next focus: false association and track selection during observation gaps.
+- Validation: 102 filter + 32 tuner Rust tests, 11 Python metric tests, 89,924
+  archived original output checks, 44,962 unchanged default outputs, and 141 exact
+  common-state checks pass. All original detection payloads are restored after
+  the shared reacquisition exposure. Recovery scoring censors physical episode
+  changes, deduplicates repeated horizons, and reports observation silence.
+- Local evidence: logs/ball-filter-continuous-probe-d91e/report.txt and results/;
+  supporting analysis, exporter and adapter live in the sibling continuous-
+  evaluation-d91e, continuous-prediction-d91e and continuous-method-d91e folders.
+  Remote snapshot: ~/.cache/hulk-ball-filter-continuous-probe-d91e/source.
+  Executed exporter SHA256:
+  78bb49b551beb5405d8576d22c804aba393a60d8e6b034d027e6f0766b85bda6.
+  Executed adapter plus tests SHA256:
+  958934e4245ff3c91d9e942034668e82f9dad454bb9360e1103faa3d2416814c.
+- Rebuilding requires the recorded source state, not a newer checkout: the runner
+  packages current working-tree sources and overwrites its local overlay and remote
+  results. Preserve the historical artifacts before rebuilding. With those retained
+  local/remote artifacts and the recorded source state, the recipe is:
+  python3 logs/ball-filter-continuous-probe-d91e/run_remote.py
+  python3 logs/ball-filter-continuous-probe-d91e/fetch_results.py
+  python3 logs/ball-filter-continuous-evaluation-d91e/analyze.py --exports logs/ball-filter-continuous-probe-d91e/results
+  The analyzer alone can recheck retained outputs without rebuilding the filter.
+  These ignored experiment sources/data are not packaged by this documentation
+  checkpoint; the commands are not a clean-checkout reproduction guarantee.
+- Luis subsequently requested no further board use. Coordination continues only
+  inside this coding session. Parameter search remains stopped.
+
+2026-10-03 TODO: broaden optimization scenario coverage (Luis-approved plan)
+- Implement distinct scenario families before relying on further tuning results.
+  Current suite is four training and two validation recordings of the same
+  ten-phase scenario with variations. Start with 24 recordings: two training
+  variants and one held-out variant for each of these eight families:
+  1. Stationary close ball while our robot walks and turns: jitter/odometry error.
+  2. Approach, slow rolling and stopping: close-range position accuracy and lag.
+  3. Fast kicks across/past the robot: velocity tracking and rapid reacquisition.
+  4. Brief detection gaps of 1-5 frames: preserve established hypotheses.
+  5. Two opponents contesting and kicking: unseen direction changes in occlusion.
+  6. Longer occlusion or ball below camera: retain without false negative evidence.
+  7. Static false detections and empty scenes: false-track duration and selection.
+  8. Sideline play with localization wobble: avoid excessive boundary decay.
+- Vary trajectories, initial robot/ball/opponent positions, walking speed,
+  physical kick impulses, noise and delivery timing, not only random seeds.
+  Keep ordinary single-ball, in-field play dominant. Multiple balls remain a
+  separate stress suite with explicit truth association, not the main objective.
+- Record actual coverage and require it before accepting a named scenario:
+  close-visible time, simultaneous robot/ball motion, actual dropout bursts,
+  contested/occluded kicks, and reacquisition opportunities. A planned kick or
+  dropout is insufficient if it never occurs in the useful camera/ball context.
+  Example: generation10 train42 had zero brief_dropout_bursts_by_frames despite
+  other useful coverage. Preserve MCAP ROS-Z message compatibility and exact
+  baseline replay checks; metadata describes coverage, not replacement inputs.
+- Report metrics per family as well as aggregate: close-range position error and
+  lag, established-track missing time, reacquisition delay after the ball becomes
+  detectable, false output and wrong selected-track duration. Separate initial
+  acquisition from loss of an already observed ball. Retention and false positives
+  must remain visible alongside close accuracy; no promotion on a scalar alone.
+- Use a representative training subset to reject poor candidates cheaply, then
+  evaluate promising candidates on the full training suite before acceptance.
+  Keep fresh held-out recordings outside parameter selection. Existing generation10
+  validation clips have been inspected repeatedly and are diagnostic data, not
+  fresh independent acceptance evidence; reserve unseen scenarios for final checks.
+- Main implementation locations: tools/simulate/src/ball_tuning.rs (scenario
+  generation/coverage), tools/ball-filter-tuner (per-family evaluation and staged
+  training evaluation), scripts/ball_filter_optimization (suite lifecycle).
+- This is an implementation note only. Parameter search and recapture remain
+  stopped; this checkpoint does not implement the expanded suite or restart them.
+
+2026-10-03 Server goal-mode continuation (in progress; no promotion)
+- New user authorization resumes optimization on this 32-CPU/64-GiB server.
+  User explicitly requested higher CPU utilization; replacement-worker controller
+  now sustains about 100% sampled CPU busy. Existing archived runs are preserved.
+  Work/evidence root: logs/ball-improvement-20261003. No board use or PR edits.
+- Exact historical six-clip replay succeeded. Those old clips remain diagnostic,
+  not fresh validation. Production parameter files have NOT been changed.
+- Added JSON capture recipes and --capture-ball-scenario: two training variants
+  and one held-out variant per family. Current accepted 24-clip suite comprises
+  retry-stationary-close, fresh-approach, fresh-fast-crossing, fresh-brief-gaps,
+  final-contested, final-long-occlusion, fresh-empty-false, fresh-sideline.
+  Paths are frozen in full-suite-inputs.json. Failed coverage attempts remain
+  archived and excluded. Sideline currently varies placement, not localization
+  calibration; localization wobble and realistic camera/detector errors remain.
+- Stationary recipe scripts walking/turning: ball travel zero, 27-39s close
+  visibility. Brief-gap captures have real 1-5-frame dropout bursts. All contested
+  variants include actual opponent kicks behind occluders. Long-occlusion recipe
+  moves a real cylinder at bounded speed; each accepted clip has about12s blocked
+  visibility, stationary truth retained, and two reacquisition opportunities.
+  Initial occluder routes accidentally contacted the ball in a rejected variant;
+  corrected initial placement keeps the sideways route clear of the ball.
+- scripts/ball_filter_scenario_suite captures/version-hashes recipes' recordings
+  and runs training-only selection with per-recording reports. Simulator remains
+  synthetic detections plus production kinematics/filter, not neural inference.
+- New experimental default-disabled filter parameters: physical association
+  distance; projected/detected radius-ratio gate; covariance-weighted selection;
+  uncertainty penalty between feasible associations; covariance margin for clear
+  missed-detection evidence. Existing moving-to-rest threshold is now searchable.
+  All are experimental until full-suite acceptance and independent evaluation.
+- v5 acceptance replaces abs(mean signed spatial lag) with mean(abs(spatial lag)).
+  Evidence: selection-only probe improved RMS lag .7266->.2478s and mean absolute
+  lag .2055->.1242s, improving every initial training clip, but signed mean worsened
+  .0522->.1164s because gross opposite-sign errors no longer cancelled. Signed mean
+  remains reported. v5 also guards false-track time; all old continuity and per-
+  recording close-RMSE/RMS-lag guards remain. No timeout/threshold relaxation.
+- Coordinate search and differential evolution are available. Population members
+  may explore infeasible training settings, but only exactly feasible candidates
+  become best. Coordinate screening rejects on representative training clips,
+  then requires all training recordings before accepting. Held-out data never
+  influences proposals, feasibility, warm starts, or winner selection.
+- Initial four-training-clip searches achieved40-50% lower close RMSE and >50%
+  less missing time, but full-suite evaluation rejected every promising subset
+  winner for contested/sideline continuity or fast-motion regressions. DO NOT
+  report those subset numbers as a completed improvement. Full-suite baseline
+  training loss2.578639, closeRMSE .424630m, missing73.700s across640s.
+- Current search controller: keep_busy_full.py, tmux ball-improvement-full-search;
+  its immutable binary is full-tuner. It still uses the earlier selection model
+  while newer confirmation/association/visibility variants are being evaluated.
+  Source changes after that binary must not be attributed to its reports.
+  STOP_FULL_SEARCH tells it to finish owned rounds without launching replacements.
+  Earlier subset/v4 controllers have stop files and finish cooperatively.
+- Tests at latest uncertainty checkpoint:100 ball_filter and32 tuner library
+  tests pass. Earlier simulator tests76 pass,1 existing ignored; rerun after
+  final recipe changes. Earlier strict library clippy passed; rerun after latest
+  filter changes. All artifacts and rejected candidates are retained.
+- Concurrent external edits add ball-filter-monitor.rs, tuner Cargo dependencies,
+  Cargo.lock, and README monitor documentation. Preserve them and do not stage
+  them into optimization checkpoints. One all-target test attempt encountered
+  that in-progress monitor's missing QosHistory import; library tests are clean.
+- Subsequent full-suite searches plateaued near loss2.57: not substantial.
+  Added confirmation protection to uncertainty-ranked selection, association-
+  uncertainty ranking among already feasible pairs, and covariance-aware clear
+  visibility. Tests now100 filter and33 tuner library tests pass. Each control
+  remains disabled for omitted legacy parameters and for the capture baseline.
+- Found a motion-metric timing artifact: Ground truth transformed by a preceding
+  (up to20ms older) ground_to_field pose credited two physically stationary clips
+  with26ms/42ms of fast ball motion. v6 uses independently timestamp-matched
+  simulation/ball_ground_truth_field for derivatives when standard simulator
+  labels are selected. Position and close-range scoring stay in exact Ground.
+  No held-out results were used to identify or select these scoring changes.
+- Current replacement controller is keep_busy_v6.py, tmux ball-improvement-v6,
+  immutable binary v6-tuner, all16 training recordings and8 reserved recordings.
+  STOP_V6_SEARCH drains it cooperatively. Earlier full controller has its stop
+  file; artifacts remain. Half of new workers use differential evolution with
+  baseline/local/experimental population seeds; half use screened coordinate
+  search. Experimental infeasible seeds cannot become accepted winners.
+
+2026-10-03: User approved per-recording accuracy trade-off: +0.01 m close RMSE and +0.04 s RMS/mean absolute spatial lag; retention and false-track guards remain exact. Objective v7 applies those margins only to individual clips; aggregate accuracy remains non-increasing. Final promotion still requires substantial overall improvement. New request: research published filtering methods, implement alternatives in separate worktrees, compare on common frozen recordings. No alternative has been promoted.
+
+2026-10-03 follow-up: Published-method comparison completed in separate worktrees.
+See ball-filter-method-comparison.md for references, branches, protocol and exact results. All four methods received 8 x 1024 matched trials. Current filter won training, but ALL winners failed original held-out quality/false-track safeguards. No production parameter file was changed. Original 8 validation clips are now explicitly development alongside original 16 training clips. Fresh audit: logs/ball-improvement-20261003/fresh-audit, 24 new clips across all 8 families, all coverage checks passed. Every audit file (including train-* filenames) is reserved for independent evaluation.
+Current parameter-only/selection-cap searches use the 24 development clips and v7 raw continuity guards; cap24 controller has 32 workers and immutable binaries. Existing cap24 binary has 19 dimensions. New optional reacquisition-after-gap gate and speed-based resting transition were implemented and separately probed, currently default off. Their first fixed-parameter probes are infeasible, so neither is promoted or included in the running cap24 search. Current source supports 21 dimensions, with new diagnostics distinguishing wrong selected output (>0.5 m from truth), correct-track unavailability, and longest correct-track gap. Diagnostics do not alter acceptance. Original baseline over the 24 development clips: raw missing 107.468 s; additional wrong-output time 107.574 s; correct-track unavailable 215.042 s; longest raw gap 4.88 s vs longest correct-track gap 39.986 s. A user clarification is pending about whether continuity should protect correct estimates rather than arbitrary output. Keep the existing raw guards until explicitly answered.
+Stationary training diagnostic: odometry versus recorded Field pose drifts about 0.13 m by 30 s, insufficient to explain metre-scale selected-output errors. During most large-error intervals there is no accurate retained hypothesis even for an oracle selector. This motivated the optional gap-specific association experiment, but its initial probes failed safeguards. Exact replay remains required for every evaluation. Production behavior/visual selector are unchanged.
+
+2026-10-04 checkpoint: First fresh audit rejected despite 58% close-RMSE and 49% RMS-lag aggregate improvement; four per-clip failures, no promotion. Expanded development to 48 inspected clips. Selection-only 168-case grid found feasible weight=.05, cap=30 (5.2% close-RMSE /18.3% RMS-lag improvement, exact unchanged retention/false durations). Thirty-two-worker broader search continues; second audit is reserved with new seeds and coverage-only retries. See ball-filter-method-comparison.md and logs/ball-improvement-20261003 for full provenance. All safeguards remain v7, including raw missing time.
+
+2026-10-04 correct-ball availability and auxiliary-filter checkpoint
+- User explicitly chose: "Protect correct-ball availability; allow removing clearly wrong outputs." Objective v8 therefore replaces raw missing-time guards with missing-or->0.5-m-wrong duration, its close-range subset and its longest gap, per clip and aggregate. Raw presence remains diagnostic. False-track safeguards remain strict and the approved +1 cm / +40 ms per-clip accuracy allowances remain; aggregate accuracy must not worsen. This supersedes the pending-clarification/v7 raw-retention statements above.
+- No production parameters have been promoted. Second and third fresh audits both failed individual safeguards and have joined development, now 96 recordings. See ball-filter-method-comparison.md for failures and source/binary provenance.
+- Separate worktree hulk-ball-publication-filter, commit e3c880e1a: auxiliary physically supported Kalman history, correction only for selected observations whose apparent size is too small. Optional blend, measurement-noise, maximum-age and maximum-distance parameters. Baseline association/existence stays unchanged. A close-only variant improved development RMSE 45% but failed the third audit by 100 ms correct-ball availability in one sideline clip.
+- A fixed age/distance grid on all 96 development clips selected auxiliary noise 0.2, blend 1, maximum age 5 s, no distance cutoff. Close RMSE 0.452953 -> 0.363781 m (20%); RMS spatial lag 0.746797 -> 0.669053 s (10%); correct-ball unavailable time 883.972 -> 833.850 s; false time unchanged 414.054 s. Every development guard passed. Frozen candidate96-before-fourth-audit.json + manifest; fourth audit captures new seeds starting 59,000,000 and remains unseen.
+- Prototype checks: 108 filter tests, 37 tuner tests, targeted stale-alternate regression and strict library Clippy pass. Live simulator built; baseline and frozen candidate both pass all four approach continuity cases (control, brief gaps, delivery delay, combined), recorded in approach96-verdict.json. These checks do not prove physical kick success. Goal remains active pending independent validation and integration.
+
+2026-10-04 independent audit passed; validated candidate integrated
+- Fourth audit: all 24 fresh recordings across eight families pass every v8 guard. Close RMSE 0.311333 -> 0.247224 m (20.6% improvement); RMS spatial lag 0.845534 -> 0.720110 s (14.8%); correct-ball unavailable 165.902 -> 152.818 s; false time unchanged 104.820 s. Initial acquisition unchanged; established-track unavailability 116.290 -> 103.206 s. See ball-filter-method-comparison.md for per-family data, reacquisition diagnostics, provenance and limitations.
+- Integrated the frozen auxiliary-filter source and enabled its four parameters in etc/parameters/base/ball_filter.json5. Final workspace replay/build checks are in progress. The prior "no promotion" checkpoints above describe rejected earlier candidates. The final candidate was frozen before this audit; no parameters were selected from its results.
+
+2026-10-04 final coverage audit found localization-stress regression
+- Ordinary fourth audit and integrated 120-recording replay passed, plus 108 filter / 38 tuner tests, Clippy and all four live approach cases. However the notes' localization-wobble item was missing. Added explicit prior-only replay perturbation after capture verification; scoring truth/odometry/cameras stay untouched.
+- Sideline per-clip checks pass at 0.1/0.25/0.5 m per-axis wobble. Applying the same stress to all families found brief-gaps/train-42 RMS lag regressions beyond +40 ms at 0.25 and 0.5 m (prior-stress-suite-verdict.json). Production parameter enablement has therefore been reverted; the optional source remains integrated but default-off. This supersedes the immediately preceding provisional integration checkpoint.
+- Continue hardening in hulk-ball-publication-filter: test auxiliary good_localization=false so the main filter alone owns the field-boundary prior. Fifth fresh audit capture is underway at seed offsets89,000,000+. Do not mark the goal complete or re-enable until the broader stress and independent validation pass.
+
+2026-10-04 buffered-prior candidate frozen for fifth independent audit
+- Fully removing auxiliary localization prior failed one older sideline lag guard. Disabling only auxiliary field-boundary validity decay retained ordinary gains but did not resolve wobble. Added publication_field_boundary_margin; main margin is still fixed. Auxiliary margin grid .5/.75/1/1.5/2 m selected1.5 m (2 m also feasible) with auxiliary stored decay disabled and soft ranking retained.
+- All120 ordinary development recordings plus the24 inspected clips at each .1/.25/.5 m localization perturbation pass every per-clip and aggregate guard. CloseRMSE .428504->.343991m, RMSlag .769037->.663603s, correctunavailable1049.874->980.750s, false518.874s unchanged. Source9c15aecea in hulk-ball-publication-filter; 108filter+38tuner tests and strict Clippy pass.
+- Frozen candidate120-before-fifth-audit.json + manifest hashes source and buffered-prior-tuner. Fifth capture/coverage-finisher/evaluation watcher are live, using fresh seeds89,000,000+ and predeclared ordinary/.1/.25/.5m stress checks. No fifth-audit model scores inspected. Main root still has earlier optional auxiliary source, default off after parameter rollback; integrate newer buffered source and enable only if fresh audit passes.
+
+2026-10-04 buffered candidate live checks complete
+- Both baseline and candidate120 pass all four live approach continuity cases. approach120-verdict.json records the matching frozen parameter hash, simulator hash and source9c15aecea. No new parameter choices; fifth capture and its queued ordinary/wobble evaluator remain live.
+
+2026-10-04 fifth audit rejected on small wobble lag regressions
+- Ordinary24fresh clips all pass: closeRMSE .376630->.313779m, RMSlag .856418->.484896s, correctunavailable236.808->217.664s, false98.062s unchanged. But sideline/train-42 at .1/.25m prior wobble increases RMSlag47.5/53.4ms, exceeding40ms. Do not enable candidate120. Allcapturecoveragepassedfirsttry; see fifth-audit-verdict.json.
+- Development now144ordinary clips plus .1/.25/.5m stress on48inspected clips. Gridpublication-blend-grid selects blend.7 with margin1.5 across allguards; lowerblends .4-.6 losecorrectavailability in originalsideline/train42, higherblends exceednewlagguard. Margin2gridstillrunning. Source9c15aecea/buffered-prior-tuner unchanged. Sixthfresh capture seed119,000,000+ underway, not inspected. Productionparams remain reverted.
+
+2026-10-04 candidate144 frozen for sixth audit
+- Both margin1.5m/2m grids choose blend.7 with identical development loss; smaller margin1.5m wins tie-break. 144ordinary clips + three wobble amplitudes on48inspected clips all pass. CloseRMSE .420717->.348359m, RMSlag .783866->.654177s, correctunavailable1286.682->1235.402s, false616.936s unchanged. Allfour live approach cases pass, hash matched frozen config.
+- Frozen candidate144-before-sixth-audit.json + manifest, source9c15aecea / buffered-prior-tuner unchanged. Sixth capture/finisher/evaluator/diagnostic-export watchers live. Fresh seeds119,000,000+, no scores inspected; predeclared .0/.1/.25/.5m prior wobble checks. Main optional filter remains disabled. If all fresh guards pass with substantial gains, integrate buffered types/tracker from hulk-ball-publication-filter and enable the five frozen publication parameters, then verify integrated replay/build and document results.
+
+2026-10-04 final completion verification
+- Sixth independent24clips all pass ordinary and predeclared .1/.25/.5m per-axis prior-wobble checks. All eight families meet coverage; all1–5frame dropout lengths were actually observed in every brief-gap clip. Capture/evaluator/parameter hashes verified.
+- Integrated buffered auxiliary source and enabled frozen five publication parameters in etc/parameters/base/ball_filter.json5. Exact parameter equality and exact per-recording/aggregate score equality on all168ordinary clips verified against frozen reports. Final source28ff65b02 matches frozen filter source9c15aecea byte-for-byte in relevant filter/types files.
+- Tests108filter+38tuner pass, strict Clippy passes, simulator builds, final production parameter root passes allfour liveapproach continuity cases. final-completion-audit.json records evidence. No remaining optimization/capture workers are needed.
+- Scope remains filter validation with synthetic detector noise and simulator trajectories. No CNN or real-robot performance claim; liveapproach checks do not establish physical kick success. Reacquisition-event means change populations (129->119 events), so report them without claiming faster matched-event recovery.
+
+2026-10-04 preserved-worktree continuation audit
+- Checked all eight ball experiment worktrees at the user's request, preserving seven clean branches, dirty soft-geometry edits, root monitor work and the detached monitor worktree. Disposable copies retain each filter and parameter implementation, with the common current v8 scorer/recording code and zero-trial/prior-wobble adapters.
+- 19 fixed configurations x four amplitudes (0/.1/.25/.5m) x168 inspected clips evaluated. This is fixed historical candidates and explicitly rejected lowest-loss probes, not equal-budget retuning or independent validation. Every disabled control has identical per-clip scores at every amplitude; production reproduces every frozen ordinary score exactly.
+- Historical Student-t/IMM/PDA winners fail 70/70/69 ordinary per-clip guards and increase aggregate false output by14.632s. Selected output-IMM fails37clips; rejected selection/soft-geometry probes fail17each; output-reacquisition fails1clip plus aggregate lag. No tested improving alternative qualifies against original or production safeguards. Production passes every guard across all168 at allfour amplitudes.
+- All eight release builds, filter/evaluator unit suites and strict library Clippy checks pass; this closes the missing Clippy check on final dirty soft-geometry v4. Per-branch filter tests101/102/101/103/105/109/111/108 plus38shared evaluator tests each.
+- tools/simulate/check_remaining_worktrees.py reproduces the audit using fresh output/scratch directories. Completed evidence: logs/ball-improvement-20261003/worktree-audit-20261004-v2/{manifest,verdict,completion-audit}.json, frozen sources/binaries/parameters and full per-case reports. Initial worktree-audit-20261004 adapter artifacts were superseded. Production parameters unchanged; no worktrees deleted or alternative branches promoted.

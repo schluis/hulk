@@ -1,0 +1,70 @@
+{
+  "family": "stationary-close",
+  "ball_position": [
+    0.9,
+    0.12
+  ],
+  "robot_position": [
+    0,
+    0
+  ],
+  "robot_yaw": 0,
+  "perception": {
+    "frame_period": 0.04,
+    "delivery_delay_seconds": 0.05,
+    "delivery_jitter_seconds": 0.015,
+    "center_noise_pixels": 2.0,
+    "false_positive_probability": 0.04,
+    "seed": 42
+  },
+  "steps": [
+    {
+      "until": 10,
+      "name": "stationary ball / scripted walk and turn",
+      "ball_present": true,
+      "ball_impulse": null,
+      "walking_velocity": [
+        0.015,
+        0.015,
+        0.025
+      ]
+    },
+    {
+      "until": 20,
+      "name": "stationary ball / scripted walk and turn",
+      "ball_present": true,
+      "ball_impulse": null,
+      "walking_velocity": [
+        -0.015,
+        -0.015,
+        -0.025
+      ]
+    },
+    {
+      "until": 30,
+      "name": "stationary ball / scripted walk and turn",
+      "ball_present": true,
+      "ball_impulse": null,
+      "walking_velocity": [
+        0.015,
+        -0.015,
+        -0.025
+      ]
+    },
+    {
+      "until": 40,
+      "name": "stationary ball / scripted walk and turn",
+      "ball_present": true,
+      "ball_impulse": null,
+      "walking_velocity": [
+        -0.015,
+        0.015,
+        0.025
+      ]
+    }
+  ],
+  "minimum_coverage": {
+    "close_visible_seconds": 2.0,
+    "robot_walked_metres": 0.1
+  }
+}

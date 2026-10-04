@@ -5,8 +5,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use booster::FallDownState;
 use color_eyre::Result;
+use types::fall_detection::FallDetection;
 
 use coordinate_systems::{Field, Ground};
 use hsl_network_messages::PlayerNumber;
@@ -62,6 +62,8 @@ pub struct Blackboard {
     pub visual_kick_ball_position: Option<BallPosition<Ground>>,
     pub last_ball: Option<LastBall>,
     pub last_close_enough_to_kick: bool,
+    /// Target selected for this tick, used to choose kick strength.
+    pub kick_target: Option<Point2<Ground>>,
     pub last_kick_target: Option<Point2<Field>>,
     pub last_motion_command: MotionCommand,
     pub last_motion_switch_time: Time,
@@ -125,6 +127,10 @@ fn validate_behavior_parameters(
         }
     }
 
+    if !parameters.kicking.target_speed.is_finite() || parameters.kicking.target_speed < 0.0 {
+        errors.push("kicking.target_speed must be finite and non-negative".to_owned());
+    }
+
     if errors.is_empty() {
         Ok(())
     } else {
@@ -161,13 +167,28 @@ pub async fn run(ctx: Arc<Context>) -> Result<()> {
         .cache(1)
         .build()
         .await?;
-    let fall_down_state_cache = node
-        .subscriber::<FallDownState>("inputs/fall_down_state")
+    let fall_detection_cache = node
+        .subscriber::<FallDetection>(types::fall_detection::FALL_DETECTION_TOPIC)
+        .qos(ros_z::qos::QosProfile {
+            reliability: ros_z::qos::QosReliability::BestEffort,
+            ..Default::default()
+        })
         .cache(1)
         .build()
         .await?;
     let controller_input_cache = node
         .subscriber::<ControllerInput>("inputs/controller_input")
+        .cache(1)
+        .build()
+        .await?;
+    let motion_execution_cache = node
+        .subscriber::<types::motion_execution::MotionExecution>(
+            types::motion_execution::MOTION_EXECUTION_TOPIC,
+        )
+        .qos(QosProfile {
+            reliability: ros_z::qos::QosReliability::BestEffort,
+            ..Default::default()
+        })
         .cache(1)
         .build()
         .await?;
@@ -286,6 +307,7 @@ pub async fn run(ctx: Arc<Context>) -> Result<()> {
         visual_kick_ball_position: None,
         last_ball: None,
         last_close_enough_to_kick: false,
+        kick_target: None,
         last_kick_target: None,
         last_motion_command: MotionCommand::default(),
         last_motion_switch_time: Time::zero(),
@@ -318,6 +340,7 @@ pub async fn run(ctx: Arc<Context>) -> Result<()> {
 
         blackboard.is_injected_motion_command = false;
         blackboard.walk_position = None;
+        blackboard.kick_target = None;
         blackboard.body_motion = None;
         blackboard.head_motion = None;
         blackboard.voronoi_map = None;
@@ -369,13 +392,16 @@ pub async fn run(ctx: Arc<Context>) -> Result<()> {
             primary_state,
         };
 
+        blackboard.world_state.motion_execution = motion_execution_cache
+            .get_latest()
+            .map(|s| s.as_ref().clone());
         blackboard.world_state.ball = ball_state_cache.get_latest().and_then(|ball| *ball);
         blackboard.visual_kick_ball_position = visual_kick_ball_position_cache
             .get_latest()
             .and_then(|ball_position| *ball_position);
-        blackboard.world_state.fall_down_state = fall_down_state_cache
+        blackboard.world_state.fall_detection = fall_detection_cache
             .get_latest()
-            .map(|fall_down_state| *fall_down_state.as_ref());
+            .map(|fall_detection| *fall_detection.as_ref());
         blackboard.world_state.filtered_game_controller_state =
             filtered_game_controller_state_cache.get_latest().map(
                 |filtered_game_controller_state| filtered_game_controller_state.as_ref().clone(),
@@ -426,12 +452,12 @@ pub async fn run(ctx: Arc<Context>) -> Result<()> {
 
         let motion_type = match &motion_command {
             MotionCommand::Damping => Some(MotionType::Damping),
-            MotionCommand::VisualKick { .. } => Some(MotionType::Kick),
+            MotionCommand::Kick { .. } => Some(MotionType::Kick),
             MotionCommand::Walk { .. } | MotionCommand::WalkWithVelocity { .. } => {
                 Some(MotionType::Walk)
             }
             MotionCommand::Stand { .. } => Some(MotionType::Stand),
-            MotionCommand::StandUp => Some(MotionType::StandUp),
+            MotionCommand::StandUp { .. } => Some(MotionType::StandUp),
             MotionCommand::Prepare => Some(MotionType::Prepare),
         };
 
@@ -441,7 +467,7 @@ pub async fn run(ctx: Arc<Context>) -> Result<()> {
                 ?motion_command,
                 ?motion_type,
                 previous_motion_type = ?blackboard.last_motion_type,
-                "behavior motion command changed"
+                "motion command changed"
             );
         }
 

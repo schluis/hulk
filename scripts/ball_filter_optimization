@@ -1,0 +1,542 @@
+#!/usr/bin/env python3
+"""Launch local tuning or observe remote tuning with a local live simulator."""
+import argparse
+from contextlib import contextmanager
+import fcntl
+import importlib.machinery
+import importlib.util
+import json
+import math
+import os
+from pathlib import Path
+import shlex
+import signal
+import socket
+import subprocess
+import sys
+import time
+import uuid
+
+REPOSITORY = Path(__file__).resolve().parent.parent
+ROUTER_PORT = 7448
+REMOTE_CAPACITY_PROBE = r'''
+import json, os
+from pathlib import Path
+memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
+active = 0
+for process in Path('/proc').iterdir():
+    if not process.name.isdigit():
+        continue
+    try:
+        executable = os.readlink(process / 'exe').removesuffix(' (deleted)')
+        active += Path(executable).name == 'ball-filter-tuner'
+    except (FileNotFoundError, PermissionError, ProcessLookupError):
+        pass
+print(json.dumps({'cpus': len(os.sched_getaffinity(0)),
+                  'load': os.getloadavg()[0], 'active_tuners': active,
+                  'available_bytes': int(memory['MemAvailable'].split()[0]) * 1024}))
+'''
+
+
+def log(message):
+    print(f"[ball-filter optimization] {message}", flush=True)
+
+
+def remote_helper():
+    loader = importlib.machinery.SourceFileLoader(
+        "ball_filter_remote_helper", str(REPOSITORY / "scripts/remote_ball_filter_tuning")
+    )
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def remote_worker_slots(host, requested, worker_memory_mib=2048):
+    helper = remote_helper()
+    try:
+        resources = json.loads(helper.ssh(
+            host, ["python3", "-c", REMOTE_CAPACITY_PROBE], capture_output=True, text=True, timeout=30
+        ).stdout)
+    except subprocess.TimeoutExpired as error:
+        raise ValueError(
+            f"SSH capacity check for {host} timed out after 30 seconds. "
+            "Check SSH authentication/connectivity, then retry; no new search was submitted."
+        ) from error
+    remaining = resources["cpus"] - resources["active_tuners"]
+    if remaining <= 0:
+        raise ValueError(
+            f"{host} already has {resources['active_tuners']} active tuner workers for "
+            f"{resources['cpus']} CPUs. Use connect with their existing manifest files "
+            "instead of starting another search. No remote workers were stopped."
+        )
+    workers = min(requested, remaining, helper.capacity(resources, requested, full_cpu=True, worker_memory_mib=worker_memory_mib))
+    log(f"{host}: {resources['active_tuners']} workers already active; "
+        f"starting at most {workers} additional workers on {resources['cpus']} CPUs "
+        f"with {worker_memory_mib} MiB budget each plus 2 GiB headroom.")
+    return workers
+
+
+def ensure_router_available():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("127.0.0.1", ROUTER_PORT))
+        except OSError as error:
+            raise ValueError(
+                f"Local port {ROUTER_PORT} is already in use. Connect Twix to the existing "
+                "simulator/optimizer, or stop its local launcher before starting another "
+                "preview. Remote searches can keep running."
+            ) from error
+
+
+@contextmanager
+def launcher_lock():
+    directory = Path.home() / ".cache/hulk-ball-filter-optimization"
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / "local-router.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ValueError(
+                "Another ball-filter launcher is already preparing or running a local "
+                "session. Connect Twix to that session, or stop that local launcher first."
+            ) from error
+        try:
+            ensure_router_available()
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+class StopRequested(Exception):
+    def __init__(self, signum):
+        self.signum = signum
+
+
+def stop_requested(signum, _frame):
+    raise StopRequested(signum)
+
+
+class Children:
+    """Own only local process groups; never stop detached remote searches."""
+    def __init__(self):
+        self.running = []
+
+    def start(self, command, label):
+        log(f"{label}: {shlex.join(map(str, command))}")
+        process = subprocess.Popen(
+            [str(argument) for argument in command], cwd=REPOSITORY,
+            stdin=subprocess.DEVNULL, start_new_session=True,
+        )
+        self.running.append((process, label))
+        return process
+
+    def run(self, command, label, timeout=None):
+        process = self.start(command, label)
+        try:
+            code = process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError(f"{label} timed out after {timeout}s; check SSH authentication/connectivity and the startup log.") from error
+        if code:
+            raise RuntimeError(f"{label} exited with status {code}; see the preceding output.")
+
+    def monitor(self, seconds=None):
+        deadline = None if seconds is None else time.monotonic() + seconds
+        while deadline is None or time.monotonic() < deadline:
+            for process, label in self.running:
+                if process.poll() is not None:
+                    raise RuntimeError(
+                        f"{label} exited with status {process.returncode}; "
+                        "the local monitor is stopping. Remote workers remain running."
+                    )
+            time.sleep(0.2)
+
+    def forget_finished(self):
+        self.running = [(process, label) for process, label in self.running if process.poll() is None]
+
+    def close(self):
+        # The Rust runtime handles SIGINT and flushes recording/checkpoint files.
+        # Signal groups even when their cargo/shell leader exited, since children
+        # could otherwise survive a failed launcher.
+        for signum, grace in [(signal.SIGINT, 10.0), (signal.SIGTERM, 3.0), (signal.SIGKILL, 1.0)]:
+            groups = []
+            for process, _ in self.running:
+                try:
+                    os.killpg(process.pid, signum)
+                    groups.append(process)
+                except ProcessLookupError:
+                    pass
+            if not groups:
+                break
+            deadline = time.monotonic() + grace
+            while time.monotonic() < deadline:
+                alive = False
+                for process in groups:
+                    process.poll()  # Reap leaders, including already exited ones.
+                    try:
+                        os.killpg(process.pid, 0)
+                        alive = True
+                    except ProcessLookupError:
+                        pass
+                if not alive:
+                    break
+                time.sleep(0.05)
+        for process, _ in self.running:
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                pass
+        self.running.clear()
+
+
+def parser():
+    result = argparse.ArgumentParser(description=__doc__)
+    result.add_argument("mode", choices=["local", "remote", "connect"])
+    result.add_argument("--output", type=Path, required=True, help="new local session directory")
+    result.add_argument("--recordings", type=Path, help="completed six-recording capture directory")
+    result.add_argument("--trials", type=int, default=256, help="candidates per continuous search round")
+    result.add_argument("--host", default="remote-compiler")
+    result.add_argument("--workers", type=int, default=32)
+    result.add_argument("--worker-memory-mib", type=int,
+                        help="per-worker memory budget: default 2048 MiB, or inherited on resume; plus 2 GiB host headroom")
+    result.add_argument("--refresh-minutes", type=float, default=5.0,
+                        help="remote-owned sessions: capture fresh data every 5 minutes by default; 0 disables")
+    result.add_argument("--resume-manifest", type=Path,
+                        help="remote mode: adopt an existing cooperative-protocol owned run")
+    result.add_argument("--opponents", type=int, default=2)
+    result.add_argument("--opponent-width", type=float, default=0.44)
+    result.add_argument("--walking-speed-scale", type=float, default=1.0,
+                        help="human behavior walking multiplier (0.1..3); current policy caps forward2m/s, backward/lateral1m/s")
+    result.add_argument("--manifest", type=Path, action="append", default=[],
+                        help="existing remote run manifest; repeat to observe multiple runs")
+    return result
+
+
+def validate(args):
+    if args.trials < 1 or not 1 <= args.workers <= 32:
+        raise ValueError("trials must be positive and workers must be between 1 and 32")
+    if args.worker_memory_mib is not None and args.worker_memory_mib < 1:
+        raise ValueError("worker-memory-mib must be a positive integer")
+    if not math.isfinite(args.refresh_minutes) or args.refresh_minutes < 0:
+        raise ValueError("refresh-minutes must be finite and nonnegative")
+    if not 0 <= args.opponents <= 8 or not math.isfinite(args.opponent_width) or not 0.1 <= args.opponent_width <= 1.2:
+        raise ValueError("opponents must be 0..8 and opponent-width must be 0.1..1.2 metres")
+    if args.resume_manifest:
+        if args.mode != "remote":
+            raise ValueError("--resume-manifest is only valid for remote owned sessions")
+        remote_helper().controlled_manifest(args.resume_manifest)
+    if args.output.exists() or args.output.is_symlink():
+        raise ValueError(f"output already exists: {args.output}; choose a new session directory")
+    if not math.isfinite(args.walking_speed_scale) or not 0.1 <= args.walking_speed_scale <= 3.0:
+        raise ValueError("walking-speed-scale must be finite and between 0.1 and 3")
+    if args.mode == "connect":
+        if not args.manifest:
+            raise ValueError("connect requires at least one --manifest from an existing remote run")
+        if args.recordings:
+            raise ValueError("connect uses existing remote runs; do not pass --recordings")
+    elif args.manifest:
+        raise ValueError("--manifest is only used with connect")
+    for manifest in args.manifest:
+        if not manifest.is_file():
+            raise ValueError(f"remote manifest does not exist: {manifest}")
+    if args.recordings:
+        for name in remote_helper().DATA_FILES:
+            if not (args.recordings / name).is_file():
+                raise ValueError(f"missing recording input: {args.recordings / name}")
+
+
+
+def simulator_scenario(args):
+    return ["--tuning-opponents", str(args.opponents), "--tuning-opponent-width", str(args.opponent_width),
+            "--tuning-walking-speed-scale", str(args.walking_speed_scale)]
+
+
+def capture_seed_offset(recordings):
+    if recordings:
+        coverage = Path(recordings) / "train-42.coverage.json"
+        if coverage.is_file():
+            seed = json.loads(coverage.read_text()).get("seed")
+            if type(seed) is int and seed >= 42:
+                return seed - 42
+    return None
+
+
+def save_session(session):
+    remote_helper().atomic_json(Path(session["output"]) / "session.json", session)
+
+
+def helper_command():
+    return [sys.executable, REPOSITORY / "scripts/remote_ball_filter_tuning"]
+
+
+def read_live_scenario(args, session):
+    path = Path(session.get("preview", session["output"])) / "scenario.json"
+    if path.is_file():
+        value = json.loads(path.read_text())
+        count, width = value["count"], value["width"]
+        if type(count) is not int or not 0 <= count <= 8 or not isinstance(width, (int, float)) or not math.isfinite(width) or not 0.1 <= width <= 1.2:
+            raise ValueError(f"invalid live opponent settings in {path}")
+        scale = value.get("walking_speed_scale", args.walking_speed_scale)
+        if isinstance(scale, bool) or not isinstance(scale, (int, float)) or not math.isfinite(scale) or not 0.1 <= scale <= 3.0:
+            raise ValueError(f"invalid live walking speed in {path}")
+        args.opponents, args.opponent_width, args.walking_speed_scale = count, width, scale
+    return {"count": args.opponents, "width": args.opponent_width, "walking_speed_scale": args.walking_speed_scale}
+
+
+def start_monitor(args, children, session, root, manifests):
+    session["monitor_attempt"] = session.get("monitor_attempt", 0) + 1
+    preview = root / "preview"
+    if preview.exists():
+        preview = root / f"preview-attempt-{session['monitor_attempt']:04d}"
+    session["preview"] = str(preview)
+    session["monitor"] = str(root / "monitor")
+    save_session(session)
+    children.start(helper_command() + ["bridge", *manifests, "--output", root / "monitor"], "Remote progress bridge")
+    children.start([
+        REPOSITORY / "simulator", "--remote-ball-tuning", root / "monitor/remote-progress.json",
+        "--remote-tuning-output", preview, *simulator_scenario(args),
+    ], "Local live preview")
+    log("Connect Twix to tcp/127.0.0.1:7448, namespace /ball_tuning; startup progress is in this log.")
+
+
+def start_remote(args, children, recordings, remote_directory, workers, *, paused=False):
+    name = time.strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
+    command = helper_command() + [
+        "start", "--recordings", recordings, "--host", args.host,
+        "--workers", str(workers), "--worker-memory-mib", str(args.worker_memory_mib or 2048),
+        "--full-cpu", "--trials", str(args.trials),
+        "--name", name, "--local-directory", remote_directory,
+    ]
+    if paused:
+        command += ["--paused", "--initial-parameters", recordings / "baseline.json5"]
+    children.run(command, "Prepare paused remote generation" if paused else "Start remote optimizer", timeout=1800)
+    children.forget_finished()
+    manifest = remote_directory / "manifest.json"
+    if not manifest.is_file():
+        raise RuntimeError(f"remote start did not create {manifest}; inspect its startup output")
+    return manifest
+
+
+def refresh_parameters(session):
+    monitor = Path(session["monitor"])
+    snapshot = json.loads((monitor / "remote-progress.json").read_text())
+    state = json.loads((monitor / "bridge-state.json").read_text())
+    expected = sorted(json.loads(Path(path).read_text())["run"] for path in session["manifests"])
+    if state.get("identity", {}).get("runs") != expected or not state.get("provenance"):
+        raise ValueError("refresh snapshot lacks verified provenance for the owned generation")
+    age = time.time() - snapshot["updated_unix_seconds"]
+    if snapshot.get("error") or not -5 <= age <= 15 or not snapshot.get("search"):
+        raise ValueError("refresh requires a fresh, error-free verified best result; old search will continue")
+    parameters = snapshot["search"]["best_parameters"]
+    if not isinstance(parameters, dict) or not parameters:
+        raise ValueError("verified snapshot has no usable best parameters")
+    return parameters, snapshot["remote"]["best_candidate"]
+
+
+def _activate_generation(args, children, session, generation):
+    next_manifest = Path(generation["manifest"])
+    helper = remote_helper()
+    next_config = helper.controlled_manifest(next_manifest)
+    if generation["state"] != "old_stopped":
+        # Stop applies only to the single explicitly owned protocol-v1 run.
+        old_manifest = Path(session["manifests"][0])
+        helper.controlled_manifest(old_manifest)
+        children.run(helper_command() + ["stop", old_manifest, "--wait", "--timeout", "1800"],
+                     "Finish old generation's current rounds", timeout=1860)
+        children.forget_finished()
+        generation["state"] = "old_stopped"
+        save_session(session)
+    # An activation acknowledgement can be lost after workers have started.
+    # Recognize that exact owned generation before counting its workers as
+    # competitors; retrying the handoff must not strand a successful activation.
+    status = remote_generation_status(next_config)
+    already_active = status.get("state") == "searching" and not status.get("stop_requested")
+    if not already_active:
+        available = remote_worker_slots(args.host, next_config["workers"], next_config.get("worker_memory_mib", 2048))
+        if available < next_config["workers"]:
+            raise ValueError("replacement generation is ready but other jobs consumed its worker slots; activation postponed")
+        children.run(helper_command() + ["activate", next_manifest], "Activate refreshed remote generation", timeout=60)
+        children.forget_finished()
+    children.close()
+    generation["state"] = "active"
+    session["manifests"] = [str(next_manifest)]
+    session["recordings"] = generation["recordings"]
+    session["active_generation"] = generation["index"]
+    session["workers"] = next_config["workers"]
+    session["active_worker_memory_mib"] = next_config.get("worker_memory_mib", 2048)
+    save_session(session)
+    start_monitor(args, children, session, Path(generation["root"]), [next_manifest])
+
+
+
+def remote_generation_status(manifest):
+    return remote_helper().control_once(manifest, "status")
+
+
+def activate_generation(args, children, session, generation):
+    try:
+        _activate_generation(args, children, session, generation)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        children.close()
+        start_monitor(args, children, session, Path(session["monitor"]).parent,
+                      [Path(path) for path in session["manifests"]])
+        raise
+
+def refresh_generation(args, children, session):
+    pending = next((item for item in session["generations"] if item["state"] in {"ready", "old_stopped"}), None)
+    if pending:
+        activate_generation(args, children, session, pending)
+        return
+    parameters, candidate = refresh_parameters(session)
+    scenario = read_live_scenario(args, session)
+    index = len(session["generations"])
+    root = Path(session["output"]) / "generations" / f"generation-{index:04d}"
+    root.mkdir(parents=True, exist_ok=False)
+    baseline = root / "baseline.json5"
+    remote_helper().atomic_json(baseline, parameters)
+    generation = dict(index=index, root=str(root), recordings=str(root / "recordings"),
+                      baseline=str(baseline), manifest=str(root / "remote/manifest.json"),
+                      state="capturing", seed_offset=(session.get("initial_seed_offset") or 0) + index * 1_000_000,
+                      source_candidate=candidate,
+                      scenario=scenario)
+    session["generations"].append(generation)
+    save_session(session)
+    old_root = Path(session["monitor"]).parent
+    old_manifests = [Path(path) for path in session["manifests"]]
+    children.close()
+    try:
+        children.run([
+            REPOSITORY / "simulator", "--capture-ball-tuning", root / "recordings",
+            "--capture-ball-parameters", baseline,
+            "--capture-ball-seed-offset", str(generation["seed_offset"]), *simulator_scenario(args),
+        ], f"Capture refreshed generation {index}")
+        children.forget_finished()
+    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+        children.close()
+        generation["state"], generation["error"] = "capture_failed", str(error)
+        save_session(session)
+        start_monitor(args, children, session, old_root, old_manifests)
+        raise
+    # Restore the old live view while the next generation uploads and compiles.
+    start_monitor(args, children, session, old_root, old_manifests)
+    generation["state"] = "preparing"
+    save_session(session)
+    try:
+        next_manifest = start_remote(args, children, root / "recordings", root / "remote", args.workers, paused=True)
+        children.run(helper_command() + ["wait-ready", next_manifest, "--timeout", "1800"],
+                     "Wait for paused replacement build", timeout=1860)
+        children.forget_finished()
+        generation["state"] = "ready"
+        save_session(session)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        children.close()
+        generation["state"], generation["error"] = "prepare_failed", str(error)
+        save_session(session)
+        # A paused controller starts no workers. Keep its manifest/checkpoints for
+        # diagnosis; the current owned generation has not received stop.
+        start_monitor(args, children, session, old_root, old_manifests)
+        raise
+    activate_generation(args, children, session, generation)
+
+
+def supervise_remote(args, children, session):
+    while True:
+        pending = any(item["state"] in {"ready", "old_stopped"} for item in session["generations"])
+        children.monitor(min(60, args.refresh_minutes * 60) if pending else args.refresh_minutes * 60)
+        try:
+            refresh_generation(args, children, session)
+            session.pop("refresh_error", None)
+            save_session(session)
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            log(f"Fresh-capture rotation postponed: {error}. All generation data and checkpoints are retained.")
+            session["refresh_error"] = str(error)
+            save_session(session)
+            # Capture/preparation/handoff failures restore their monitor locally.
+            # A stale snapshot fails before any processes are touched and must
+            # leave the existing live view running, too.
+
+
+def run(args, children):
+    validate(args)
+    output = args.output.resolve()
+    simulator = REPOSITORY / "simulator"
+    owned = remote_helper().controlled_manifest(args.resume_manifest) if args.resume_manifest else None
+    if owned:
+        args.host = owned["host"]
+    if args.worker_memory_mib is None:
+        args.worker_memory_mib = owned.get("worker_memory_mib", 2048) if owned else 2048
+    workers = owned["workers"] if owned else (remote_worker_slots(args.host, args.workers, args.worker_memory_mib) if args.mode == "remote" else None)
+    output.mkdir(parents=True, exist_ok=False)
+    session = dict(mode=args.mode, pid=os.getpid(), output=str(output),
+                   recordings=str(args.recordings.resolve()) if args.recordings else None,
+                   manifests=[str(path.resolve()) for path in args.manifest], generations=[],
+                   refresh_minutes=args.refresh_minutes if args.mode == "remote" else 0,
+                   workers=workers, target_workers=args.workers, worker_memory_mib=args.worker_memory_mib, active_generation=0)
+    save_session(session)
+    log(f"Preparing {args.mode} session in {output}")
+    if args.mode == "local":
+        command = [simulator, "--tune-ball-filter", output / "local", "--tuning-trials", str(args.trials), *simulator_scenario(args)]
+        if args.recordings:
+            command += ["--tuning-recordings", args.recordings.resolve()]
+        children.run(command, "Local optimizer")
+        return
+    manifests = [manifest.resolve() for manifest in args.manifest]
+    if args.mode == "remote":
+        if owned:
+            manifests = [args.resume_manifest.resolve()]
+            recordings = args.recordings.resolve() if args.recordings else owned.get("recordings_directory")
+            log("Adopting explicitly supplied cooperative-protocol run; no additional workers started.")
+        else:
+            recordings = args.recordings.resolve() if args.recordings else output / "recordings"
+            if not args.recordings:
+                children.run([simulator, "--capture-ball-tuning", recordings, *simulator_scenario(args)], "Capture training and holdout recordings")
+                children.forget_finished()
+            workers = remote_worker_slots(args.host, args.workers, args.worker_memory_mib)
+            manifests = [start_remote(args, children, recordings, output / "remote", workers)]
+        config = remote_helper().controlled_manifest(manifests[0])
+        session.update(manifests=[str(path) for path in manifests], recordings=str(recordings) if recordings else None,
+                       workers=config["workers"], active_worker_memory_mib=config.get("worker_memory_mib", 2048), initial_seed_offset=capture_seed_offset(recordings))
+        session["generations"].append(dict(index=0, root=str(output), recordings=session["recordings"],
+                                           manifest=str(manifests[0]), state="active", seed_offset=session["initial_seed_offset"]))
+        save_session(session)
+    log("Remote searches run independently. Closing this launcher stops only the local bridge and preview.")
+    if args.mode == "connect":
+        log("Connect mode is monitor-only: existing runs are not stopped or periodically recaptured.")
+    start_monitor(args, children, session, output, manifests)
+    if args.mode == "remote" and args.refresh_minutes > 0:
+        supervise_remote(args, children, session)
+    else:
+        children.monitor()
+
+def main(argv=None):
+    args = parser().parse_args(argv)
+    children = Children()
+    old_handlers = {signum: signal.signal(signum, stop_requested) for signum in (signal.SIGINT, signal.SIGTERM)}
+    try:
+        with launcher_lock():
+            try:
+                run(args, children)
+            finally:
+                # Keep the cross-panel launch lock until local descendants exit.
+                for signum in old_handlers:
+                    signal.signal(signum, signal.SIG_IGN)
+                children.close()
+        return 0
+    except StopRequested as stopped:
+        log("Stopping local processes. Remote workers, if started, remain running.")
+        return 128 + stopped.signum
+    except (OSError, ValueError, RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        print(f"[ball-filter optimization] ERROR: {error}", file=sys.stderr, flush=True)
+        manifest = args.output / "remote/manifest.json"
+        if args.mode == "remote" and manifest.is_file():
+            print(f"A remote start may already have completed; inspect {manifest} before retrying. "
+                  "Use connect to resume monitoring. Remote workers were not stopped.", file=sys.stderr, flush=True)
+        return 1
+    finally:
+        for signum, handler in old_handlers.items():
+            signal.signal(signum, handler)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
