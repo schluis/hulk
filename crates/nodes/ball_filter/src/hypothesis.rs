@@ -48,6 +48,10 @@ pub struct BallHypothesis {
     pub leadership_evidence: Option<crate::competition::Evidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_observation_size_plausible: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_guard: Option<crate::output_guard::OutputGuard>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_guard_observation_supported: Option<bool>,
 }
 
 impl BallHypothesis {
@@ -61,6 +65,8 @@ impl BallHypothesis {
             validity_decay_evidence: None,
             leadership_evidence: None,
             last_observation_size_plausible: None,
+            output_guard: None,
+            output_guard_observation_supported: None,
             merge_observation_start: None,
         }
     }
@@ -80,6 +86,25 @@ impl BallHypothesis {
         }
     }
 
+    pub fn output_position(&self, blend: f32) -> BallPosition<Ground> {
+        let baseline = self.position();
+        let Some(guard) = &self.output_guard else {
+            return baseline;
+        };
+        if !blend.is_finite() || blend <= 0.0 {
+            return baseline;
+        }
+        let blend = blend.min(1.0);
+        let guarded = guard.position();
+        BallPosition {
+            position: (baseline.position.coords() * (1.0 - blend)
+                + guarded.position.coords() * blend)
+                .as_point(),
+            velocity: baseline.velocity * (1.0 - blend) + guarded.velocity * blend,
+            last_seen: guarded.last_seen,
+        }
+    }
+
     pub fn position_covariance(&self) -> Matrix2<f32> {
         match self.mode {
             BallMode::Resting(resting) => resting.covariance,
@@ -96,6 +121,16 @@ impl BallHypothesis {
         resting_process_noise: Matrix2<f32>,
         log_likelihood_of_zero_velocity_threshold: f32,
     ) {
+        if let Some(guard) = &mut self.output_guard {
+            guard.predict(
+                delta_time,
+                last_to_current_odometry,
+                velocity_decay,
+                moving_process_noise,
+                resting_process_noise,
+                log_likelihood_of_zero_velocity_threshold,
+            );
+        }
         match &mut self.mode {
             BallMode::Resting(resting) => {
                 if let Some(evidence) = &mut self.motion_evidence {
@@ -271,6 +306,8 @@ impl BallHypothesis {
                 _ => None,
             };
         }
+        self.output_guard = None;
+        self.output_guard_observation_supported = None;
         self.mode = mode;
         self.validity = self.validity.max(other.validity);
         self.last_seen = self.last_seen.max(other.last_seen);
@@ -400,6 +437,8 @@ mod tests {
             validity_decay_evidence: None,
             leadership_evidence: None,
             last_observation_size_plausible: None,
+            output_guard: None,
+            output_guard_observation_supported: None,
             merge_observation_start: None,
         }
     }

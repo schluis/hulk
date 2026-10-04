@@ -294,6 +294,12 @@ pub struct BallFilterParameters {
     pub visibility_uncertainty_scale: f32,
     /// Legacy compatibility field; rejected associations no longer penalize track validity.
     pub maximum_matching_cost_validity_penalty_factor: f32,
+    /// Optional publication-only distance gate after quiet, non-kickable gaps.
+    #[serde(default)]
+    pub output_reacquisition_distance: f32,
+    /// Fraction of guarded state in publication; zero preserves baseline output.
+    #[serde(default)]
+    pub output_reacquisition_blend: f32,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, ros_z::Message)]

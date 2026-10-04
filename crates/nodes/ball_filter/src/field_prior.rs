@@ -175,6 +175,8 @@ mod tests {
             validity_decay_evidence: None,
             leadership_evidence: None,
             last_observation_size_plausible: None,
+            output_guard: None,
+            output_guard_observation_supported: None,
             merge_observation_start: None,
         }
     }
