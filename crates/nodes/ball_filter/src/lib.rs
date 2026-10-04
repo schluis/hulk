@@ -1079,6 +1079,44 @@ mod tests {
     }
 
     #[test]
+    fn size_evidence_uses_focal_length_and_camera_depth() {
+        let camera = horizontal_test_camera();
+        let radius = FieldDimensions::SPL_2025.ball_radius;
+        let ground = point![1.0, 0.3];
+        let center = camera.ground_with_z_to_pixel(ground, radius).unwrap();
+        let depth = (camera.ground_to_camera * point![ground.x(), ground.y(), radius]).z();
+        let projected_radius =
+            radius * camera.intrinsics.focals.x.min(camera.intrinsics.focals.y) / depth;
+        let mut percept = BallPercept {
+            percept_in_ground: MultivariateNormalDistribution {
+                mean: ground.inner.coords,
+                covariance: Matrix2::identity(),
+            },
+            image_location: Circle {
+                center,
+                radius: projected_radius,
+            },
+        };
+        let mut hypothesis = hypothesis::BallHypothesis::new(
+            MultivariateNormalDistribution {
+                mean: nalgebra::vector![ground.x(), ground.y(), 0.0, 0.0],
+                covariance: Matrix4::identity(),
+            },
+            Time::zero(),
+        );
+        size_consistency::observe(&mut hypothesis, &percept, Some(&camera), radius);
+        assert!(hypothesis.size_consistency_error.unwrap() < 1e-5);
+        hypothesis.size_consistency_error = None;
+        percept.image_location.radius *= 0.25;
+        size_consistency::observe(&mut hypothesis, &percept, Some(&camera), radius);
+        assert!((hypothesis.size_consistency_error.unwrap() - 4.0_f32.ln()).abs() < 1e-5);
+        hypothesis.size_consistency_error = None;
+        percept.image_location.radius *= 16.0;
+        size_consistency::observe(&mut hypothesis, &percept, Some(&camera), radius);
+        assert_eq!(hypothesis.size_consistency_error, Some(0.0));
+    }
+
+    #[test]
     fn optional_radius_gate_accepts_size_uncertainty_and_rejects_inconsistent_boxes() {
         let camera = horizontal_test_camera();
         let radius = FieldDimensions::SPL_2025.ball_radius;

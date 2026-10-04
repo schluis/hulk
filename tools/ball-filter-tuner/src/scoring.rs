@@ -10,7 +10,7 @@ use types::{ball_position::BallPosition, parameters::BallFilterParameters};
 pub const MISSING_PENALTY_MULTIPLIER: f64 = 1.25;
 pub const OUT_OF_FIELD_DECAY_METRES: f64 = 0.3;
 pub const CLOSE_RANGE_LOSS_WEIGHT: f64 = 4.0;
-/// Diagnostic association radius; this does not relax the existing raw guards.
+/// Association radius used by the user-approved correct-ball availability guards.
 pub const CORRECT_TRACK_RADIUS_METRES: f64 = 0.5;
 
 /// Stored with every report so scores from different objectives are not confused.
@@ -29,14 +29,14 @@ pub struct Objective {
 }
 
 pub const OBJECTIVE: Objective = Objective {
-    version: "single_ball_close_accuracy_v7",
+    version: "single_ball_close_accuracy_v8",
     position_loss: "p^2 * d^2 / (p^2 + d^2); d = distance to the single labelled ball",
     missing_loss: "1.25 * p^2",
     false_track_loss: "p^2",
     normalization: "all-scene weighted mean plus close_range_weight times the separately normalized close-range mean; p = penalty_metres",
     reference_weight: "exp(-distance_outside_field_metres / out_of_field_decay_metres); distance outside Field rectangle expanded by ball radius; absent or unknown Field pose weight=1",
     out_of_field_decay_metres: OUT_OF_FIELD_DECAY_METRES,
-    close_range_loss: "Add a separately time-normalized spatial/missing loss for truth within 1 m in Ground, without field-boundary downweighting. Missing costs more than any finite position error. Per-recording close-range RMSE may increase by at most 0.01 m and RMS/mean absolute spatial lag by at most 0.04 s. Aggregate accuracy, continuity and false-track time may not worsen; continuity and false-track guards also remain strict per recording. Signed mean lag is diagnostic only because opposing errors can cancel.",
+    close_range_loss: "Add a separately time-normalized spatial/missing loss for truth within 1 m in Ground, without field-boundary downweighting. Missing costs more than any finite position error. Per-recording close-range RMSE may increase by at most 0.01 m and RMS/mean absolute spatial lag by at most 0.04 s. Aggregate accuracy and false-track time may not worsen. Correct-ball unavailable time (missing or error greater than 0.5 m), its close-range subset and its longest uninterrupted gap must not worsen per recording or in aggregate; raw missing time remains diagnostic. False-track guards remain strict per recording. Signed mean lag is diagnostic only because opposing errors can cancel.",
     close_range_weight: CLOSE_RANGE_LOSS_WEIGHT,
     motion_reference: "Use timestamp-matched simulation/ball_ground_truth_field for motion derivatives when standard simulator labels are selected; otherwise derive Field positions from the selected reference and recorded pose. Ground position/close-range scoring remains unchanged.",
 };
@@ -62,6 +62,7 @@ pub struct Score {
     pub close_range_position_rmse_metres: Option<f64>,
     pub close_range_present_seconds: f64,
     pub close_range_missing_seconds: f64,
+    pub close_range_correct_track_missing_seconds: f64,
     pub close_range_loss: Option<f64>,
     /// Correct selected-output time; missing output contributes zero success.
     pub close_range_within_10cm_seconds: f64,
@@ -102,8 +103,8 @@ pub struct Score {
 
 /// Eligibility constraint, separate from the spatial objective. Compare against
 /// the immutable baseline on the same training recordings, never held-out data.
-/// Raw durations include out-of-field frames and initial acquisition: their low
-/// spatial weight must not make dropping those tracks an optimization shortcut.
+/// Correct-ball unavailable durations include out-of-field frames and initial
+/// acquisition. Removing an already wrong output does not reduce availability.
 pub fn preserves_baseline_continuity(candidate: &Score, baseline: &Score) -> bool {
     if !baseline.labelled_seconds.is_finite() || baseline.labelled_seconds < 0.0 {
         return false;
@@ -113,14 +114,17 @@ pub fn preserves_baseline_continuity(candidate: &Score, baseline: &Score) -> boo
     // an allowed extra missing frame or a tunable behavioral margin.
     let roundoff = 1024.0 * f64::EPSILON * baseline.labelled_seconds.max(1.0);
     [
-        (candidate.missing_seconds, baseline.missing_seconds),
         (
-            candidate.close_range_missing_seconds,
-            baseline.close_range_missing_seconds,
+            candidate.correct_track_missing_seconds,
+            baseline.correct_track_missing_seconds,
         ),
         (
-            candidate.longest_missing_seconds,
-            baseline.longest_missing_seconds,
+            candidate.close_range_correct_track_missing_seconds,
+            baseline.close_range_correct_track_missing_seconds,
+        ),
+        (
+            candidate.longest_correct_track_gap_seconds,
+            baseline.longest_correct_track_gap_seconds,
         ),
     ]
     .into_iter()
@@ -192,20 +196,20 @@ fn preserves_quality_with_margins(
 pub fn quality_violation(candidate: &Score, baseline: &Score, per_recording: bool) -> f64 {
     let pairs = [
         (
-            Some(candidate.missing_seconds),
-            Some(baseline.missing_seconds),
+            Some(candidate.correct_track_missing_seconds),
+            Some(baseline.correct_track_missing_seconds),
         ),
         (
-            Some(candidate.close_range_missing_seconds),
-            Some(baseline.close_range_missing_seconds),
+            Some(candidate.close_range_correct_track_missing_seconds),
+            Some(baseline.close_range_correct_track_missing_seconds),
         ),
         (
             Some(candidate.false_track_seconds),
             Some(baseline.false_track_seconds),
         ),
         (
-            Some(candidate.longest_missing_seconds),
-            Some(baseline.longest_missing_seconds),
+            Some(candidate.longest_correct_track_gap_seconds),
+            Some(baseline.longest_correct_track_gap_seconds),
         ),
         (
             candidate.close_range_position_rmse_metres,
@@ -346,6 +350,11 @@ impl Score {
             None => None,
         };
         if close_present {
+            if close_squared.is_none_or(|squared| {
+                !squared.is_finite() || squared > CORRECT_TRACK_RADIUS_METRES.powi(2)
+            }) {
+                self.close_range_correct_track_missing_seconds += cycle.seconds;
+            }
             self.close_range_present_seconds += cycle.seconds;
             if let Some(squared) = close_squared {
                 self.close_range_squared_error += squared * cycle.seconds;
@@ -675,12 +684,46 @@ mod tests {
         Score {
             loss: 1.0,
             labelled_seconds: 240.0,
-            missing_seconds: 2.0,
-            close_range_missing_seconds: 0.4,
-            longest_missing_seconds: 1.2,
+            correct_track_missing_seconds: 2.0,
+            close_range_correct_track_missing_seconds: 0.4,
+            longest_correct_track_gap_seconds: 1.2,
             false_track_seconds: 3.0,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn close_availability_counts_wrong_and_missing_outputs_equally() {
+        let cycle = diagnostic_cycle(0, 0.5, 0.0);
+        let mut score = Score::default();
+        let mut previous = None;
+        for position in [Some(2.0), None, Some(0.6)] {
+            let estimate = position.map(|x| BallPosition {
+                position: point![x, 0.0],
+                velocity: Vector2::zeros(),
+                last_seen: Time::zero(),
+            });
+            score.observe_diagnostics(&cycle, estimate, &mut previous);
+        }
+        assert_eq!(
+            score.close_range_correct_track_missing_seconds,
+            2.0 * cycle.seconds
+        );
+        assert_eq!(score.close_range_missing_seconds, cycle.seconds);
+    }
+
+    #[test]
+    fn removing_wrong_outputs_is_allowed_but_losing_correct_outputs_is_not() {
+        let baseline = continuity_baseline();
+        let mut candidate = continuity_baseline();
+        candidate.missing_seconds = 100.0;
+        candidate.close_range_missing_seconds = 50.0;
+        candidate.longest_missing_seconds = 40.0;
+        assert!(preserves_baseline_continuity(&candidate, &baseline));
+        assert_eq!(quality_violation(&candidate, &baseline, true), 0.0);
+        candidate.correct_track_missing_seconds += 0.002;
+        assert!(!preserves_baseline_continuity(&candidate, &baseline));
+        assert!(quality_violation(&candidate, &baseline, true) > 0.0);
     }
 
     fn accuracy_baseline() -> Score {
@@ -753,7 +796,7 @@ mod tests {
                     worse.motion_lag_absolute_seconds =
                         baseline.motion_lag_absolute_seconds.map(|x| x + 0.040001)
                 }
-                3 => worse.missing_seconds += 0.002,
+                3 => worse.correct_track_missing_seconds += 0.002,
                 _ => worse.false_track_seconds += 0.002,
             }
             assert!(!preserves_recording_quality(&worse, &baseline));
@@ -768,7 +811,7 @@ mod tests {
         for metric in 0..3 {
             let mut candidate = accuracy_baseline();
             candidate.loss = 0.0;
-            candidate.missing_seconds = 0.0;
+            candidate.correct_track_missing_seconds = 0.0;
             candidate.false_track_seconds = 0.0;
             match metric {
                 0 => candidate.close_range_position_rmse_metres = Some(1.10),
@@ -908,16 +951,16 @@ mod tests {
         let baseline = continuity_baseline();
         assert!(preserves_baseline_continuity(&baseline, &baseline));
         let mut candidate = continuity_baseline();
-        candidate.missing_seconds = 1.0;
-        candidate.longest_missing_seconds = 0.5;
-        candidate.close_range_missing_seconds = 0.3;
+        candidate.correct_track_missing_seconds = 1.0;
+        candidate.longest_correct_track_gap_seconds = 0.5;
+        candidate.close_range_correct_track_missing_seconds = 0.3;
         assert!(preserves_baseline_continuity(&candidate, &baseline));
 
         let mut baseline = continuity_baseline();
-        baseline.close_range_missing_seconds = 0.3;
-        candidate.close_range_missing_seconds = 0.1 + 0.2;
+        baseline.close_range_correct_track_missing_seconds = 0.3;
+        candidate.close_range_correct_track_missing_seconds = 0.1 + 0.2;
         assert!(preserves_baseline_continuity(&candidate, &baseline));
-        candidate.close_range_missing_seconds = 0.3 + 1e-9;
+        candidate.close_range_correct_track_missing_seconds = 0.3 + 1e-9;
         assert!(!preserves_baseline_continuity(&candidate, &baseline));
     }
 
@@ -927,9 +970,9 @@ mod tests {
         for metric in 0..3 {
             let mut candidate = continuity_baseline();
             match metric {
-                0 => candidate.missing_seconds += 0.002,
-                1 => candidate.close_range_missing_seconds += 0.002,
-                2 => candidate.longest_missing_seconds += 0.002,
+                0 => candidate.correct_track_missing_seconds += 0.002,
+                1 => candidate.close_range_correct_track_missing_seconds += 0.002,
+                2 => candidate.longest_correct_track_gap_seconds += 0.002,
                 _ => unreachable!(),
             }
             assert!(!preserves_baseline_continuity(&candidate, &baseline));
@@ -942,7 +985,7 @@ mod tests {
         let mut candidate = continuity_baseline();
         candidate.false_track_seconds = 0.0;
         candidate.loss = 0.0;
-        candidate.missing_seconds += 0.002;
+        candidate.correct_track_missing_seconds += 0.002;
         assert!(!preserves_baseline_continuity(&candidate, &baseline));
     }
 
@@ -951,7 +994,7 @@ mod tests {
         let baseline = continuity_baseline();
         for invalid in [f64::NAN, f64::INFINITY, -0.1] {
             let mut candidate = continuity_baseline();
-            candidate.longest_missing_seconds = invalid;
+            candidate.longest_correct_track_gap_seconds = invalid;
             assert!(!preserves_baseline_continuity(&candidate, &baseline));
         }
     }

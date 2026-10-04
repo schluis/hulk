@@ -52,6 +52,8 @@ pub struct Args {
     pub reference_frame: ReferenceFrame,
     #[arg(long, default_value_t = 4096)]
     pub trials: usize,
+    #[arg(long, default_value_t = 0.0)]
+    pub field_prior_wobble_metres: f32,
     #[arg(long, default_value_t = 7)]
     pub seed: u64,
     #[arg(long, value_enum, default_value = "coordinate")]
@@ -93,6 +95,8 @@ struct Report<'a> {
     reference_topic: &'a str,
     reference_frame: ReferenceFrame,
     replay_matches_live: bool,
+    field_prior_wobble_metres: f32,
+    field_prior_stressed_cycles: usize,
     validation_improved: bool,
     training: Comparison,
     validation: Comparison,
@@ -278,7 +282,7 @@ pub fn run_with_progress(
         );
     }
     ensure!(
-        args.trials > 0 && args.penalty_metres.is_finite() && args.penalty_metres > 0.0,
+        args.penalty_metres.is_finite() && args.penalty_metres > 0.0,
         "trials and penalty must be positive"
     );
     for train in &args.train {
@@ -304,11 +308,13 @@ pub fn run_with_progress(
             })
             .collect()
     };
-    let train = read(&args.train)?;
-    let validation = read(&args.validation)?;
+    let mut train = read(&args.train)?;
+    let mut validation = read(&args.validation)?;
     for recording in train.iter().chain(&validation) {
         verify(recording, &recording_parameters)?;
     }
+    ensure!(args.field_prior_wobble_metres.is_finite() && args.field_prior_wobble_metres >= 0.0, "invalid prior wobble");
+    let field_prior_stressed_cycles = train.iter_mut().chain(&mut validation).map(|r| r.apply_prior_wobble(args.field_prior_wobble_metres)).sum();
     let baseline: BallFilterParameters = match &args.evaluation_parameters {
         Some(path) => json5::from_str(&std::fs::read_to_string(path)?)?,
         None => recording_parameters.clone(),
@@ -545,7 +551,7 @@ pub fn run_with_progress(
         trials: args.trials,
         rejected_candidates,
         rejected_quality_candidates,
-        continuity_policy: "Every training recording and the aggregate must not worsen baseline total missing time, close-range missing time, longest missing gap, or false-track time (floating-point roundoff only). Per recording, close-range RMSE may increase at most 0.01 m and RMS/mean absolute spatial lag at most 0.04 s; aggregate accuracy must not worsen. Missing diagnostics cannot replace measured baseline diagnostics. Held-out data is evaluation only.",
+        continuity_policy: "Every training recording and the aggregate must not worsen baseline correct-ball unavailable time (missing or error greater than 0.5 m), close-range correct-ball unavailable time, longest correct-ball gap, or false-track time (floating-point roundoff only). Per recording, close-range RMSE may increase at most 0.01 m and RMS/mean absolute spatial lag at most 0.04 s; aggregate accuracy must not worsen. Missing diagnostics cannot replace measured baseline diagnostics. Held-out data is evaluation only.",
         retention_policy: "Only listed search dimensions may change, including warm starts. Hypothesis timeout, observable-miss timeout, near clear-miss timeout and distance, obstacle source-time tolerance, legacy per-frame confidence factors, good-localization gate, field-boundary margin and validity decay rate, maximum detection distance and output threshold remain at the evaluation baseline. Optional hidden/visible-missed/competing-hypothesis/near-visible-missed confidence rates are searched only when enabled in the baseline (hidden 0..0.3/s; visible-missed 0..4/s; competing 0..2/s; additional near-visible-missed 0..40/s). The optional nearby-spawn validity factor is searched from 0 to 1 only when enabled in the baseline; omitted legacy values keep legacy spawn confidence. Legacy None rates retain their prior behavior; omitted field margin, field decay rate and detection distance retain their zero legacy defaults, and an omitted good_localization retains true.",
         tuned_parameter_pointers: tuned_parameter_pointers(&baseline),
         penalty_metres: args.penalty_metres,
@@ -553,6 +559,8 @@ pub fn run_with_progress(
         reference_topic: &args.reference_topic,
         reference_frame: args.reference_frame,
         replay_matches_live: true,
+        field_prior_wobble_metres: args.field_prior_wobble_metres,
+        field_prior_stressed_cycles,
         validation_improved,
         training: Comparison {
             baseline: base_train,
