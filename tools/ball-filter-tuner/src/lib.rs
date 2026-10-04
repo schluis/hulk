@@ -62,6 +62,9 @@ pub struct Args {
     /// Export training-frame diagnostics for the selected candidate (never held-out frames).
     #[arg(long)]
     pub export_training_frames: bool,
+    /// Export fixed evaluation-baseline frames, without substituting the searched winner.
+    #[arg(long)]
+    pub export_baseline_training_frames: bool,
     /// Reject coordinate-search candidates cheaply on the first N training clips.
     /// Passing candidates still require all training clips and aggregate guards.
     #[arg(long, default_value_t = 0)]
@@ -569,6 +572,15 @@ pub fn run_with_progress(
         optimized_parameters: &best,
     };
     std::fs::create_dir_all(&args.output)?;
+    if args.export_baseline_training_frames {
+        for (index, recording) in train.iter().enumerate() {
+            scoring::export_frames(
+                recording,
+                &baseline,
+                &args.output.join(format!("baseline-training-{index}.jsonl")),
+            )?;
+        }
+    }
     if args.export_training_frames {
         for (index, recording) in train.iter().enumerate() {
             scoring::export_frames(
