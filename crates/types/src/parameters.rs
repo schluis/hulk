@@ -294,6 +294,10 @@ pub struct BallFilterParameters {
     pub visibility_uncertainty_scale: f32,
     /// Legacy compatibility field; rejected associations no longer penalize track validity.
     pub maximum_matching_cost_validity_penalty_factor: f32,
+    /// Student-t innovation reweighting strength. With auxiliary publication
+    /// enabled, adapts only that retained history and preserves main lifecycle.
+    #[serde(default)]
+    pub student_t_robustness: f32,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, ros_z::Message)]

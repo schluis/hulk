@@ -350,6 +350,8 @@ mod tests {
     #[test]
     fn uncertain_retained_history_does_not_displace_a_confident_moving_track() {
         let (mut tracker, _, mut parameters, dimensions) = negative_evidence_fixture();
+        // Isolate covariance eligibility from Student-t's covariance-dependent fusion weight.
+        parameters.student_t_robustness = 0.0;
         let time = Time::from_nanos(19_548_000_000);
         let primary = &mut tracker.filter.hypotheses[0];
         primary.mode = BallMode::Moving(MultivariateNormalDistribution {
@@ -413,10 +415,13 @@ mod tests {
     fn independent_publication_preserves_base_state_and_output_availability() {
         let (mut baseline, camera, mut parameters, dimensions) = negative_evidence_fixture();
         parameters.noise.initial_covariance.fill(1.0);
+        // Compare the same primary filter while enabling robustness only for publication.
+        parameters.student_t_robustness = 0.0;
         let (mut candidate, _, _, _) = negative_evidence_fixture();
         let alternate = BallFilterParameters {
             publication_filter_blend: 1.0,
             publication_detection_noise: 0.05,
+            student_t_robustness: 1.0,
             ..parameters.clone()
         };
         let position = baseline.filter.hypotheses[0].position().position;
