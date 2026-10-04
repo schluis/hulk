@@ -171,6 +171,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         }
     }

@@ -294,6 +294,9 @@ pub struct BallFilterParameters {
     /// Bound accumulated support for selection only; zero leaves it unbounded.
     #[serde(default)]
     pub selection_confidence_cap: f32,
+    /// Soft penalty for inconsistent detection size in output ranking only.
+    #[serde(default)]
+    pub selection_size_consistency_weight: f32,
     /// Bounded uncertainty penalty for choosing between feasible associations.
     /// Zero preserves legacy assignment; does not change the matching gate.
     #[serde(default)]
@@ -343,6 +346,7 @@ impl Default for BallFilterParameters {
             radius_consistency_maximum_distance: Default::default(),
             hypothesis_uncertainty_weight: Default::default(),
             selection_confidence_cap: Default::default(),
+            selection_size_consistency_weight: Default::default(),
             association_uncertainty_weight: Default::default(),
             visibility_uncertainty_scale: Default::default(),
             maximum_matching_cost_validity_penalty_factor: Default::default(),

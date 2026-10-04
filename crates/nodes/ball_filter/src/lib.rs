@@ -1,4 +1,5 @@
 mod reacquisition;
+mod size_consistency;
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use color_eyre::{Result, eyre::WrapErr};
@@ -504,6 +505,14 @@ fn advance_all_hypotheses(
             let score = match_matrix[(hypothesis_index, percept_index)];
             used_percepts.push(percept_index);
             matched[hypothesis_index] = true;
+            if filter_parameters.selection_size_consistency_weight > 0.0 {
+                size_consistency::observe(
+                    hypothesis,
+                    &ball_percepts[percept_index],
+                    camera_matrix,
+                    field_dimensions.ball_radius,
+                );
+            }
             hypothesis.update(
                 time,
                 ball_percepts[percept_index].percept_in_ground,
@@ -519,6 +528,16 @@ fn advance_all_hypotheses(
                 Matrix4::from_diagonal(&filter_parameters.noise.initial_covariance),
                 filter_parameters.nearby_spawn_validity_factor,
             );
+            if filter_parameters.selection_size_consistency_weight > 0.0
+                && let Some(hypothesis) = ball_filter.hypotheses.last_mut()
+            {
+                size_consistency::observe(
+                    hypothesis,
+                    percept,
+                    camera_matrix,
+                    field_dimensions.ball_radius,
+                );
+            }
             matched.push(true);
         }
     }
@@ -1497,6 +1516,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         };
         let mut filter = BallFilter {
@@ -1584,6 +1604,7 @@ mod tests {
                 negative_evidence: None,
                 validity_decay_evidence: None,
                 leadership_evidence: None,
+                size_consistency_error: None,
                 merge_observation_start: None,
             }],
         };
@@ -1688,6 +1709,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         };
         let hypothesis2 = BallHypothesis {
@@ -1701,6 +1723,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         };
 

@@ -25,7 +25,7 @@ pub struct BallFilter {
 
 impl BallFilter {
     pub fn best_hypothesis(&self, validity_threshold: f32) -> Option<&BallHypothesis> {
-        self.select_hypothesis(validity_threshold, |_| 1.0, 0.0, 0.0)
+        self.select_hypothesis(validity_threshold, |_| 1.0, 0.0, 0.0, 0.0)
     }
 
     pub fn best_hypothesis_with_field_pose(
@@ -46,6 +46,7 @@ impl BallFilter {
             },
             parameters.hypothesis_uncertainty_weight,
             parameters.selection_confidence_cap,
+            parameters.selection_size_consistency_weight,
         )
     }
 
@@ -55,8 +56,21 @@ impl BallFilter {
         confidence_weight: impl Fn(&BallHypothesis) -> f32,
         uncertainty_weight: f32,
         confidence_cap: f32,
+        size_consistency_weight: f32,
     ) -> Option<&BallHypothesis> {
         let confirmation_confidence = 3.0_f32.max(validity_threshold);
+        let size_weight = |hypothesis: &BallHypothesis| {
+            let weight = if size_consistency_weight.is_finite() {
+                size_consistency_weight.max(0.0)
+            } else {
+                0.0
+            };
+            let error = hypothesis
+                .size_consistency_error
+                .filter(|e| e.is_finite() && *e >= 0.0)
+                .unwrap_or(0.0);
+            1.0 / (1.0 + weight * error * error)
+        };
         let candidates = self.hypotheses.iter().filter_map(|hypothesis| {
             let weight = confidence_weight(hypothesis);
             let effective_validity = hypothesis.validity * weight;
@@ -86,10 +100,12 @@ impl BallFilter {
             } else {
                 0.0
             };
-            validity / (1.0 + weight * hypothesis.position_covariance().trace().max(0.0))
+            validity * size_weight(hypothesis)
+                / (1.0 + weight * hypothesis.position_covariance().trace().max(0.0))
         };
         let established_incumbent = ((uncertainty_weight.is_finite() && uncertainty_weight > 0.0)
-            || cap_enabled)
+            || cap_enabled
+            || (size_consistency_weight.is_finite() && size_consistency_weight > 0.0))
             && candidates
                 .clone()
                 .max_by(|(_, _, a), (_, _, b)| a.total_cmp(b))
@@ -241,6 +257,7 @@ impl BallFilter {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         };
 
@@ -277,6 +294,72 @@ mod tests {
     }
 
     #[test]
+    fn size_ranking_keeps_availability_and_requires_confirmation() {
+        let mut implausible = track(4.0, 10.0, 0);
+        implausible.size_consistency_error = Some(2.0);
+        let mut plausible = track(0.5, 5.0, 0);
+        plausible.size_consistency_error = Some(0.01);
+        let mut filter = BallFilter {
+            hypotheses: vec![implausible, plausible],
+        };
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 0.0)
+                .unwrap()
+                .validity,
+            10.0
+        );
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 1.0)
+                .unwrap()
+                .validity,
+            5.0
+        );
+        assert_eq!(
+            filter
+                .select_hypothesis(6.0, |_| 1.0, 0.0, 0.0, 1.0)
+                .unwrap()
+                .validity,
+            10.0
+        );
+        filter.hypotheses[1].validity = 2.0;
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 1.0)
+                .unwrap()
+                .validity,
+            10.0
+        );
+        assert!(
+            filter
+                .select_hypothesis(11.0, |_| 1.0, 0.0, 0.0, 1.0)
+                .is_none()
+        );
+        assert_eq!(filter.hypotheses[0].validity, 10.0);
+    }
+
+    #[test]
+    fn size_evidence_does_not_block_confirmed_stale_track_recovery() {
+        let mut stale = track(4.0, 20.0, 0);
+        stale.size_consistency_error = Some(0.0);
+        let mut fresh = track(1.0, 5.0, 200_000_000);
+        fresh.size_consistency_error = Some(1.0);
+        let filter = BallFilter {
+            hypotheses: vec![stale, fresh],
+        };
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 1.0)
+                .unwrap()
+                .position()
+                .position
+                .x(),
+            1.0
+        );
+    }
+
+    #[test]
     fn uncertainty_ranking_preserves_eligibility_and_stored_confidence() {
         let mut uncertain = track(4.0, 10.0, 100_000_000);
         if let BallMode::Moving(state) = &mut uncertain.mode {
@@ -288,14 +371,14 @@ mod tests {
         };
         assert_eq!(
             filter
-                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0)
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0, 0.0)
                 .unwrap()
                 .validity,
             10.0
         );
         assert_eq!(
             filter
-                .select_hypothesis(0.5, |_| 1.0, 1.0, 0.0)
+                .select_hypothesis(0.5, |_| 1.0, 1.0, 0.0, 0.0)
                 .unwrap()
                 .validity,
             5.0
@@ -303,12 +386,16 @@ mod tests {
         // Penalizing uncertainty cannot hide the only eligible track.
         assert_eq!(
             filter
-                .select_hypothesis(6.0, |_| 1.0, 1.0, 0.0)
+                .select_hypothesis(6.0, |_| 1.0, 1.0, 0.0, 0.0)
                 .unwrap()
                 .validity,
             10.0
         );
-        assert!(filter.select_hypothesis(11.0, |_| 1.0, 1.0, 0.0).is_none());
+        assert!(
+            filter
+                .select_hypothesis(11.0, |_| 1.0, 1.0, 0.0, 0.0)
+                .is_none()
+        );
         assert_eq!(filter.hypotheses[0].validity, 10.0);
         assert_eq!(filter.hypotheses[1].validity, 5.0);
     }
@@ -328,7 +415,7 @@ mod tests {
         };
         assert_eq!(
             filter
-                .select_hypothesis(0.5, |_| 1.0, 1.0, 5.0)
+                .select_hypothesis(0.5, |_| 1.0, 1.0, 5.0, 0.0)
                 .unwrap()
                 .validity,
             4.0
@@ -336,20 +423,24 @@ mod tests {
         filter.hypotheses[1].validity = 2.0;
         assert_eq!(
             filter
-                .select_hypothesis(0.5, |_| 1.0, 1.0, 5.0)
+                .select_hypothesis(0.5, |_| 1.0, 1.0, 5.0, 0.0)
                 .unwrap()
                 .validity,
             50.0
         );
         assert_eq!(
             filter
-                .select_hypothesis(10.0, |_| 1.0, 1.0, 5.0)
+                .select_hypothesis(10.0, |_| 1.0, 1.0, 5.0, 0.0)
                 .unwrap()
                 .validity,
             50.0
         );
         assert_eq!(filter.hypotheses[0].validity, 50.0);
-        assert!(filter.select_hypothesis(100.0, |_| 1.0, 1.0, 5.0).is_none());
+        assert!(
+            filter
+                .select_hypothesis(100.0, |_| 1.0, 1.0, 5.0, 0.0)
+                .is_none()
+        );
     }
 
     #[test]

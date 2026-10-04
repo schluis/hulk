@@ -46,6 +46,9 @@ pub struct BallHypothesis {
     /// Consecutive observed leadership; cleared on missed/unknown frames and merges.
     #[serde(default)]
     pub leadership_evidence: Option<crate::competition::Evidence>,
+    /// Smoothed absolute log radius ratio; used only for optional output ranking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_consistency_error: Option<f32>,
 }
 
 impl BallHypothesis {
@@ -58,6 +61,7 @@ impl BallHypothesis {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         }
     }
@@ -256,6 +260,11 @@ impl BallHypothesis {
                 .unwrap_or(self.last_seen)
                 .min(other.merge_observation_start.unwrap_or(other.last_seen)),
         );
+        self.size_consistency_error =
+            match (self.size_consistency_error, other.size_consistency_error) {
+                (Some(left), Some(right)) => Some((left + right) * 0.5),
+                _ => None,
+            };
         self.mode = mode;
         self.validity = self.validity.max(other.validity);
         self.last_seen = self.last_seen.max(other.last_seen);
@@ -363,6 +372,7 @@ mod tests {
             negative_evidence: None,
             validity_decay_evidence: None,
             leadership_evidence: None,
+            size_consistency_error: None,
             merge_observation_start: None,
         }
     }
