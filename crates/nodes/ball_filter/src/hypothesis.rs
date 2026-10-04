@@ -48,6 +48,8 @@ pub struct BallHypothesis {
     pub leadership_evidence: Option<crate::competition::Evidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_guard: Option<crate::output_guard::OutputGuard>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_guard_observation_supported: Option<bool>,
 }
 
 impl BallHypothesis {
@@ -61,6 +63,7 @@ impl BallHypothesis {
             validity_decay_evidence: None,
             leadership_evidence: None,
             output_guard: None,
+            output_guard_observation_supported: None,
             merge_observation_start: None,
         }
     }
@@ -289,6 +292,7 @@ impl BallHypothesis {
                 .min(other.merge_observation_start.unwrap_or(other.last_seen)),
         );
         self.output_guard = None;
+        self.output_guard_observation_supported = None;
         self.mode = mode;
         self.validity = self.validity.max(other.validity);
         self.last_seen = self.last_seen.max(other.last_seen);
@@ -397,6 +401,7 @@ mod tests {
             validity_decay_evidence: None,
             leadership_evidence: None,
             output_guard: None,
+            output_guard_observation_supported: None,
             merge_observation_start: None,
         }
     }

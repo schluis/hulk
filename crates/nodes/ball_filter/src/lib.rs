@@ -517,6 +517,12 @@ fn advance_all_hypotheses(
                 time,
                 ball_percepts[percept_index].percept_in_ground,
                 obstacles,
+                filter_parameters.output_reacquisition_distance > 0.0
+                    && output_guard::supports_size(
+                        &ball_percepts[percept_index],
+                        camera_matrix,
+                        field_dimensions.ball_radius,
+                    ),
                 filter_parameters,
             );
             hypothesis.update(
@@ -524,6 +530,15 @@ fn advance_all_hypotheses(
                 ball_percepts[percept_index].percept_in_ground,
                 score.exp(),
             );
+            if filter_parameters.output_reacquisition_distance > 0.0 {
+                hypothesis.output_guard_observation_supported =
+                    Some(output_guard::supports_observation(
+                        hypothesis,
+                        &ball_percepts[percept_index],
+                        camera_matrix,
+                        field_dimensions.ball_radius,
+                    ));
+            }
         }
     }
     for (index, percept) in ball_percepts.iter().enumerate() {
@@ -534,6 +549,17 @@ fn advance_all_hypotheses(
                 Matrix4::from_diagonal(&filter_parameters.noise.initial_covariance),
                 filter_parameters.nearby_spawn_validity_factor,
             );
+            if filter_parameters.output_reacquisition_distance > 0.0
+                && let Some(hypothesis) = ball_filter.hypotheses.last_mut()
+            {
+                hypothesis.output_guard_observation_supported =
+                    Some(output_guard::supports_observation(
+                        hypothesis,
+                        percept,
+                        camera_matrix,
+                        field_dimensions.ball_radius,
+                    ));
+            }
             matched.push(true);
         }
     }
@@ -1075,6 +1101,46 @@ mod tests {
     }
 
     #[test]
+    fn output_guard_requires_supported_close_observation_geometry() {
+        let camera = horizontal_test_camera();
+        let radius = FieldDimensions::SPL_2025.ball_radius;
+        let mut parameters = BallFilterParameters::default();
+        parameters.noise.detection_noise.inner.fill(0.05);
+        for (distance, scale, supported) in [(0.8, 1.0, true), (0.8, 0.2, false), (2.0, 1.0, false)]
+        {
+            let center = camera
+                .ground_with_z_to_pixel(point![distance, 0.0], radius)
+                .unwrap();
+            let expected = camera.get_pixel_radius(radius, center).unwrap();
+            let mut detection = test_ball_detection(center);
+            let offset = linear_algebra::vector![expected * scale, expected * scale];
+            detection.bounding_box.area.min = center - offset;
+            detection.bounding_box.area.max = center + offset;
+            let percept =
+                project_detected_balls(Some(&[detection]), Some(&camera), &parameters, radius)
+                    .unwrap()
+                    .remove(0);
+            let hypothesis = hypothesis::BallHypothesis::new(
+                MultivariateNormalDistribution {
+                    mean: nalgebra::vector![distance, 0.0, 0.0, 0.0],
+                    covariance: Matrix4::identity(),
+                },
+                Time::zero(),
+            );
+            assert_eq!(
+                output_guard::supports_observation(&hypothesis, &percept, Some(&camera), radius),
+                supported
+            );
+            assert!(!output_guard::supports_observation(
+                &hypothesis,
+                &percept,
+                None,
+                radius
+            ));
+        }
+    }
+
+    #[test]
     fn optional_radius_gate_accepts_size_uncertainty_and_rejects_inconsistent_boxes() {
         let camera = horizontal_test_camera();
         let radius = FieldDimensions::SPL_2025.ball_radius;
@@ -1513,6 +1579,7 @@ mod tests {
             validity_decay_evidence: None,
             leadership_evidence: None,
             output_guard: None,
+            output_guard_observation_supported: None,
             merge_observation_start: None,
         };
         let mut filter = BallFilter {
@@ -1601,6 +1668,7 @@ mod tests {
                 validity_decay_evidence: None,
                 leadership_evidence: None,
                 output_guard: None,
+                output_guard_observation_supported: None,
                 merge_observation_start: None,
             }],
         };
@@ -1706,6 +1774,7 @@ mod tests {
             validity_decay_evidence: None,
             leadership_evidence: None,
             output_guard: None,
+            output_guard_observation_supported: None,
             merge_observation_start: None,
         };
         let hypothesis2 = BallHypothesis {
@@ -1720,6 +1789,7 @@ mod tests {
             validity_decay_evidence: None,
             leadership_evidence: None,
             output_guard: None,
+            output_guard_observation_supported: None,
             merge_observation_start: None,
         };
 

@@ -82,6 +82,7 @@ pub fn observe(
     time: Time,
     measurement: Gaussian<2>,
     obstacles: Option<&[Obstacle]>,
+    measurement_size_supported: bool,
     parameters: &BallFilterParameters,
 ) {
     let distance = parameters.output_reacquisition_distance;
@@ -93,11 +94,10 @@ pub fn observe(
         return;
     }
     let was_guarded = hypothesis.output_guard.is_some();
-    // A single old detection is not a trusted reference. Restrict protection to
-    // confirmed close tracks; distant stationary-looking clutter must not hold
-    // back a genuinely reacquired ball near the robot.
+    // Only close observations whose image size and filtered location agreed
+    // supply a trusted reference. Stored confidence alone can belong to clutter.
     if !was_guarded
-        && (hypothesis.validity < 3.0
+        && (hypothesis.output_guard_observation_supported != Some(true)
             || hypothesis.position().position.coords().norm_squared() > 1.5_f32.powi(2))
     {
         return;
@@ -132,7 +132,12 @@ pub fn observe(
     if !reacquisition::protect_prior(&proxy, time, obstacles, parameters) {
         return;
     }
-    // Three coherent observations may describe a real unseen kick. Do not
+    if !measurement_size_supported {
+        guard.rejected = None;
+        hypothesis.output_guard = Some(guard);
+        return;
+    }
+    // Three geometrically supported observations may describe a real unseen kick. Do not
     // freeze the previous location indefinitely on a physical plausibility prior.
     let count = match guard.rejected {
         Some(RejectedEvidence {
@@ -157,6 +162,46 @@ pub fn observe(
     }
 }
 
+pub fn supports_observation(
+    hypothesis: &BallHypothesis,
+    percept: &types::ball_detection::BallPercept,
+    camera: Option<&projection::camera_matrix::CameraMatrix>,
+    ball_radius: f32,
+) -> bool {
+    let position = percept.percept_in_ground.mean;
+    if position.norm_squared() > 1.5_f32.powi(2)
+        || (position - hypothesis.position().position.inner.coords).norm_squared() > 0.2_f32.powi(2)
+    {
+        return false;
+    }
+    supports_size(percept, camera, ball_radius)
+}
+
+pub fn supports_size(
+    percept: &types::ball_detection::BallPercept,
+    camera: Option<&projection::camera_matrix::CameraMatrix>,
+    ball_radius: f32,
+) -> bool {
+    let position = percept.percept_in_ground.mean;
+    let Some(camera) = camera else {
+        return false;
+    };
+    let camera_position =
+        camera.ground_to_camera * linear_algebra::point![position.x, position.y, ball_radius];
+    let depth = camera_position.z();
+    if !depth.is_finite() || depth <= 0.0 {
+        return false;
+    }
+    let expected = ball_radius * camera.intrinsics.focals.x.min(camera.intrinsics.focals.y) / depth;
+    let observed = percept.image_location.radius;
+    expected.is_finite()
+        && expected > 0.0
+        && observed.is_finite()
+        && observed > 0.0
+        && observed <= 1.5 * expected
+        && expected <= 1.5 * observed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,6 +214,7 @@ mod tests {
             Time::zero(),
         );
         hypothesis.validity = 5.0;
+        hypothesis.output_guard_observation_supported = Some(true);
         hypothesis
     }
     fn parameters() -> BallFilterParameters {
@@ -192,7 +238,14 @@ mod tests {
         for step in 0..3 {
             let time = Time::from_nanos(500_000_000 + step * 40_000_000);
             let measurement = observation(3.0);
-            observe(&mut guarded, time, measurement, Some(&[]), &parameters());
+            observe(
+                &mut guarded,
+                time,
+                measurement,
+                Some(&[]),
+                true,
+                &parameters(),
+            );
             original.update(time, measurement, 1.0);
             guarded.update(time, measurement, 1.0);
             assert_eq!(original.position().position, guarded.position().position);
@@ -212,6 +265,25 @@ mod tests {
         );
     }
     #[test]
+    fn repeated_size_inconsistent_boxes_do_not_confirm_remote_motion() {
+        let mut hypothesis = track(1.0);
+        for step in 0..8 {
+            let time = Time::from_nanos(500_000_000 + step * 40_000_000);
+            let measurement = observation(3.0);
+            observe(
+                &mut hypothesis,
+                time,
+                measurement,
+                Some(&[]),
+                false,
+                &parameters(),
+            );
+            hypothesis.update(time, measurement, 1.0);
+            assert_eq!(hypothesis.output_position(1.0).position.x(), 1.0);
+        }
+    }
+
+    #[test]
     fn unknown_geometry_kicking_reach_and_ordinary_updates_are_not_guarded() {
         for (x, measurement, obstacles) in [
             (1.0, 3.0, None),
@@ -224,6 +296,7 @@ mod tests {
                 Time::from_nanos(500_000_000),
                 observation(measurement),
                 obstacles,
+                true,
                 &parameters(),
             );
             assert!(hypothesis.output_guard.is_none());
@@ -234,11 +307,15 @@ mod tests {
         for (x, validity) in [(1.0, 1.0), (3.0, 10.0)] {
             let mut hypothesis = track(x);
             hypothesis.validity = validity;
+            if validity < 3.0 {
+                hypothesis.output_guard_observation_supported = None;
+            }
             observe(
                 &mut hypothesis,
                 Time::from_nanos(500_000_000),
                 observation(0.4),
                 Some(&[]),
+                true,
                 &parameters(),
             );
             assert!(hypothesis.output_guard.is_none());
@@ -253,6 +330,7 @@ mod tests {
             Time::from_nanos(500_000_000),
             observation(3.0),
             Some(&[]),
+            true,
             &parameters(),
         );
         let guard = hypothesis.output_guard.as_mut().unwrap();
