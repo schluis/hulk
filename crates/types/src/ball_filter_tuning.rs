@@ -71,6 +71,16 @@ pub struct Metrics {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, ros_z::Message)]
 pub struct SearchProgress {
+    /// CPU time spent on this search, summed across rounds and workers.
+    /// None for older reports or platforms without CPU accounting.
+    #[serde(default)]
+    pub cpu_seconds: Option<f64>,
+    /// Parallel optimizer workers in the current generation (one for local search).
+    #[serde(default)]
+    pub environments: Option<u64>,
+    /// Search iterations inherited when a refreshed generation uses this result.
+    #[serde(default)]
+    pub inherited_iterations: u64,
     pub reference_frame: String,
     pub trial: u64,
     pub trials: u64,
@@ -80,6 +90,22 @@ pub struct SearchProgress {
     pub best_parameters: BallFilterParameters,
     pub validation_baseline: Option<Metrics>,
     pub validation_best: Option<Metrics>,
+}
+
+impl SearchProgress {
+    pub fn effort_summary(&self) -> String {
+        let hours = self
+            .cpu_seconds
+            .filter(|v| v.is_finite() && *v >= 0.0)
+            .map_or_else(|| "unavailable".into(), |v| format!("{:.2}", v / 3600.0));
+        let environments = self
+            .environments
+            .map_or_else(|| "unavailable".into(), |v| v.to_string());
+        format!(
+            "Single-core CPU hours: {hours} | Search iterations: {} | Environments: {environments}",
+            self.trial.saturating_add(self.inherited_iterations)
+        )
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, ros_z::Message)]
