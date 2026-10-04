@@ -57,13 +57,26 @@ execution needs a graphics adapter and display; headless validation does not.
 
 ## Preservation
 
-The `archive/ball-filter-*-20261004` branches and
-`archive/pre-lab-*-20261004` checkpoints preserve previous experiment histories
-and worktree contents. They are not children of the new lab branch. Original
-worktrees and ignored recording/search artifacts are retained during migration.
-`archive/twix-monitor-compat-20261004` preserves separate unfinished CPU-effort
+The `archive/ball-filter-*-20261004` tags and
+`archive/pre-lab-*-20261004` tags preserve previous experiment histories
+and worktree contents. They are not children of the new lab branch. Superseded branches and historical
+worktrees were removed only after their complete Git trees were verified against
+pushed archive tags. Recording/search artifacts remain under `logs/`.
+The `archive/twix-monitor-compat-20261004` tag preserves separate unfinished CPU-effort
 monitoring work; it is not needed for the lab's existing monitor.
 
 The publication-filter experiment is the reference variant: its estimator was
 already integrated into the shared baseline. Its branch documents that fact
 rather than adding a second implementation.
+
+## Active worktrees on the compiler
+
+- `/home/schluis/hulk-game`: PR #2944, `codex/ball-filter-realism-20261002`.
+- `/home/schluis/hulk`: `dev/ball-filter-lab`.
+- `/home/schluis/hulk-experiment-<variant>`: corresponding `experiment/<variant>`.
+
+Historical audit utilities (`check_remaining_worktrees.py` and
+`tune_preserved_filters.py`) describe the archived pre-consolidation runs and
+require their recorded datasets/binaries. To reconstruct an old source checkout,
+use `git worktree add --detach <path> refs/tags/archive/pre-lab-<variant>-20261004`.
+Use the shared lab and experiment branches for new comparisons.
