@@ -114,3 +114,30 @@ Historical audit utilities (`check_remaining_worktrees.py` and
 require their recorded datasets/binaries. To reconstruct an old source checkout,
 use `git worktree add --detach <path> refs/tags/archive/pre-lab-<variant>-20261004`.
 Use the shared lab and experiment branches for new comparisons.
+
+### Velocity-aware scoring
+
+Objective `single_ball_position_velocity_v9` scores the published velocity vector
+in Field coordinates, in addition to position, availability and false tracks.
+Reports and the Twix optimization panel show velocity RMSE in m/s, a separate
+within-1m velocity RMSE, and reference/unavailable durations. Stationary balls
+are included so spurious motion is penalized too. Truth velocity comes from
+single-ball Field position differences over at most 100 ms; timestamp-matched
+physical simulator truth takes precedence over pose-reconstructed labels.
+Intervals with ambiguous truth, invalid timestamps or speeds above 15 m/s are
+excluded. This derivative measures interval-average velocity, so kick/contact
+frames can differ from an instantaneous endpoint velocity.
+
+Velocity error is converted to displacement error over 300 ms, then receives
+the same bounded squared-error loss and missing-output penalty as position.
+The velocity term is separately time-normalized; its close-range subset has
+weight 4, as with close-range position. Missing or invalid velocity contributes
+the missing penalty, not a free omission. Raw velocity RMSE, velocity loss and
+velocity-unavailable time may not worsen, either globally or per recording.
+The horizon weights velocity accuracy; it does not evaluate a future physical
+trajectory or assume a ball will move at constant velocity for 300 ms.
+
+Re-evaluate every baseline under v9 before comparing new candidates. Losses
+from v8 and v9 are not directly comparable. For clean single-ball fast-shot
+checks, also inspect the primary hypotheses: one sustained track is the target,
+while clutter recordings may legitimately require alternative hypotheses.

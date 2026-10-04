@@ -75,6 +75,22 @@ pub struct Metrics {
     pub along_motion_error_metres: Option<f64>,
     pub motion_lag_seconds: Option<f64>,
     pub moving_reference_seconds: f64,
+    #[serde(default)]
+    pub velocity_rmse_metres_per_second: Option<f64>,
+    #[serde(default)]
+    pub close_range_velocity_rmse_metres_per_second: Option<f64>,
+    #[serde(default)]
+    pub velocity_reference_seconds: f64,
+    #[serde(default)]
+    pub velocity_missing_seconds: f64,
+    #[serde(default)]
+    pub close_range_velocity_reference_seconds: f64,
+    #[serde(default)]
+    pub close_range_velocity_missing_seconds: f64,
+    #[serde(default)]
+    pub velocity_loss: Option<f64>,
+    #[serde(default)]
+    pub close_range_velocity_loss: Option<f64>,
     pub false_track_seconds: f64,
     pub missing_transform_seconds: f64,
 }

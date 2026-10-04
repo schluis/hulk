@@ -10,6 +10,8 @@ use types::{ball_position::BallPosition, parameters::BallFilterParameters};
 pub const MISSING_PENALTY_MULTIPLIER: f64 = 1.25;
 pub const OUT_OF_FIELD_DECAY_METRES: f64 = 0.3;
 pub const CLOSE_RANGE_LOSS_WEIGHT: f64 = 4.0;
+/// Convert velocity error to displacement error over a short interception horizon.
+pub const VELOCITY_HORIZON_SECONDS: f64 = 0.3;
 /// Association radius used by the user-approved correct-ball availability guards.
 pub const CORRECT_TRACK_RADIUS_METRES: f64 = 0.5;
 
@@ -26,18 +28,22 @@ pub struct Objective {
     pub close_range_loss: &'static str,
     pub close_range_weight: f64,
     pub motion_reference: &'static str,
+    pub velocity_loss: &'static str,
+    pub velocity_horizon_seconds: f64,
 }
 
 pub const OBJECTIVE: Objective = Objective {
-    version: "single_ball_close_accuracy_v8",
+    version: "single_ball_position_velocity_v9",
     position_loss: "p^2 * d^2 / (p^2 + d^2); d = distance to the single labelled ball",
     missing_loss: "1.25 * p^2",
     false_track_loss: "p^2",
-    normalization: "all-scene weighted mean plus close_range_weight times the separately normalized close-range mean; p = penalty_metres",
+    normalization: "all-scene weighted spatial mean plus close_range_weight times the separately normalized close-range spatial mean, plus separately normalized velocity terms described below; p = penalty_metres",
     reference_weight: "exp(-distance_outside_field_metres / out_of_field_decay_metres); distance outside Field rectangle expanded by ball radius; absent or unknown Field pose weight=1",
     out_of_field_decay_metres: OUT_OF_FIELD_DECAY_METRES,
     close_range_loss: "Add a separately time-normalized spatial/missing loss for truth within 1 m in Ground, without field-boundary downweighting. Missing costs more than any finite position error. Per-recording close-range RMSE may increase by at most 0.01 m and RMS/mean absolute spatial lag by at most 0.04 s. Aggregate accuracy and false-track time may not worsen. Correct-ball unavailable time (missing or error greater than 0.5 m), its close-range subset and its longest uninterrupted gap must not worsen per recording or in aggregate; raw missing time remains diagnostic. False-track guards remain strict per recording. Signed mean lag is diagnostic only because opposing errors can cancel.",
     close_range_weight: CLOSE_RANGE_LOSS_WEIGHT,
+    velocity_loss: "Add separately time-normalized bounded squared velocity-vector error times velocity_horizon_seconds^2, with the same spatial cap p^2 and missing penalty 1.25*p^2; add close_range_weight times its independently normalized within-1m subset. Include stationary truth; use single-ball Field finite differences over 0 < dt <= 100ms and reject non-finite or >15m/s derivatives. Rotate estimated Ground velocity into Field without translation. Raw velocity RMSE and coverage are reported separately. Velocity loss, missing duration and RMSE must not worsen, in aggregate or per recording. This horizon weights velocity error; it is not a simulated future-trajectory error.",
+    velocity_horizon_seconds: VELOCITY_HORIZON_SECONDS,
     motion_reference: "Use timestamp-matched simulation/ball_ground_truth_field for motion derivatives when standard simulator labels are selected; otherwise derive Field positions from the selected reference and recorded pose. Ground position/close-range scoring remains unchanged.",
 };
 
@@ -76,6 +82,22 @@ pub struct Score {
     /// Mean absolute spatial lag; unlike abs(mean lag), lead/lag cannot cancel.
     pub motion_lag_absolute_seconds: Option<f64>,
     pub moving_reference_seconds: f64,
+    pub velocity_rmse_metres_per_second: Option<f64>,
+    pub velocity_reference_seconds: f64,
+    pub velocity_missing_seconds: f64,
+    pub velocity_loss: Option<f64>,
+    pub close_range_velocity_rmse_metres_per_second: Option<f64>,
+    pub close_range_velocity_reference_seconds: f64,
+    pub close_range_velocity_missing_seconds: f64,
+    pub close_range_velocity_loss: Option<f64>,
+    #[serde(skip)]
+    velocity_squared_error: f64,
+    #[serde(skip)]
+    velocity_loss_integral: f64,
+    #[serde(skip)]
+    close_velocity_squared_error: f64,
+    #[serde(skip)]
+    close_velocity_loss_integral: f64,
     pub absent_seconds: f64,
     pub false_track_seconds: f64,
     pub missing_transform_seconds: f64,
@@ -169,6 +191,31 @@ fn preserves_quality_with_margins(
         }
     }
     preserves_baseline_continuity(candidate, baseline)
+        && [
+            (
+                candidate.velocity_rmse_metres_per_second,
+                baseline.velocity_rmse_metres_per_second,
+            ),
+            (
+                candidate.close_range_velocity_rmse_metres_per_second,
+                baseline.close_range_velocity_rmse_metres_per_second,
+            ),
+            (candidate.velocity_loss, baseline.velocity_loss),
+            (
+                candidate.close_range_velocity_loss,
+                baseline.close_range_velocity_loss,
+            ),
+            (
+                Some(candidate.velocity_missing_seconds),
+                Some(baseline.velocity_missing_seconds),
+            ),
+            (
+                Some(candidate.close_range_velocity_missing_seconds),
+                Some(baseline.close_range_velocity_missing_seconds),
+            ),
+        ]
+        .into_iter()
+        .all(|(c, b)| non_increasing(c, b, 0.0))
         && non_increasing(
             Some(candidate.false_track_seconds),
             Some(baseline.false_track_seconds),
@@ -222,6 +269,27 @@ pub fn quality_violation(candidate: &Score, baseline: &Score, per_recording: boo
         (
             candidate.motion_lag_absolute_seconds,
             baseline.motion_lag_absolute_seconds,
+        ),
+        (
+            candidate.velocity_rmse_metres_per_second,
+            baseline.velocity_rmse_metres_per_second,
+        ),
+        (
+            candidate.close_range_velocity_rmse_metres_per_second,
+            baseline.close_range_velocity_rmse_metres_per_second,
+        ),
+        (candidate.velocity_loss, baseline.velocity_loss),
+        (
+            candidate.close_range_velocity_loss,
+            baseline.close_range_velocity_loss,
+        ),
+        (
+            Some(candidate.velocity_missing_seconds),
+            Some(baseline.velocity_missing_seconds),
+        ),
+        (
+            Some(candidate.close_range_velocity_missing_seconds),
+            Some(baseline.close_range_velocity_missing_seconds),
         ),
     ];
     pairs
@@ -312,6 +380,7 @@ impl Score {
         cycle: &Cycle,
         estimate: Option<BallPosition<Ground>>,
         previous: &mut Option<(Time, Point2<Field>)>,
+        penalty: f64,
     ) {
         // Diagnose a ball the robot could kick now, within 1 m of its Ground origin.
         let mut close_squared = None::<f64>;
@@ -389,11 +458,46 @@ impl Score {
         }
         let velocity = (truth - position) / dt as f32;
         let speed = velocity.norm();
+        if !speed.is_finite() || speed > 15.0 {
+            return;
+        }
+        let field_estimate = estimate
+            .zip(cycle.ground_to_field)
+            .map(|(ball, pose)| pose * ball);
+        let velocity_squared = field_estimate
+            .map(|ball| f64::from((ball.velocity - velocity).norm_squared()))
+            .filter(|squared| squared.is_finite());
+        let cap = penalty.powi(2);
+        let loss = velocity_squared.map_or(MISSING_PENALTY_MULTIPLIER * cap, |squared| {
+            let displacement_squared = VELOCITY_HORIZON_SECONDS.powi(2) * squared;
+            cap * displacement_squared / (cap + displacement_squared)
+        });
+        // Coverage and normalization depend only on truth, never on whether a
+        // candidate publishes. Invalid velocity counts as unavailable output.
+        self.velocity_reference_seconds += cycle.seconds;
+        self.velocity_loss_integral += loss * cycle.seconds;
+        if let Some(squared) = velocity_squared {
+            self.velocity_squared_error += squared * cycle.seconds;
+        } else {
+            self.velocity_missing_seconds += cycle.seconds;
+        }
+        let close_velocity = cycle
+            .ground_to_field
+            .is_some_and(|pose| (pose.inverse() * truth).coords().norm_squared() <= 1.0);
+        if close_velocity {
+            self.close_range_velocity_reference_seconds += cycle.seconds;
+            self.close_velocity_loss_integral += loss * cycle.seconds;
+            if let Some(squared) = velocity_squared {
+                self.close_velocity_squared_error += squared * cycle.seconds;
+            } else {
+                self.close_range_velocity_missing_seconds += cycle.seconds;
+            }
+        }
         // Exclude stationary numerical jitter and implausible discontinuities.
         if !(0.5..=15.0).contains(&speed) {
             return;
         }
-        if let Some(estimate) = estimate.zip(cycle.ground_to_field).map(|(b, p)| p * b) {
+        if let Some(estimate) = field_estimate {
             let along = f64::from((estimate.position - truth).dot(&velocity) / speed);
             self.along_motion_error_integral += along * cycle.seconds;
             self.motion_lag_integral += -along / f64::from(speed) * cycle.seconds;
@@ -592,7 +696,7 @@ pub fn evaluate(
                 &cycle.dimensions,
                 cycle.field_prior_pose,
             );
-            score.observe_diagnostics(cycle, estimate, &mut previous_reference);
+            score.observe_diagnostics(cycle, estimate, &mut previous_reference, penalty);
             score.observe_cycle(cycle, estimate, penalty);
         }
     }
@@ -657,6 +761,21 @@ impl Score {
         score.close_range_loss = (score.close_loss_seconds > 0.0)
             .then(|| score.close_loss_integral / score.close_loss_seconds);
         score.loss += CLOSE_RANGE_LOSS_WEIGHT * score.close_range_loss.unwrap_or(0.0);
+        score.velocity_loss = (score.velocity_reference_seconds > 0.0)
+            .then(|| score.velocity_loss_integral / score.velocity_reference_seconds);
+        score.close_range_velocity_loss = (score.close_range_velocity_reference_seconds > 0.0)
+            .then(|| {
+                score.close_velocity_loss_integral / score.close_range_velocity_reference_seconds
+            });
+        score.loss += score.velocity_loss.unwrap_or(0.0)
+            + CLOSE_RANGE_LOSS_WEIGHT * score.close_range_velocity_loss.unwrap_or(0.0);
+        let velocity_matched = score.velocity_reference_seconds - score.velocity_missing_seconds;
+        score.velocity_rmse_metres_per_second = (velocity_matched > 0.0)
+            .then(|| (score.velocity_squared_error / velocity_matched).sqrt());
+        let close_velocity_matched = score.close_range_velocity_reference_seconds
+            - score.close_range_velocity_missing_seconds;
+        score.close_range_velocity_rmse_metres_per_second = (close_velocity_matched > 0.0)
+            .then(|| (score.close_velocity_squared_error / close_velocity_matched).sqrt());
         let matched = score.present_seconds - score.missing_seconds;
         score.position_rmse_metres =
             (matched > 0.0).then(|| (score.squared_error / matched).sqrt());
@@ -703,7 +822,7 @@ mod tests {
                 velocity: Vector2::zeros(),
                 last_seen: Time::zero(),
             });
-            score.observe_diagnostics(&cycle, estimate, &mut previous);
+            score.observe_diagnostics(&cycle, estimate, &mut previous, 2.0);
         }
         assert_eq!(
             score.close_range_correct_track_missing_seconds,
@@ -919,6 +1038,7 @@ mod tests {
                     last_seen: cycle.time,
                 }),
                 &mut previous,
+                2.0,
             );
         }
         assert_eq!(score.moving_reference_seconds, 0.0);
@@ -938,6 +1058,7 @@ mod tests {
                     last_seen: Time::zero(),
                 }),
                 &mut previous,
+                2.0,
             );
         }
         assert!((score.motion_lag_integral / score.moving_reference_seconds).abs() < 1e-6);
@@ -997,6 +1118,104 @@ mod tests {
             candidate.longest_correct_track_gap_seconds = invalid;
             assert!(!preserves_baseline_continuity(&candidate, &baseline));
         }
+    }
+
+    fn velocity_score(speed: f32, reported: Option<f32>) -> Score {
+        let mut score = Score::default();
+        let mut previous = None;
+        for tick in 0..=4 {
+            let x = -0.6 + speed * tick as f32 * 0.05;
+            let cycle = diagnostic_cycle(tick * 50, x, 0.0);
+            let estimate = reported.map(|v| BallPosition {
+                position: point![x, 0.0],
+                velocity: linear_algebra::vector![v, 0.0],
+                last_seen: cycle.time,
+            });
+            score.observe_diagnostics(&cycle, estimate, &mut previous, 2.0);
+            score.observe_cycle(&cycle, estimate, 2.0);
+        }
+        score.finish();
+        score
+    }
+
+    #[test]
+    fn fast_close_ball_requires_velocity_magnitude_and_direction_despite_exact_position() {
+        let good = velocity_score(6.0, Some(6.0));
+        let stopped = velocity_score(6.0, Some(0.0));
+        let reversed = velocity_score(6.0, Some(-6.0));
+        assert!(good.velocity_rmse_metres_per_second.unwrap() < 1e-5);
+        assert!((stopped.velocity_rmse_metres_per_second.unwrap() - 6.0).abs() < 1e-5);
+        assert!((reversed.velocity_rmse_metres_per_second.unwrap() - 12.0).abs() < 1e-5);
+        assert!(good.loss < stopped.loss && stopped.loss < reversed.loss);
+        assert_eq!(stopped.position_rmse_metres, Some(0.0));
+        assert!((stopped.close_range_velocity_reference_seconds - 0.2).abs() < 1e-10);
+        assert!(!preserves_baseline_quality(&stopped, &good));
+        assert!(!preserves_recording_quality(&stopped, &good));
+        assert!(quality_violation(&stopped, &good, false) > 0.0);
+    }
+
+    #[test]
+    fn missing_or_nonfinite_velocity_cannot_hide_bad_velocity() {
+        let bad = velocity_score(6.0, Some(-6.0));
+        let missing = velocity_score(6.0, None);
+        let invalid = velocity_score(6.0, Some(f32::NAN));
+        for candidate in [missing, invalid] {
+            assert!(candidate.velocity_loss > bad.velocity_loss);
+            assert!(candidate.close_range_velocity_loss > bad.close_range_velocity_loss);
+            assert!(candidate.velocity_missing_seconds > 0.0);
+            assert_eq!(candidate.velocity_rmse_metres_per_second, None);
+            assert!(!preserves_baseline_quality(&candidate, &bad));
+        }
+    }
+
+    #[test]
+    fn stationary_ball_velocity_is_scored_and_field_rotation_is_applied() {
+        let stationary = velocity_score(0.0, Some(0.0));
+        let drifting = velocity_score(0.0, Some(1.0));
+        assert_eq!(stationary.velocity_rmse_metres_per_second, Some(0.0));
+        assert_eq!(drifting.velocity_rmse_metres_per_second, Some(1.0));
+        assert!(drifting.loss > stationary.loss);
+        let mut score = Score::default();
+        let mut previous = None;
+        for tick in 0..=4 {
+            let mut cycle = diagnostic_cycle(tick * 50, 0.1 + tick as f32 * 0.1, 0.0);
+            let pose = Isometry2::from_parts(
+                linear_algebra::vector![tick as f32 * 0.2, -0.4],
+                std::f32::consts::FRAC_PI_2,
+            );
+            cycle.ground_to_field = Some(pose);
+            let estimate = BallPosition {
+                position: pose.inverse() * point![0.1 + tick as f32 * 0.1, 0.0],
+                velocity: linear_algebra::vector![0.0, -2.0],
+                last_seen: cycle.time,
+            };
+            score.observe_diagnostics(&cycle, Some(estimate), &mut previous, 2.0);
+            score.observe_cycle(&cycle, Some(estimate), 2.0);
+        }
+        score.finish();
+        assert!(score.velocity_rmse_metres_per_second.unwrap() < 1e-5);
+    }
+
+    #[test]
+    fn velocity_reference_rejects_gaps_duplicates_and_ambiguous_or_teleported_truth() {
+        for (time, position) in [(0, 0.1), (-50, 0.1), (150, 0.1), (50, 20.0)] {
+            let mut score = Score::default();
+            let mut previous = Some((Time::zero(), point![0.0, 0.0]));
+            score.observe_diagnostics(
+                &diagnostic_cycle(time, position, 0.0),
+                None,
+                &mut previous,
+                2.0,
+            );
+            assert_eq!(score.velocity_reference_seconds, 0.0);
+        }
+        let mut cycle = diagnostic_cycle(50, 0.1, 0.0);
+        cycle.motion_reference = Some(vec![point![0.1, 0.0, 0.1], point![0.2, 0.0, 0.1]]);
+        let mut previous = Some((Time::zero(), point![0.0, 0.0]));
+        let mut score = Score::default();
+        score.observe_diagnostics(&cycle, None, &mut previous, 2.0);
+        assert_eq!(score.velocity_reference_seconds, 0.0);
+        assert!(previous.is_none());
     }
 
     fn diagnostic_cycle(time_ms: i64, x: f32, robot_x: f32) -> Cycle {
@@ -1118,13 +1337,14 @@ mod tests {
         };
         let mut score = Score::default();
         let mut previous = None;
-        score.observe_diagnostics(&diagnostic_cycle(0, 0.5, 0.0), None, &mut previous);
+        score.observe_diagnostics(&diagnostic_cycle(0, 0.5, 0.0), None, &mut previous, 2.0);
         // Ball moves +0.1 m in 50 ms = 2 m/s; robot itself moved +0.2 m.
         // Estimate world x=.4 trails truth x=.6 by .2 m = .1 s spatial lag.
         score.observe_diagnostics(
             &diagnostic_cycle(50, 0.6, 0.2),
             Some(estimate),
             &mut previous,
+            2.0,
         );
         assert!((score.along_motion_error_integral / 0.05 + 0.2).abs() < 1e-6);
         assert!((score.motion_lag_integral / 0.05 - 0.1).abs() < 1e-6);
@@ -1139,6 +1359,7 @@ mod tests {
             &diagnostic_cycle(50, 0.6, 0.6),
             Some(estimate),
             &mut previous,
+            2.0,
         );
         assert!(ahead.along_motion_error_integral > 0.0);
         assert!(ahead.motion_lag_integral < 0.0);
@@ -1154,24 +1375,26 @@ mod tests {
         let mut score = Score::default();
         let mut previous = None;
         let mut cycle = diagnostic_cycle(0, 0.5, 0.0);
-        score.observe_diagnostics(&cycle, Some(estimate), &mut previous);
+        score.observe_diagnostics(&cycle, Some(estimate), &mut previous, 2.0);
         cycle = diagnostic_cycle(50, 0.5, 0.2);
-        score.observe_diagnostics(&cycle, Some(estimate), &mut previous);
+        score.observe_diagnostics(&cycle, Some(estimate), &mut previous, 2.0);
         cycle.reference = Some(Reference::Field(vec![
             point![0.6, 0.0, 0.1],
             point![2.0, 0.0, 0.1],
         ]));
-        score.observe_diagnostics(&cycle, Some(estimate), &mut previous);
+        score.observe_diagnostics(&cycle, Some(estimate), &mut previous, 2.0);
         assert!(previous.is_none());
         score.observe_diagnostics(
             &diagnostic_cycle(100, 0.7, 0.2),
             Some(estimate),
             &mut previous,
+            2.0,
         );
         score.observe_diagnostics(
             &diagnostic_cycle(500, 1.0, 0.2),
             Some(estimate),
             &mut previous,
+            2.0,
         );
         assert_eq!(score.moving_reference_seconds, 0.0);
     }
@@ -1308,6 +1531,15 @@ impl From<&Score> for types::ball_filter_tuning::Metrics {
             along_motion_error_metres: score.along_motion_error_metres,
             motion_lag_seconds: score.motion_lag_seconds,
             moving_reference_seconds: score.moving_reference_seconds,
+            velocity_rmse_metres_per_second: score.velocity_rmse_metres_per_second,
+            close_range_velocity_rmse_metres_per_second: score
+                .close_range_velocity_rmse_metres_per_second,
+            velocity_reference_seconds: score.velocity_reference_seconds,
+            velocity_missing_seconds: score.velocity_missing_seconds,
+            close_range_velocity_reference_seconds: score.close_range_velocity_reference_seconds,
+            close_range_velocity_missing_seconds: score.close_range_velocity_missing_seconds,
+            velocity_loss: score.velocity_loss,
+            close_range_velocity_loss: score.close_range_velocity_loss,
             false_track_seconds: score.false_track_seconds,
             missing_transform_seconds: score.missing_transform_seconds,
         }

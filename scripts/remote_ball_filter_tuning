@@ -437,8 +437,12 @@ METRIC_FIELDS = (
     "close_range_position_rmse_metres", "close_range_present_seconds", "close_range_missing_seconds",
     "along_motion_error_metres", "motion_lag_seconds", "moving_reference_seconds",
     "false_track_seconds", "missing_transform_seconds",
+    "velocity_rmse_metres_per_second", "close_range_velocity_rmse_metres_per_second",
+    "velocity_reference_seconds", "velocity_missing_seconds",
+    "close_range_velocity_reference_seconds", "close_range_velocity_missing_seconds",
+    "velocity_loss", "close_range_velocity_loss",
 )
-OPTIONAL_METRICS = {"position_rmse_metres", "close_range_position_rmse_metres", "along_motion_error_metres", "motion_lag_seconds"}
+OPTIONAL_METRICS = {"position_rmse_metres", "close_range_position_rmse_metres", "along_motion_error_metres", "motion_lag_seconds", "velocity_rmse_metres_per_second", "close_range_velocity_rmse_metres_per_second", "velocity_loss", "close_range_velocity_loss"}
 
 
 def unsigned(value):
