@@ -1,3 +1,4 @@
+mod reacquisition;
 use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use color_eyre::{Result, eyre::WrapErr};
@@ -395,6 +396,20 @@ fn predict_hypotheses_from_odometry(
         Matrix2::from_diagonal(&filter_parameters.noise.process_noise_resting),
         filter_parameters.log_likelihood_of_zero_velocity_threshold,
     );
+    let resting_speed = filter_parameters.resting_velocity_threshold;
+    if resting_speed.is_finite() && resting_speed > 0.0 {
+        for hypothesis in &mut ball_filter.hypotheses {
+            if let hypothesis::BallMode::Moving(state) = hypothesis.mode
+                && state.mean.z.hypot(state.mean.w) <= resting_speed
+            {
+                hypothesis.mode = hypothesis::BallMode::Resting(MultivariateNormalDistribution {
+                    mean: state.mean.xy(),
+                    covariance: state.covariance.fixed_view::<2, 2>(0, 0).into_owned(),
+                });
+                hypothesis.motion_evidence = None;
+            }
+        }
+    }
 }
 
 #[expect(
@@ -435,6 +450,23 @@ fn advance_all_hypotheses(
                     .coords;
             if residual.norm_squared() > maximum_squared {
                 *cost = f32::NEG_INFINITY;
+            }
+        }
+    }
+    // A diffuse retained prediction must not turn an isolated distant false
+    // detection into high-confidence history after an observation gap. Gating
+    // leaves that history intact and lets the percept spawn its own hypothesis.
+    let reacquisition_distance = filter_parameters.reacquisition_matching_distance;
+    if reacquisition_distance.is_finite() && reacquisition_distance > 0.0 {
+        for ((row, column), score) in match_matrix.indexed_iter_mut() {
+            let hypothesis = &ball_filter.hypotheses[row];
+            if reacquisition::protect_prior(hypothesis, time, obstacles, filter_parameters)
+                && (ball_percepts[column].percept_in_ground.mean
+                    - hypothesis.position().position.inner.coords)
+                    .norm_squared()
+                    > reacquisition_distance.powi(2)
+            {
+                *score = f32::NEG_INFINITY;
             }
         }
     }
@@ -506,6 +538,13 @@ fn advance_all_hypotheses(
                 ball_percepts[percept_index].percept_in_ground,
                 score.exp(),
             );
+            if filter_parameters.publication_filter_blend > 0.0 {
+                hypothesis.last_observation_size_plausible = radius_consistency(
+                    &ball_percepts[percept_index],
+                    camera_matrix,
+                    field_dimensions.ball_radius,
+                );
+            }
         }
     }
     for (index, percept) in ball_percepts.iter().enumerate() {
@@ -516,6 +555,12 @@ fn advance_all_hypotheses(
                 Matrix4::from_diagonal(&filter_parameters.noise.initial_covariance),
                 filter_parameters.nearby_spawn_validity_factor,
             );
+            if filter_parameters.publication_filter_blend > 0.0
+                && let Some(hypothesis) = ball_filter.hypotheses.last_mut()
+            {
+                hypothesis.last_observation_size_plausible =
+                    radius_consistency(percept, camera_matrix, field_dimensions.ball_radius);
+            }
             matched.push(true);
         }
     }
@@ -760,10 +805,24 @@ fn project_detected_balls(
                     return None;
                 }
                 let maximum_ratio = parameters.maximum_detection_radius_ratio;
-                if maximum_ratio.is_finite() && maximum_ratio > 1.0 {
-                    let expected = camera_matrix
-                        .get_pixel_radius(ball_radius, area.center())
-                        .ok()?;
+                let radius_distance = parameters.radius_consistency_maximum_distance;
+                let check_size = !radius_distance.is_finite()
+                    || radius_distance <= 0.0
+                    || position.coords().norm() <= radius_distance;
+                if maximum_ratio.is_finite() && maximum_ratio > 1.0 && check_size {
+                    let in_camera = camera_matrix.ground_to_camera
+                        * linear_algebra::point![position.x(), position.y(), ball_radius];
+                    let depth = in_camera.z();
+                    if !depth.is_finite() || depth <= 0.0 {
+                        return None;
+                    }
+                    let expected = ball_radius
+                        * camera_matrix
+                            .intrinsics
+                            .focals
+                            .x
+                            .min(camera_matrix.intrinsics.focals.y)
+                        / depth;
                     if !expected.is_finite()
                         || expected <= 0.0
                         || detected_ball_radius > maximum_ratio * expected
@@ -815,6 +874,29 @@ fn project_detected_balls(
             })
             .collect(),
     )
+}
+
+// A larger image can be an airborne ball. Only an undersized image implies
+// a sphere below the ground plane, so only that direction permits correction.
+fn radius_consistency(
+    percept: &BallPercept,
+    camera: Option<&CameraMatrix>,
+    ball_radius: f32,
+) -> Option<bool> {
+    let camera = camera?;
+    let position = percept.percept_in_ground.mean;
+    let camera_position =
+        camera.ground_to_camera * linear_algebra::point![position.x, position.y, ball_radius];
+    let depth = camera_position.z();
+    let observed = percept.image_location.radius;
+    let expected = ball_radius * camera.intrinsics.focals.x.min(camera.intrinsics.focals.y) / depth;
+    (depth.is_finite()
+        && depth > 0.0
+        && observed.is_finite()
+        && observed > 0.0
+        && expected.is_finite()
+        && expected > 0.0)
+        .then_some(expected <= 1.5 * observed)
 }
 
 fn hypothesis_visibility(
@@ -1053,6 +1135,33 @@ mod tests {
     }
 
     #[test]
+    fn publication_correction_rejects_undersized_images_but_allows_airborne_size() {
+        let camera = horizontal_test_camera();
+        let radius = FieldDimensions::SPL_2025.ball_radius;
+        let position = point![1.0, 0.2];
+        let center = camera.ground_with_z_to_pixel(position, radius).unwrap();
+        let depth = (camera.ground_to_camera * point![position.x(), position.y(), radius]).z();
+        let expected = radius * camera.intrinsics.focals.x.min(camera.intrinsics.focals.y) / depth;
+        for (scale, plausible) in [(0.5, false), (1.0, true), (2.0, true)] {
+            let percept = BallPercept {
+                percept_in_ground: MultivariateNormalDistribution {
+                    mean: position.inner.coords,
+                    covariance: Matrix2::identity(),
+                },
+                image_location: Circle {
+                    center,
+                    radius: expected * scale,
+                },
+            };
+            assert_eq!(
+                radius_consistency(&percept, Some(&camera), radius),
+                Some(plausible)
+            );
+            assert_eq!(radius_consistency(&percept, None, radius), None);
+        }
+    }
+
+    #[test]
     fn optional_radius_gate_accepts_size_uncertainty_and_rejects_inconsistent_boxes() {
         let camera = horizontal_test_camera();
         let radius = FieldDimensions::SPL_2025.ball_radius;
@@ -1076,6 +1185,32 @@ mod tests {
                         .unwrap();
                 assert_eq!(output.len(), usize::from((0.5..=2.0).contains(&scale)));
             }
+        }
+    }
+
+    #[test]
+    fn radius_consistency_can_be_limited_to_near_geometry() {
+        let camera = horizontal_test_camera();
+        let radius = FieldDimensions::SPL_2025.ball_radius;
+        let mut parameters = BallFilterParameters {
+            maximum_detection_radius_ratio: 2.0,
+            radius_consistency_maximum_distance: 1.5,
+            ..Default::default()
+        };
+        parameters.noise.detection_noise.inner.fill(0.05);
+        for distance in [0.8, 2.0, 6.0] {
+            let center = camera
+                .ground_with_z_to_pixel(point![distance, 0.0], radius)
+                .unwrap();
+            let expected = camera.get_pixel_radius(radius, center).unwrap();
+            let mut detection = test_ball_detection(center);
+            let offset = linear_algebra::vector![expected * 0.2, expected * 0.2];
+            detection.bounding_box.area.min = center - offset;
+            detection.bounding_box.area.max = center + offset;
+            let output =
+                project_detected_balls(Some(&[detection]), Some(&camera), &parameters, radius)
+                    .unwrap();
+            assert_eq!(output.len(), usize::from(distance > 1.5));
         }
     }
 
@@ -1350,6 +1485,98 @@ mod tests {
     }
 
     #[test]
+    fn speed_transition_can_rest_a_quiet_uncertain_ball_without_stopping_fast_motion() {
+        for (threshold, speed, resting) in [(0.0, 0.0, false), (0.1, 0.01, true), (0.1, 1.0, false)]
+        {
+            let parameters = BallFilterParameters {
+                resting_velocity_threshold: threshold,
+                log_likelihood_of_zero_velocity_threshold: f32::INFINITY,
+                ..Default::default()
+            };
+            let mut filter = BallFilter {
+                hypotheses: vec![BallHypothesis::new(
+                    MultivariateNormalDistribution {
+                        mean: nalgebra::vector![1.0, 0.0, speed, 0.0],
+                        covariance: Matrix4::identity() * 50.0,
+                    },
+                    Time::zero(),
+                )],
+            };
+            predict_hypotheses_from_odometry(
+                &mut filter,
+                Time::zero(),
+                Pose2::new(point![0.0, 0.0], 0.0),
+                &mut None,
+                &mut None,
+                &parameters,
+            );
+            assert_eq!(
+                matches!(filter.hypotheses[0].mode, BallMode::Resting(_)),
+                resting
+            );
+            assert_eq!(filter.hypotheses[0].position().position, point![1.0, 0.0]);
+            assert_eq!(filter.hypotheses[0].validity, 1.0);
+        }
+    }
+
+    #[test]
+    fn reacquisition_gate_preserves_prior_and_requires_an_observation_gap() {
+        for (gate, millis, should_branch) in [(0.0, 200, false), (0.1, 40, false), (0.1, 200, true)]
+        {
+            let mut parameters = BallFilterParameters::default();
+            parameters.reacquisition_matching_distance = gate;
+            parameters.maximum_matching_cost = 1.0;
+            parameters.velocity_decay_factor = 0.998;
+            parameters.hidden_validity_exponential_decay_factor = 1.0;
+            parameters.validity_discard_threshold = 0.2;
+            parameters.noise.initial_covariance.fill(1.0);
+            let mut old = BallHypothesis::new(
+                MultivariateNormalDistribution {
+                    mean: nalgebra::vector![1.0, 0.0, 0.0, 0.0],
+                    covariance: Matrix4::identity() * 10.0,
+                },
+                Time::zero(),
+            );
+            old.validity = 5.0;
+            let mut filter = BallFilter {
+                hypotheses: vec![old],
+            };
+            let percept = BallPercept {
+                percept_in_ground: MultivariateNormalDistribution {
+                    mean: nalgebra::vector![1.5, 0.0],
+                    covariance: Matrix2::identity() * 0.01,
+                },
+                image_location: Circle::new(point![0.0, 0.0], 8.0),
+            };
+            advance_all_hypotheses(
+                &mut filter,
+                &mut AssignmentSolver::default(),
+                Time::from_nanos(millis * 1_000_000),
+                &[percept],
+                None,
+                Some(&[]),
+                &[],
+                &parameters,
+                &FieldDimensions::SPL_2025,
+            )
+            .unwrap();
+            assert_eq!(filter.hypotheses.len(), if should_branch { 2 } else { 1 });
+            if should_branch {
+                assert_eq!(filter.hypotheses[0].last_seen, Time::zero());
+                assert_eq!(filter.hypotheses[0].position().position, point![1.0, 0.0]);
+                assert_eq!(filter.hypotheses[1].validity, 1.0);
+                assert_eq!(filter.hypotheses[1].position().position, point![1.5, 0.0]);
+            } else {
+                assert_eq!(
+                    filter.hypotheses[0].last_seen,
+                    Time::from_nanos(millis * 1_000_000)
+                );
+                assert!(filter.hypotheses[0].position().position.x() > 1.49);
+            }
+        }
+    }
+
+    #[test]
     fn unseen_kick_spawns_at_detection_without_destroying_the_old_track() {
         let dimensions = FieldDimensions::SPL_2025;
         let mut parameters = BallFilterParameters::default();
@@ -1371,9 +1598,10 @@ mod tests {
             motion_evidence: None,
             negative_evidence: None,
             validity_decay_evidence: None,
-            leadership_evidence: None,
-            merge_observation_start: None,
             imm: None,
+            leadership_evidence: None,
+            last_observation_size_plausible: None,
+            merge_observation_start: None,
         };
         let mut filter = BallFilter {
             hypotheses: vec![old_track],
@@ -1459,9 +1687,10 @@ mod tests {
                 motion_evidence: None,
                 negative_evidence: None,
                 validity_decay_evidence: None,
-                leadership_evidence: None,
-                merge_observation_start: None,
                 imm: None,
+                leadership_evidence: None,
+                last_observation_size_plausible: None,
+                merge_observation_start: None,
             }],
         };
         let mut solver = AssignmentSolver::default();
@@ -1564,9 +1793,10 @@ mod tests {
             motion_evidence: None,
             negative_evidence: None,
             validity_decay_evidence: None,
-            leadership_evidence: None,
-            merge_observation_start: None,
             imm: None,
+            leadership_evidence: None,
+            last_observation_size_plausible: None,
+            merge_observation_start: None,
         };
         let hypothesis2 = BallHypothesis {
             mode: BallMode::Moving(MultivariateNormalDistribution {
@@ -1578,9 +1808,10 @@ mod tests {
             motion_evidence: None,
             negative_evidence: None,
             validity_decay_evidence: None,
-            leadership_evidence: None,
-            merge_observation_start: None,
             imm: None,
+            leadership_evidence: None,
+            last_observation_size_plausible: None,
+            merge_observation_start: None,
         };
 
         let percept1 = BallPercept {
