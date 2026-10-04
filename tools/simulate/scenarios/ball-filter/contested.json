@@ -1,0 +1,70 @@
+{
+  "family": "contested",
+  "ball_position": [
+    2.0,
+    0.4
+  ],
+  "robot_position": [
+    0,
+    0
+  ],
+  "robot_yaw": 0,
+  "perception": {
+    "frame_period": 0.04,
+    "delivery_delay_seconds": 0.05,
+    "delivery_jitter_seconds": 0.015,
+    "center_noise_pixels": 2.0,
+    "false_positive_probability": 0.04,
+    "seed": 42
+  },
+  "steps": [
+    {
+      "until": 8,
+      "name": "contested",
+      "ball_present": true,
+      "ball_impulse": null,
+      "walking_velocity": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "until": 18,
+      "name": "contested",
+      "ball_present": true,
+      "ball_impulse": [
+        -0.06,
+        0.02
+      ],
+      "walking_velocity": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "until": 28,
+      "name": "contested",
+      "ball_present": true,
+      "ball_impulse": [
+        0.04,
+        -0.03
+      ]
+    },
+    {
+      "until": 40,
+      "name": "contested",
+      "ball_present": true,
+      "ball_impulse": null
+    }
+  ],
+  "minimum_coverage": {
+    "opponent_kicks": 1.0,
+    "occluded_in_view_seconds": 0.2
+  },
+  "head_target": [
+    2.0,
+    0
+  ]
+}

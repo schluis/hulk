@@ -1,0 +1,884 @@
+# Behavior and motion simulator
+
+Based on `oleflb/simulator-die-zweite` (`3c6a288178f49cb9c360228823ac835aa2b06631`).
+The Bevy scene runs a MuJoCo K1 and a small ROS-Z robotics stack.
+
+## Run
+
+From the repository root, run (also works from fish or inside `nix develop`):
+
+```bash
+./simulator
+```
+
+The launcher sets the working directory and library paths, and forwards arguments
+to the simulator. It forces the build to use the downloaded MuJoCo 3.9.0 required
+by the Rust bindings, overriding system MuJoCo discovery and explicit link-directory
+settings. The first build downloads it into
+`${XDG_CACHE_HOME:-$HOME/.cache}/mujoco-rs`, or your existing `MUJOCO_DOWNLOAD_DIR`.
+
+The launched `motion_inference` node also needs ONNX Runtime (the existing node
+uses `ort` with dynamic loading). The launcher uses `/usr/lib/libonnxruntime.so`
+when available; an explicit `ORT_DYLIB_PATH` takes precedence. For other locations,
+set that variable to your ONNX Runtime shared library or put it on the library
+search path. The five K1 ONNX models must be downloaded with Git LFS and are loaded
+from `etc/neural_networks`.
+The UI requires an X11 or Wayland display and a graphics adapter supported by Bevy.
+
+The simulator starts paused with one controlled robot. Press **Run / Pause** to
+advance physics. **Reset robot & stack** pauses, returns that robot to its initial
+zero-joint pose and location, clears the received command, and recreates the
+robotics context and nodes. Simulation time remains monotonic across resets.
+The palette can add balls and additional passive robots as physical objects.
+Drag a ball from the palette to place it. Click an existing ball to select it
+(highlighted gold), then hold the left mouse button and drag to reposition it.
+Dragging moves the actual MuJoCo ball horizontally at its current height and
+clears its linear/angular velocity. Physics pauses during the drag and resumes
+on release if it was running beforehand. Moving over a sidebar holds the last
+valid scene position. Click the field to clear the selection.
+
+Translucent blue, 1 m high rebound walls with opaque top rims stand 1 m outside the field lines. They
+use physical MuJoCo contacts with low damping for strong bounces, including corner
+impacts. The same walls are present in headless tuning and the live viewer, and
+follow field-dimension changes in the interactive simulator.
+
+## Automatic ball-filter tuning (development branch)
+
+```bash
+./simulator --tune-ball-filter logs/my-ball-run --keep-tuning-open
+```
+
+Use a new output directory. This launches the production motion and kinematic
+vision chain, records original ROS-Z messages in MCAP, checks replay against the
+live filter, and continuously searches on four training recordings, evaluating
+two separate holdouts after each search round. Rounds contain 4096 candidates by
+default (`--tuning-trials`) and start from the preceding best with a new search seed.
+The absolute simulated torso pose anchors
+`ground_to_field`; visual localization is excluded.
+
+During the search, a separate live simulation uses the latest best parameters.
+Each improvement is applied atomically through the production ball-filter node's
+parameter service; the robot keeps walking and tracking through updates. Twix
+shows the trial actually applied in the live simulation. Optimization and live
+scenarios continue until Ctrl-C. Use `--tuning-once` for one finite round;
+`--keep-tuning-open` then keeps its final best running in the live scenarios.
+
+Reuse a completed capture directory to skip recording and start from its saved
+best candidate (if present), while still verifying against the original baseline:
+
+```bash
+./simulator --tune-ball-filter logs/my-next-search \
+  --tuning-recordings logs/my-ball-run --keep-tuning-open
+```
+
+Live preview episodes do not modify the fixed training or holdout recordings.
+Parameter changes go to temporary simulator layers, not robot defaults.
+Changing production filter behavior can invalidate the exact baseline replay check;
+capture a new reference dataset after such a change, then reuse it for parameter searches.
+
+In Twix, add **Ball-filter optimization**, click **Connect to simulator / optimizer**,
+then **Open 3D view**. Hold the right mouse button and use **W/A/S/D** to move the
+camera, **Q** to descend and **E** to ascend. The viewer observes sensor messages
+without commanding the robot. The standalone viewer command is
+`./simulator --watch-ball-tuning`.
+Startup failures appear in the panel; viewer output is saved to
+`OUTPUT/3d-viewer.log`. On Linux, launching remains supported after rebuilding
+the executable while tuning runs.
+Ball position and spin come directly from MuJoCo via the recorded ROS-Z
+`simulation/ball_poses_world` topic; the viewer does not invent rolling animation.
+The blue soccer ball shows the live filter's selected position and velocity.
+Grey soccer balls show every other stored hypothesis, including weak hypotheses,
+with matching grey velocity arrows. The selected hypothesis is not drawn twice.
+The physical ball has a green velocity arrow, taken directly from MuJoCo via
+`simulation/ball_velocities_world`. Velocity arrows use 1 m per m/s. Every
+hypothesis also has an upward confidence arrow, blue for the selected model and
+grey for the others. Its length is 0.06 m per stored raw confidence unit:
+confidence 25 gives 1.5 m, and confidence 50 gives 3 m. This score accumulates observations and
+can exceed 1; it is neither a probability nor the confidence after applying the
+field-boundary prior. Arrows start at the top of the ball. Zero, negative or
+nonfinite scores have no confidence arrow. Selected and grey models use the
+filter's logical state timestamp, matching `ground_to_field`
+within 20 ms; missing estimates or stale transforms hide the affected overlay.
+Injected false detections flash for 0.2 seconds: orange soccer balls show their
+projection onto the ball-radius plane, while red balls show a point 3 m along the
+camera ray when no ground projection exists, such as an above-horizon pixel.
+These markers are diagnostics, not physical balls. Every emitted false detection
+is queued for display. Their timestamped provenance is recorded on
+`simulation/false_ball_detections`; all stored hypotheses are recorded on
+`ball_filter/ball_filter_state`.
+During capture this is the baseline filter; during optimization it uses the best
+parameters found so far. Candidate scores always come from the fixed MCAP dataset.
+The panel's live map shows the robot and both ball positions on the field. Filter
+positions use the ground-to-field transform at their timestamp (within 20 ms);
+missing transforms are shown explicitly rather than placing the robot at the origin.
+
+For parameter searches on `remote-compiler`, reuse completed recordings and start
+independent workers in a named tmux session:
+
+```sh
+scripts/remote_ball_filter_tuning start \
+  --recordings logs/ball-tuning-20261003-filter-recovery \
+  --initial-parameters logs/ball-tuning-20261003-filter-recovery/optimized/ball_filter.json5 \
+  --workers 8 --build-jobs 8 --trials 256 --name retention-20261003
+```
+
+Use a new run name each time. The helper prints the local manifest path and the
+SSH/tmux attach command. Each worker runs continuously in bounded search rounds,
+with independent seeds and warm starts from its previous checkpoint. Detach from
+tmux with **Ctrl+B**, then **D**; disconnecting SSH does not stop the search.
+Inspect and download results using the printed manifest:
+
+```sh
+scripts/remote_ball_filter_tuning status logs/remote-ball-tuning-retention-20261003/manifest.json
+scripts/remote_ball_filter_tuning fetch logs/remote-ball-tuning-retention-20261003/manifest.json
+```
+
+This uploads an immutable source/data snapshot into the remote user's dedicated
+cache directory, builds only `ball-filter-tuner` with Rust 1.98.1, and keeps a
+separate executable and checkpoints per run. It leaves `/home/schluis/hulk`
+untouched. The remote needs that Rust toolchain, a C compiler, Python and tmux.
+Worker counts normally leave CPU headroom and are bounded by available memory.
+Use `--full-cpu --workers N` to permit all logical CPUs when invoking this
+low-level helper directly; account for workers in existing runs when choosing N.
+The launcher described below checks active workers before adding searches. Memory limits still apply. Fetched best reports are
+selected using training loss and continuity eligibility; holdouts are evaluation
+only. The manifest records source/data hashes for reproducibility.
+
+The **Ball-filter optimization** panel can launch a local search, start a remote
+search with a local preview, or connect to existing remote runs. Startup messages
+and failures are written to the log linked in the panel. Each launcher needs a
+new output directory, and only one local simulator/preview may own port 7448.
+Starting a second launcher fails with guidance to connect to the existing session.
+
+The same actions are available from the repository root:
+
+```sh
+# Capture and optimize locally, or add --recordings COMPLETED_CAPTURE_DIR.
+python3 scripts/ball_filter_optimization local --output logs/local-session
+
+# Capture locally, then run remote searches and preview their best parameters.
+python3 scripts/ball_filter_optimization remote --output logs/remote-session \
+  --host remote-compiler --workers 32 --trials 256
+
+# Reuse completed captures instead of recording again.
+python3 scripts/ball_filter_optimization remote --output logs/remote-reuse \
+  --recordings logs/my-ball-run --host remote-compiler --workers 32
+
+# Observe existing searches without starting additional remote workers.
+python3 scripts/ball_filter_optimization connect --output logs/remote-monitor \
+  --manifest logs/remote-ball-tuning-retention-20261003/manifest.json
+```
+
+Repeat `--manifest` to monitor multiple compatible runs. The bridge selects their
+best eligible training result; holdout scores remain evaluation-only. Remote
+workers perform offline search, while a local simulator runs the production
+filter and applies the selected parameters for the map and 3D viewer. The local
+preview performs no parameter search. It waits for the bridge's first snapshot
+and can remain open while remote workers compile or start another round.
+
+New **remote** sessions refresh their dataset every 5 minutes by default.
+Set `--refresh-minutes 0` to keep one fixed dataset, or choose another interval
+with `--refresh-minutes N`. A refresh records four new training clips and two
+holdouts using the current best parameters as the new baseline, fresh scenario
+seeds, and the current opponent settings. The local preview pauses during capture;
+the previous remote search continues while recording, uploading and building the
+replacement. Replacement workers remain paused until their build is ready. The
+launcher then asks the old workers to finish their current rounds and save their
+checkpoints before starting the replacement generation. Failed preparation keeps
+the existing search running and retains the failed generation's artifacts.
+
+Each generation has its own baseline, training recordings and holdouts. Its loss
+is compared only within that generation; refreshing starts a new progress history
+rather than ranking results from different datasets together. `OUTPUT/session.json`
+records ownership and the active generation. Later captures, baselines, manifests
+and preview outputs live under `OUTPUT/generations/generation-NNNN/`.
+
+**connect** only monitors existing runs and never refreshes their datasets or
+stops their workers. For a run created with the cooperative-control helper, an
+explicit `remote --resume-manifest MANIFEST --output NEW_DIRECTORY` can resume
+ownership and periodic refresh without starting duplicate workers. Legacy remote
+runs support monitoring but cannot be adopted this way. Stopping the local launcher
+also stops its refresh schedule; its remote workers continue on their current data.
+
+The launcher defaults to 256 candidates per round and up to 32 remote workers.
+Capacity checks reserve 2 GiB for the host and budget 2048 MiB per worker by
+default. For a dataset whose measured worker memory use permits it, pass
+`--worker-memory-mib 1024` to the launcher or remote helper's `start` command.
+The chosen budget is recorded in the manifest; an adopted run inherits it unless
+explicitly overridden. Fresh generations target the requested `--workers` count,
+even if the previous generation was reduced by capacity limits. The replacement
+builds paused, and activation rechecks CPU slots and its memory budget after the
+old owned workers finish. These budgets are admission estimates, not memory limits
+enforced on worker processes.
+Before capturing and again before starting remote jobs, it samples active tuner
+processes and available CPU/memory capacity. Existing workers reduce the new
+worker count; a full host produces an error suggesting **connect**. These probes
+do not reserve remote resources against unrelated concurrent launchers. They
+never terminate existing searches. SSH authentication for the capacity probe is
+bounded to 30 seconds; remote upload/startup has a 30-minute deadline, with
+errors in the startup log.
+
+Local search artifacts are under `OUTPUT/local`. A remote launch writes optional
+captures to `OUTPUT/recordings` and its durable remote manifest to
+`OUTPUT/remote/manifest.json`. Remote monitoring writes
+`OUTPUT/monitor/remote-progress.json`; preview outputs, including `3d-viewer.log`,
+are under `OUTPUT/preview`. Keep the manifest to reconnect after closing Twix or
+the launcher. If startup fails after submitting a remote job, inspect that
+manifest before retrying so that an existing search is not duplicated.
+
+Ctrl-C or SIGTERM stops the launcher's local bridge, simulator and child
+processes. Remote workers continue in tmux. Closing the panel does not cancel
+its launcher. To change which remote runs are shown, stop the previous local
+launcher and use **connect** with a new output directory and the desired
+manifests. The ordinary **Connect to simulator / optimizer** action observes a
+local endpoint that is already running.
+
+The panel's **Past optimization runs** section lists local runs and known remote
+sessions, including their location, status, date, trial count and separate
+training/held-out baseline-to-best metrics. Click **Refresh history** to update
+it. Unreachable remote runs retain cached scores marked **Cached / stale**.
+Scores from different recordings are not a shared leaderboard.
+
+For a stopped run, **Move to trash** shows its full location and requires
+**Confirm move to trash**. The action moves the entire dedicated run, including
+its recordings and results, into recoverable trash: `logs/ball-filter-trash`
+locally, or `~/.cache/hulk-ball-filter-tuning/trash` remotely. It does not stop
+workers or permanently erase files. Active runs, unknown process status, stale
+remote status and local recordings referenced by another retained session/report
+block the action, with a reason shown in the panel. Process state and references
+are checked again when confirming. History is cached in
+`logs/ball-filter-run-history.json`.
+
+Focused launcher tests require no SSH, recordings, or simulator build:
+
+```sh
+python3 -m unittest scripts/test_ball_filter_optimization.py
+```
+
+Optimization recordings and the default live preview contain one real ball,
+moved by MuJoCo impulses. This gives the error a single unambiguous target.
+Recordings with multiple reference balls are rejected by the optimizer.
+For a separate, unscored multi-ball visualization, start tuning with
+`--tuning-preview-balls 2` (or `3`). Only the live preview changes; training and
+holdout captures still contain one ball. Every physical ball has its own green
+velocity arrow; the blue ball remains the production filter's selected track.
+Orange robot-sized cylinders approach and flank the nearest ball as MuJoCo
+mocap obstacles. The default is two opponents, each 0.44 m in diameter. Set
+**Opponents** (0–8) and **Opponent diameter (m)** (0.1–1.2 m) in the panel, or pass
+`--opponents N --opponent-width METRES` to the launcher. Changing the live settings
+restarts the preview episode so collision geometry, perception and rendering
+agree. Capture freezes these settings for all six recordings; changes to the live
+preview do not alter existing recordings. A later remote refresh captures the
+latest live opponent settings. The leading opponent tries to shield the ball from
+the controlled robot, then applies a physical sideways kick after reaching a plausible foot
+stance. Pursuit has speed and acceleration limits, robot clearance, wall bounds,
+a kick cooldown and an airborne-ball check. They remain simplified cylinders;
+the opponents do not run articulated walking or a second behavior stack.
+
+They collide with balls, are published to behavior's obstacle input, and suppress
+synthetic detections when the camera-to-ball center ray crosses their volume.
+Occluded balls remain present in ground truth, so dropping those tracks is penalized.
+Each capture writes a `*.coverage.json` summary of actual opponent kicks, whether
+the camera ray was blocked at the kick, and whether the ball was also inside the
+camera image. Kick events are recorded on the existing ROS-Z scenario topic.
+The summary is diagnostic; optimization inputs remain the original MCAP messages.
+
+**Walking speed ×** is a human-controlled multiplier, default 1.0 and range
+0.1–3.0. Set it before launch, pass `--walking-speed-scale FACTOR` to the launcher,
+or use **Apply walking speed** while connected. The robot keeps following the
+ball through normal behavior; the multiplier adjusts its walking commands within
+the existing policy limits (2 m/s forward, 1 m/s backward/lateral, 1.5 rad/s turn).
+Live changes restart the preview episode and are saved for the next fresh capture.
+Existing recordings retain their original setting. This control is not optimized.
+
+
+The robot runs the normal behavior stack with game state `Playing`, a free ball,
+and no injected motion command. Production behavior controls walking, head tracking,
+search and kicking using the noisy ball filter output. Game state and selected
+motion commands are recorded alongside the sensor messages.
+
+Each 40-second recording varies the ball while behavior remains in control:
+
+| Time | Ball scenario |
+| --- | --- |
+| 0–3 s | Stationary ball |
+| 3–9 s | Incoming diagonal impulse |
+| 9–10.2 s | Fast cross-field impulse |
+| 10.2–14 s | Fast ball redirected |
+| 14–18 s | Rolling ball nudged |
+| 18–24 s | Another redirect |
+| 24–28 s | Lateral impulse |
+| 28–34 s | Empty scene with false detections |
+| 34–35.2 s | Fast close pass across the robot after balls reappear |
+| 35.2–40 s | Ball redirected for reacquisition |
+
+Walking speed and route follow the normal behavior parameters. Seeded variations
+change impulse strengths and mirror lateral directions. Scripted kicks apply
+impulses in N·s as external force and torque over one 2 ms MuJoCo step, striking
+above the ball's center. Existing momentum is preserved; MuJoCo integrates velocity,
+spin, friction and contact, including any robot kicks. Capture reports walking and
+simultaneous robot/ball motion; episodes where behavior searches or stops after
+losing the ball remain valid training data. Capture rejects falls and insufficient
+ball motion. It also verifies peak ball speed exceeds
+2.5 m/s and at least half a second is spent above 2 m/s. Baseline profiles use 2 px Gaussian center
+noise and 4% false detections; stress profiles add 5 px noise, pixel bias, 8% false detections, random
+misses, eight-frame dropout bursts and eight-frame false detections.
+
+Perception runs now also delay detector delivery by 50 ms with uniform ±15 ms
+jitter. Exposure timestamps remain in the original detector messages and their
+announcements; announcements precede the delay so fusion knows the frame is in
+flight. After eight in-view, unoccluded frames with a ball within 1 m, a repeating
+challenge suppresses one, two, then three detector frames (40/80/120 ms at 25 Hz).
+The physical ball and ground truth remain present. Configure this through
+`delivery_delay_seconds`, `delivery_jitter_seconds`, and `close_dropout_pattern`
+in `ball_perception`; an empty pattern disables the scheduled gaps. Existing
+random misses and physical opponent occlusion remain separate.
+
+Captures include `behavior/blackboard`, `behavior/trace`, and fall status. Their
+coverage JSON reports close-ball Kick-to-Stand transitions, standing time, and
+standing after a kick while a visual observation younger than 100 ms is present.
+These are command diagnostics, not measured immobility or completed kicks.
+`review_required` is distinct from the filter's position score; missing approach
+coverage is never reported as a successful behavior check.
+
+Before deploying behavior/filter changes, run the independent approach check:
+
+```bash
+./simulator --check-ball-approach logs/ball-approach-check
+```
+
+Use a new output directory. Four cases compare clean input, brief gaps, delivery
+delay, and both. The check runs production kinematics, Ground/torso-reference
+localization, odometry, filter, visual selector and the full behavior tree from a
+fixed MuJoCo robot pose with stationary synthetic ball ground truth at 0.7 m.
+It records native ROS-Z MCAPs and `report.json`, and exits nonzero on missing
+coverage or a Kick-to-Stand interruption. Commands are observed, not actuated;
+this isolates perception/decision continuity and does not validate the SDK or
+physical kick policy. A local parameter overlay disables the development
+zero-velocity command injection so the normal behavior tree actually runs.
+This guards against the game-discovered 100 ms authorization/Stand-lockout bug;
+parameter optimization alone cannot detect or fix a hardcoded behavior gate.
+
+Twix separates **Best tuned values** from **Fixed values (not searched)**. Six search
+variables cover five parameter groups; the saved `optimized/ball_filter.json5`
+contains the latest best configuration, saved atomically on every improvement.
+Completed rounds are retained in `round-NNNN/`; `optimized/report.json` records
+the latest completed round's
+training/holdout metrics, including missing ground-transform coverage and the count
+of numerically unstable candidates rejected during search. Parameters
+are saved for review, not automatically applied to robot defaults.
+
+The search objective uses bounded position error, with a missing estimate costing
+more than any finite position error. Truth within 1 metre of the robot additionally
+contributes four times its own time-normalized loss, without field-boundary
+downweighting. Long far-ball intervals cannot dilute this close-range component.
+Empty scenes still penalize false tracks,
+so aggregate loss alone can trade tracking continuity for earlier forgetting.
+The search therefore fixes hypothesis timeout, legacy per-frame confidence factors,
+output threshold, `visible_missed_detection_timeout` and
+`maximum_obstacle_time_difference`, `field_boundary_validity_decay_rate`, and
+`maximum_detection_distance`, plus `near_visible_missed_detection_timeout` and
+`near_visible_missed_detection_distance`, at the capture baseline, including when
+importing an older warm start. With the current baseline this preserves the
+20-second hypothesis timeout and 1-second clear-view miss timeout. Only
+measurement/process noise, association cost, velocity decay and the enabled
+per-second confidence decay rates are searched. The hidden rate is searched over
+0–0.3/s, the visible-but-undetected rate over 0–4/s, the competing-hypothesis
+rate over 0–2/s, and additional near clear-miss decay over 0–40/s. A rate of zero is a valid
+learned value. A legacy baseline with a missing/null rate keeps its old per-frame
+behavior: candidates cannot enable that rate, and the report and UI omit it from
+the searched parameters. Importing an older warm start without rates preserves
+the new capture baseline's rates.
+
+A candidate must also preserve baseline close-range position RMSE, RMS spatial
+motion lag, absolute mean spatial motion lag, total missing time, close-range
+missing time and longest missing interval in **every training recording**, as
+well as in aggregate. Only floating-point roundoff is tolerated. RMS lag prevents
+opposing lead/lag errors from cancelling. Held-out recordings remain
+evaluation-only; these guards do not guarantee held-out accuracy or continuity.
+Reports identify this policy and count lower-loss candidates rejected for
+quality regressions. Objective `single_ball_close_accuracy_v4` scores cannot be
+compared directly with earlier objective versions.
+
+The filter distinguishes a ball hidden behind a robot from a ball that should be
+visible but is repeatedly missing from detector results. With the current
+`visible_missed_detection_timeout` of 1 second, a hypothesis expires after one
+second of accumulated clear-view misses, even if it previously had high
+confidence. Only received camera detection frames contribute; odometry updates
+and long sensor gaps do not count as observations. The predicted ball must fit
+fully inside the image and be large enough to observe. A matched detection clears
+its missed-observation history.
+
+Within 1 m, an unobstructed observable ball that is repeatedly absent has a
+separate 120 ms clear-miss expiry. Its additional
+`near_visible_missed_validity_decay_rate` defaults to 20/s and is learned; the
+distance and hard expiry remain fixed. This close-range clock only accumulates
+consecutive nearby clear misses. A match, occlusion, unknown visibility, movement
+out of range, or a gap over 120 ms resets it. The ordinary visible-miss decay
+still applies in addition. Legacy omitted near-field parameters disable this rule.
+
+Kick authorization is independent of optimizer confidence. Normal behavior
+requires a real visual ball observation whose **exposure time** is no more than
+100 ms old on the current behavior clock. A model-only ball cannot authorize a
+kick, including a repeated kick request. Each actual detector frame publishes
+`ball_filter/ball_percepts` with that exposure timestamp; odometry-only updates
+do not publish empty percept frames. An actual empty frame immediately clears
+`visual_kick/ball_position`, and behavior independently rejects stale observations
+if the selector stops publishing. This conservative gate also clears when a real
+frame has invalid projection geometry. It cannot be disabled by tuning the decay
+rates or model retention parameters.
+
+An additional learned `competing_hypothesis_validity_decay_rate` reduces unmatched
+alternatives when the selected leader has been matched continuously for one second
+and its raw confidence is at least 10 (or the output threshold, if higher). Its
+default is 0.5/s and the additional factor is `exp(-rate * elapsed_seconds)`.
+Every hypothesis matched in the current image is protected. A leader change, miss,
+unknown visibility, merge or gap over 120 ms resets confirmation. Odometry-only
+updates provide no evidence for this penalty. Legacy null/missing values disable
+it; an enabled zero rate is a valid optimizer result. The confirmation duration
+and confidence threshold remain fixed.
+
+Occlusion or looking away pauses this miss budget and uses hidden confidence
+decay with the existing 20-second hypothesis timeout. The default hidden decay
+rate is 0.01/s and applies even without field localization; the default
+visible-but-undetected rate is 1/s. Both use `exp(-rate * elapsed_seconds)` for
+consecutive unmatched frames in the same visibility category, separated by at
+most 120 ms. The first miss, category changes, unknown visibility and long gaps
+do not charge an unobserved interval. Matched frames retain their existing
+confidence update. Additional outside-field decay remains separate and fixed.
+The filter uses the same
+`obstacles` stream that populates `WorldState.obstacles`, considering only
+`Robot` obstacles as occluders. Their foot/hip radii approximate opaque vertical
+columns; they are not articulated robot silhouettes. Obstacle positions are
+expressed in Ground at their source timestamp and compensated using robot
+odometry to the image timestamp. This alignment does not use visual localization.
+`maximum_obstacle_time_difference` defaults to 100 ms. Missing or stale obstacle
+data, or missing odometry needed to align it, cannot establish a clear view and
+therefore pauses negative evidence. A recent, explicitly empty obstacle snapshot
+can establish that no robot blocks the view.
+
+The obstacle filter also advances and publishes its Ground coordinates on
+odometry-only updates, including periods without camera detections. These updates
+use the full absolute-odometry change and add no per-tick process noise. Their
+source timestamp identifies the coordinate frame; it does **not** mean the robot
+was visually observed again. Each obstacle hypothesis retains its last measurement
+time and still expires under the obstacle filter's own timeout during camera
+silence. Delayed images are fused in source-time order, and a detection at the
+current odometry timestamp is applied only once.
+
+Both simulator and real-robot recording lists include `obstacles` and
+`ball_filter/obstacles`. The latter records the exact snapshot selected for each
+image, its original source timestamp, or its absence, so offline replay uses the
+same evidence as the live filter. Legacy baseline files that omit
+`visible_missed_detection_timeout` deserialize it as zero, disabling this new
+miss timer and retaining the legacy confidence-decay path. In that mode, a ball
+inside the image can receive visible decay even when a robot occludes it.
+Capture a new dataset with the enabled baseline to evaluate the new behavior;
+search does not silently enable it for old recordings.
+
+Single-ball reference positions beyond the field receive weight
+`exp(-distance / 0.3 m)`, where distance is the ball's clearance outside the field
+rectangle (including the ball-radius allowance at the boundary). For example,
+0.3 m clearance gives 37% weight, 1 m gives 3.6%, and 2 m gives 0.13%.
+Inside-field and absent-ball frames keep full weight. This weights the rarity of
+reference scenarios independently of the live confidence prior described below.
+The loss is normalized by weighted time, while raw errors and durations stay
+unweighted. Reports include the weighted and outside-field durations.
+Unbounded conditional position RMSE and total/longest missing intervals remain
+visible separately. Loss values from different objective versions are not directly
+comparable; the report records the formulas and objective version.
+
+The live filter also applies a soft field-boundary prior to hypothesis confidence:
+`raw validity * exp(-distance / field_boundary_confidence_decay_distance)`.
+The default decay distance is 0.3 m; a nonpositive value disables it. This weight
+affects output selection and confidence thresholds. With
+`field_boundary_validity_decay_rate = 2.0`, it also reduces stored validity by
+`exp(-rate * (1 - weight) * elapsed_seconds)`: farther outside the field means
+faster forgetting, up to an additional decay rate of 2 per second. Only contiguous
+valid-pose intervals of at most 120 ms accumulate this decay; missing geometry or
+long gaps pause it. A zero rate preserves the legacy behavior, which changes output
+confidence without accumulating this extra validity loss. Missing field poses or
+poses more than 20 ms from the filter state disable the prior for that output.
+Simulation still uses its absolute torso
+reference and production kinematics, without visual localization. Real robots use
+their normal `ground_to_field` estimate. The decay distance and rate are fixed,
+not searched. Projected ball detections farther than the default
+`maximum_detection_distance` of 15 m are rejected before association or track
+creation; zero disables this limit for legacy baselines. This distance limit is
+also fixed during optimization.
+The ordinary ROS-Z topic `ball_filter/field_prior_pose` records the exact pose (or
+its absence) used for each output, so live and offline filtering agree. Legacy
+recordings without this diagnostic replay without the prior.
+The real robot's default MCAP topic list includes these filter diagnostics and
+odometry announcements too. Optimization of real recordings still requires
+reference ball labels and the corresponding baseline parameter snapshot.
+
+For kicking, distinguish spatial tracking lag from estimate age. Twix shows the
+filter timestamp's age relative to the latest physical sample. The fusion path
+has a 25 ms detection safety window; the current ball-state composer discards that
+source timestamp. At 5 m/s, 25 ms means 12.5 cm of travel. The viewer displays the
+actual timestamped estimate, without inventing a forward prediction.
+The table also reports error for balls within 1 m and signed along-motion spatial
+lag (positive means behind the ball). Lag uses consecutive single-ball references
+in field coordinates at 0.5–15 m/s; its coverage is shown, and multi-ball intervals
+are excluded. It is an average spatial diagnostic, not processing latency.
+The current kick path can combine a raw nearest-percept position with the primary
+filter track's velocity. Recordings include `ball_filter/ball_percepts`,
+`visual_kick/ball_position` and `ball_state` to investigate this separately.
+
+## Robotics stack
+
+The launcher starts the production `behavior_node`, `ball_state_composer`,
+`rule_obstacle_composer`, `fall_detection`, `motion`, `head_motion`,
+`motion_inference`, `hardware_interface`, and `global_parameter_provider` nodes.
+They share MuJoCo's logical clock. Behavior ticks every 20 ms and owns
+`behavior/motion_command`; motion sends the resulting joint commands through the
+real hardware interface. The simulator supplies the inputs listed below.
+
+The global provider publishes retained `joint_limits`, `player_number`, and
+`field_dimensions`. Live field changes update its temporary parameter layer.
+With `--no-robotics`, the simulator publishes field dimensions directly instead.
+
+The simulator starts paused, with **no injected motion command**. Its temporary
+layer clears the base configuration's injection; remote control starts disabled.
+The default Game state is Initial, so behavior requests Stand with a head scan.
+Set Game to Playing and send it to enable ball pursuit and kicking; add a ball
+from the palette. With no ball, behavior searches after its last-ball timeout.
+
+**Inject command** writes the form to the behavior node's
+`control.injected_motion_command` parameter. **Clear injected motion — let behavior
+control** writes `null` and stops UI ball/kick tracking. Clearing leaves the draft
+available for reuse and lets behavior follow the current Game settings on its
+next logical tick. Parameter writes work while paused; behavior output updates
+when simulation resumes. Injection follows the production tree's priorities:
+Stop overrides it, and remotely enabling the behavior remote-control mode also
+takes precedence. Normal motion safety checks still apply to injected commands.
+
+To test the head, select **Stand** and **LookAround** in the Motion command form,
+click **Inject command**, then **Run / Pause**. **Space** toggles play/pause unless you are editing a text
+field or dragging a ball. **ZeroAngles** returns the head
+to zero; **LookAt** and **LookLeftAndRightOf** expose target position and height.
+The game-controller form controls the field side used by head scan patterns.
+
+**Stand** runs walking inference at zero velocity with the chosen head request.
+**Walk with velocity** forwards the requested forward/lateral velocity and yaw rate.
+**Kick** uses kick inference and the selected head request. Its form exposes target
+speed (m/s) and soft/quick/strong flags, plus live ball and target readouts. Defaults
+are 3.4 m/s and all flags disabled. The soft policy ignores strong
+and quick. **Stand up** exposes the fast flag, disabled by default, for full-body
+get-up inference. Arm commands come directly from the main node: walking and
+kicking use its configured arm controller, and get-up controls all joints.
+**Damping** (also the **Damp robot** shortcut) currently sends zero commands and
+gains, following upstream behavior. **Prepare** requests Booster's preparation
+mode. The simulator acknowledges this mode but does not implement Booster's preparation pose controller.
+
+The editor still refuses path-based **Walk** and suggests **Walk with velocity**.
+External path requests use the upstream walking controller. Kick speed, ball velocity,
+and policy flags are forwarded to inference, which applies its policy limits.
+Head and body services run concurrently using the main node's service clients.
+Service errors, stale inputs, and recovery transitions use the upstream motion
+safety lifecycle. A latched control fault needs Damping followed by Prepare,
+then the desired command, or **Reset robot & stack**. Fall detection runs on
+measured simulated joints/IMU; recovery completion is not faked.
+
+**Look at first ball** immediately sends `Stand { head: LookAt { ... } }` for the first
+spawned ball still in the scene and opens the constructed command in the form.
+It continuously samples the ball's current MuJoCo center, converts it into the controlled
+robot's Ground frame, and includes its height above ground with image region
+Center. Moving the ball or robot updates the published target and displayed coordinates,
+including while paused or dragging. **Stop tracking ball** holds the last target;
+editing or sending a motion command, or pressing **Damp robot**, also stops tracking.
+If the first ball is removed, tracking follows the oldest remaining ball. With no ball,
+tracking stops with a message and leaves the last command unchanged.
+
+**Kick** uses the first spawned ball's actual MuJoCo position and linear velocity,
+transformed into the controlled robot's Ground frame. Kick direction automatically
+aims from the ball toward the center of the right goal (field +X goal line).
+These fields are read-only and update live as the ball or robot moves, including
+while paused or dragging; resizing the field updates the aim too. Velocity is
+measured in m/s, with world motion rotated into Ground axes. Dragging resets ball
+velocity to zero. The sent kick keeps tracking even while editing another draft.
+With no ball, sending a kick is rejected; removing the last ball stops an active
+kick by sending Damping.
+
+Behavior output commands have solid scene arrows, inspired by
+[MJLab's velocity visualization](https://github.com/mujocolab/mjlab/blob/main/src/mjlab/tasks/velocity/mdp/velocity_command.py).
+For **Walk with velocity**, blue shows planar velocity and green shows signed yaw
+rate, both starting above the robot's torso. Length is 1 m per m/s or rad/s; a
+negative yaw rate points downward. For **Kick**, an amber 1 m arrow starts
+at the ball and shows `kick_direction` (a direction, not a speed or predicted path).
+Directions use the robot's Ground-frame yaw and follow its current world pose.
+Zero vectors are hidden. Unsent draft edits do not change the arrows; the panel
+legend identifies the active command, including autonomous output. Arrows do not intercept ball picking or dragging.
+
+`hardware_interface` publishes raw CDR `LowCommand` messages on `rt/joint_ctrl`.
+MuJoCo applies `tau + kp * (q_target - q) + kd * (dq_target - dq)` every physics
+step, clamped to each actuator's torque limits. Commands are serial and must
+contain exactly 22 finite motor commands with nonnegative gains. The last valid
+command is held between messages; without a command actuator torque is zero.
+The model represents full custom control, so command blending weight is not used.
+
+A small raw SDK responder acknowledges Damping, Prepare, and Custom mode changes
+on `rt/LocoApiTopicReq` / `rt/LocoApiTopicResp`. This lets the real actuator enforce
+its mode-acknowledgement contract. Other SDK actions are rejected. Prepare has no
+simulated SDK pose controller, and LEDs are not modeled. Raw SDK and joint topics
+are unnamespaced: use a dedicated router, with one controlled robot per router.
+
+## Behavior input map
+
+All topic names below are relative to `/simulator/robot` by default. This is a
+single controlled robot with perfect state substitutions, not a perception test.
+MuJoCo world +X/+Y is converted into the robot's yaw-aligned Ground frame. Field
+coordinates use the team convention: Home is world-aligned, Away rotates by π,
+so autonomous behavior always attacks Field +X. The UI's manual kick shortcut
+continues to aim toward world +X, independently of team side.
+
+| Behavior input | Supplied by | Functionality and limits |
+| --- | --- | --- |
+| `field_dimensions` | Real global provider, synchronized to simulator field | Field geometry, kickoff poses, goals, and rule geometry follow field edits. |
+| `player_number` | Real global provider (`global.player_number`) | Correct player penalty and configured role; editable through Twix. |
+| `primary_state` | UI filtered game state mapped directly, including this player's penalty | Initial/Ready/Set/Playing/Stop/Penalized/Finished work. Physical button arming and primary-state-filter transitions are bypassed. Damping/Prepare are available as motion injections. |
+| `filtered_game_controller_state` | Existing Game form | Match phase, kickoff, penalties and set plays can be exercised manually; no referee, whistle detection, countdown, or automatic match progression. |
+| `ground_to_field` | MuJoCo foot midpoint and torso yaw, with team-side rotation | Localization-dependent walking and aiming work perfectly; no localization drift, ambiguity, or relocalization tests. |
+| `ball_state` | Real ball composer from ground-truth `ball_filter/ball_position` | Oldest remaining ball, measured position/velocity, simulation-time last-seen stamp. Pursuit, interception, and kicking work; no visibility, occlusion, camera noise, false detections, or team-ball fusion. No balls publishes `None`. |
+| `visual_kick/ball_position` | Same ground-truth ball in Ground coordinates | Fresh kick inputs with simulation timestamps; visual-kick tracking failures and latency are absent. |
+| `rule_ball_state` | Real ball composer from UI game state, pose, dimensions, and primary state | Kickoff/penalty rule-ball placement follows production logic. |
+| `rule_obstacles` | Real rule obstacle composer | Kickoff, opponent free-kick, and penalty restrictions follow production logic and manually supplied game state. |
+| `obstacles` | Ground-truth passive robot torso positions, conservative radii | Robot avoidance can be exercised; passive robots have physics but no decisions. Goal structures remain physical collisions and are not supplied as planner obstacles. No detection noise or classification tests. |
+| `position_of_interest` | Ball position, otherwise one metre straight ahead | Deterministic gaze fallback, without a tactical attention model. |
+| `fall_detection/status` | Real fall detector from MuJoCo `inputs/low_state` | Measured falling/fallen/upright classification and readiness; thresholds and dynamics remain those of the production node and simulated robot. |
+| `motion/execution` | Real motion node | Actual recovery phase, completion, and fault feedback; no fabricated successful get-up. |
+| `player_states` | Absent; behavior defaults to all players absent | Behavior selects its last-player striker/search branch. Cooperative role allocation, supporter positioning, Voronoi ownership contests, teammate passing, and the ordinary goalkeeper branch are not exercised. Passive robots do not count as teammates. Requires simulated team identities and independent stacks/state messages. |
+| `hypothetical_ball_positions` | Absent; empty default | No uncertain-ball gaze candidates. Ground truth cannot produce meaningful perception hypotheses without an observation model. |
+| `suggested_search_position` | Absent; `None` default | No distributed search suggestion. Current search subtree already uses its turning search action; the suggested-position walking branch is commented out upstream. |
+| `game_controller_address` | Absent; `None` default | No return packets to a real GameController. Behavior can emit team messages on `outputs/message`, but no network node transmits or routes them. |
+| `behavior_node` parameters | Base/location/robot layers plus temporary override layer | Full production strategy settings, remotely editable with Twix. Injection and remote control start cleared/disabled. |
+
+The most useful next additions are team identities/message routing for cooperative
+behavior, and a visibility/noise model for ball loss and uncertain perception.
+Ground truth alone does not validate those parts of the behavior tree.
+
+## Connect Twix
+
+Yes. Start the simulator, then run ROS-Z Twix from another terminal:
+
+```bash
+./twix /simulator/robot --router tcp/127.0.0.1:7447
+```
+
+Use the namespace passed to `--robot-namespace` and the same router endpoint if
+you override either. The default router listens on loopback; for another machine,
+run a shared reachable router and pass its endpoint to both programs.
+
+Useful Text topics are `behavior/motion_command`, `behavior/blackboard`,
+`behavior/trace`, `fall_detection/status`, `motion/execution`,
+`motion_inference/status`, `hardware_interface/status`, `ball_state`,
+`ground_to_field`, and `rule_obstacles`. The Parameter panel can edit
+`/simulator/robot/behavior_node`, including `control.injected_motion_command`
+(`null` returns control), and the other running nodes. Use namespace `/simulator`
+for the simulator's own `parameters` node. There are no camera image topics, so
+an Image panel will not receive rendered vision. Behavior and motion outputs stop while paused; parameter services and scene
+state updates remain available. The Map panel's Field, Robot Pose, Ball Position,
+Obstacles, Path, and Path Obstacles layers use topics provided by this stack.
+Perception-filter and localization-debug layers have no source nodes here.
+
+## External topics and time
+
+ROS-Z topics below are relative to `--robot-namespace` (default
+`/simulator/robot`). There is no `low_state_bridge` and no raw `rt/low_state`.
+
+| Direction | Topic | Payload/source |
+| --- | --- | --- |
+| Publish | `inputs/low_state` | `booster::LowState`, measured MuJoCo joints and IMU |
+| Publish | `camera_matrix` | `TimeWrapper<CameraMatrix>`, MuJoCo camera definition and pose |
+| Publish | `ground_to_robot` | `TimeWrapper<Option<Isometry3<Ground, Robot>>>`, ground truth |
+| Observe | `behavior/motion_command` | `MotionCommand`, emitted only by behavior |
+| Publish | `filtered_game_controller_state` | `FilteredGameControllerState`, UI |
+| Publish | `field_dimensions` | `FieldDimensions`, actual simulator parameters, retained |
+| Publish | `joint_limits` | `JointLimits`, robotics global parameters, retained |
+| Publish | `player_number` | `PlayerNumber`, robotics global parameters, retained |
+| Receive, raw Zenoh | `rt/joint_ctrl` | CDR little-endian `booster::LowCommand` |
+
+Physics uses MuJoCo's fixed timestep (currently 2 ms). Each step publishes measured
+joint position, velocity, acceleration and actuator torque, plus IMU roll/pitch/yaw,
+angular velocity and accelerometer readings. The serial motor list uses Booster's
+joint order, mapped by MJCF names rather than MuJoCo array order. The model has no
+parallel ankle motor measurements, so that list is empty. Temperature, packet loss
+and reserved fields use zero defaults.
+
+The robotics context uses `Clock::logical`. Before publishing each physics frame,
+the simulator advances the shared clock to that frame's MuJoCo time, also used for
+sensor source timestamps and geometry wrappers. This prevents concurrent service
+requests from seeing observations ahead of their clock. Advancing time wakes robotics
+timers. Pause stops physics, recurring sensor
+publication, and those timers. UI input can still be sent while paused.
+An initial observation is published at startup and after structural model changes.
+
+Ground is centred between the foot-link origins, projected onto the field plane,
+with the robot's yaw. Camera intrinsics come from the MJCF camera's resolution and
+vertical field of view; its actual pose supplies the extrinsics. MuJoCo camera
+axes are converted to the projection crate's optical axes. No rendered camera
+image or perception node is needed.
+
+## Editors
+
+The right panel has **Commands**, **Game**, and **Parameters** tabs.
+Select a variant and edit its fields with number inputs and choice buttons.
+Numbers support dragging or direct text entry. Angles are edited in radians,
+positions in metres, and velocities in metres/second or radians/second.
+Every field of the chosen MotionCommand is exposed, including nested head
+requests, orientation modes, kick fields, and editable line/arc path segments.
+Game state, phase, teams, time, substate, field side, and per-player penalties are
+editable; the larger penalty sections can be expanded.
+
+**Inject command** applies the motion override; **Send game state** publishes the
+selected match settings. Edits remain drafts until sent. The game state is repeated
+every 20 ms of simulation time. The motion override is a persistent node parameter
+and is only written when changed, so periodic publication does not overwrite Twix edits. The simulation
+status shows whether a joint command has arrived and whether the stack has exited.
+
+The **Parameters** tab exposes every field of `head_motion`, `motion_inference`
+(including all five policies), and `hardware_interface`, plus the shared global
+joint limits. Use the pinned Head / Inference / Hardware / Joint limits selector;
+expand section headers for nested settings. Related numeric fields are paired,
+model paths have text inputs, and the injected head position has an enable button.
+Durations use seconds; joint angles use radians unless named in degrees.
+
+**Apply live** sends the selected group's fields as one atomic ROS-Z parameter
+transaction to its running node. It does not pause physics, reset the robot,
+restart nodes, or reset simulation time. The footer reports pending changes,
+service availability, rejection reasons, and completion. Drafts in other groups
+are retained and marked with an asterisk. **Discard edits** reloads the selected
+form from the latest node snapshot. Node snapshots refresh in the background;
+external edits are reflected when the form has no unsent changes. Revision checks
+reject stale drafts instead of overwriting another editor's changes.
+
+The rebased inference node rejects live inference parameter changes: edit its
+configuration before starting a new simulator process. The UI reports that rejection;
+a stack reset alone does not apply a rejected draft. Hardware also rejects changes
+to its actuator output period without restart. Shared joint limits and head settings
+retain their live parameter handling.
+
+The simulator adds a temporary writable parameter layer, so UI edits survive
+**Reset robot & stack** and do not alter repository configuration files. They are
+discarded when the simulator closes. Reset also reapplies the current UI override
+selection, including a pending clear. With `--no-robotics`, the editor contacts the
+external nodes in the configured namespace and writes to their last reported layer.
+An external behavior node needs a lower layer with
+`control.injected_motion_command: null` and a separate writable top layer; otherwise
+recursive merging can combine the base injection's enum variant with a UI variant.
+The built-in stack creates these two temporary layers automatically.
+Field geometry and ball physics remain available through the simulator parameter
+service below. Arm handling remains owned by the upstream motion node; inference
+arm-angle edits do not override its current zero arm commands during walking or kicking.
+
+The right panel uses a fixed simulation toolbar, selected tabs, a scrolling form,
+and a fixed feedback/action area. Its visual pass follows
+[Anthropic's frontend-design skill](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md)
+with Fira Sans labels, slate surfaces, blue active controls, and amber errors.
+
+## Configuration
+
+The simulator owns a local router at `tcp/127.0.0.1:7447`, with multicast discovery
+disabled. To use an existing router:
+
+```bash
+./simulator --router tcp/127.0.0.1:7447
+```
+
+- `--parameter-root`: simulator parameter directory, default `tools/simulate/parameters`.
+- `--robotics-parameter-root`: robotics parameter root, default `etc/parameters`.
+- `--location`: location layer over `base`, default `simulator`.
+- `--robot`: optional robot parameter layer over the location layer.
+  Simulator-local defaults (including `hardware_interface`) are loaded first, so
+  robotics base/location/robot layers can override them.
+- `--robot-namespace`: namespace shared by the robotics nodes and UI publishers.
+- `--no-robotics`: run the UI, sensors and raw command receiver without launching nodes;
+  useful for testing publishers or running the stack externally.
+
+The simulator parameters remain available on `/simulator/parameters`:
+
+```bash
+rosz parameter snapshot --node /simulator/parameters
+rosz parameter set field_dimensions.length 10.0 \
+  --node /simulator/parameters --layer <layer-reported-by-snapshot>
+```
+
+The imported `USERSTORIES.md` describes broader prototype ambitions, not the
+implemented scope of this ground-truth behavior/motion integration.
+
+## Checks
+
+For direct Cargo checks, configure MuJoCo in your shell first (Bash syntax):
+
+```bash
+export MUJOCO_NO_PKG_CONFIG=1
+export MUJOCO_DOWNLOAD_DIR="${MUJOCO_DOWNLOAD_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/mujoco-rs}"
+export LD_LIBRARY_PATH="$MUJOCO_DOWNLOAD_DIR/mujoco-3.9.0/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+cargo check -p simulate
+cargo test -p simulate
+```
+
+Tests cover robot joint mapping, PD and torque limits, camera geometry, ground
+coordinates, form variants, ROS-Z message/source-time delivery and raw CDR control,
+as well as the prototype's scene and model-recompilation checks.
+
+## Startup regression test
+
+With the MuJoCo library on `LD_LIBRARY_PATH`, `ORT_DYLIB_PATH` set, and the K1
+models downloaded, run the headless production-stack test:
+
+```bash
+cargo test -p simulate real_stack_drives_simulated_robot_after_startup -- --ignored --nocapture
+```
+
+It loads inference while simulation time is paused, then checks physical head
+movement, forward displacement from an injected walk, and behavior takeover after
+clearing the injection. No display is needed. The test is opt-in because it needs
+the native runtimes and model files; the ordinary motion tests cover paused-time
+status updates and source-timestamp freshness without loading ONNX models.
+
+### Monitor standalone offline searches in Twix
+
+On the machine running offline `ball-filter-tuner` workers, publish their completed
+reports without starting another search or simulator:
+
+```bash
+cargo +1.98.1 run --release -p ball-filter-tuner --bin ball-filter-monitor -- \
+  logs/my-search --prefix worker- \
+  --reference-report logs/my-search/worker-00/report.json
+```
+
+The reference report fixes the dataset, objective and baseline: incompatible
+reports are excluded from ranking and trial counts. Repeat `--prefix` to include
+multiple worker-name prefixes. The monitor discovers running workers through
+Linux `/proc`, refreshes every two seconds, and reports completed-round trial
+counts and the best training result with its held-out metrics. Workers that do
+not write intermediate reports only update the result when their round finishes.
+This is a read-only progress service; simulator controls and 3D preview are not
+available. It stays online after workers finish. Use `--once` to inspect a JSON
+snapshot without starting the service.
+
+For a local Twix connected to a remote monitor, keep this tunnel running locally:
+
+```bash
+ssh -N -o ExitOnForwardFailure=yes \
+  -L 127.0.0.1:7448:127.0.0.1:7448 schluis@remote-compiler
+```
+
+In Twix, open **Ball-filter optimization** and click **Connect to simulator /
+optimizer**. Only one service can listen on port 7448. If captures also need that
+port, start the monitor with `--listen tcp/127.0.0.1:7449` and change the tunnel's
+remote port to 7449, keeping its local port at 7448.
+
+## Development branch commits
+
+The development branch has three commits: the runtime ball filter, the offline
+replayer and monitor, then the simulator. The replayer and simulator commits can
+be dropped before merging the runtime filter. The simulator commit includes its
+required motion, inference, hardware, head, fall, camera-calibration and joint-limit
+integration. Dropping that commit also restores the main branch SDK integration.
+
+Run simulator checks and captures with the documented MuJoCo and ONNX Runtime
+environment. The runtime ball filter source and selected parameters are identical
+with or without the tooling commits.

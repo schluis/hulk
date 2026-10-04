@@ -1,7 +1,6 @@
 #![recursion_limit = "256"]
 pub mod audio;
 pub mod ball_detection;
-pub mod ball_filter_tuning;
 pub mod ball_position;
 pub mod behavior_tree;
 pub mod bounding_box;
@@ -66,3 +65,11 @@ pub mod walk_volume_extents;
 pub mod whistle;
 pub mod world_state;
 pub mod ycbcr422_image;
+
+pub mod fall_detection;
+pub mod hardware_status;
+pub mod joint_limits;
+pub mod motion_execution;
+pub mod motor_command;
+
+pub mod ball_filter_tuning;

@@ -15,7 +15,7 @@ use ros_z::{
     dynamic::DiscoveredTopicSchema,
     prelude::*,
     pubsub::RawSubscriber,
-    qos::{QosHistory, QosReliability},
+    qos::{QosDurability, QosHistory, QosReliability},
     time::Time,
 };
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,45 @@ use zenoh::sample::Sample;
 type ChannelId = u16;
 type RecorderTasks = FuturesUnordered<BoxFuture<'static, Result<RecordedSample>>>;
 const RAW_IMAGE_TOPIC: &str = "inputs/stereo_image_pair";
+
+/// Programmatic capture using the same schema discovery, wire payloads and MCAP
+/// channels as the recorder node. Start returns after all subscriptions are ready.
+pub struct Recording {
+    stop: tokio::sync::oneshot::Sender<()>,
+    task: tokio::task::JoinHandle<Result<usize>>,
+}
+
+impl Recording {
+    pub async fn start(node: &Node, path: PathBuf, topics: &[&str]) -> Result<Self> {
+        let mut recorders = RecorderTasks::new();
+        for topic in topics {
+            subscribe_topic(node, &mut recorders, 4096, Duration::from_secs(10), topic).await?;
+        }
+        let file = File::create_new(&path)
+            .wrap_err_with(|| format!("cannot create recording {}", path.display()))?;
+        let (sender, receiver) = mpsc::channel(4096);
+        let writer = tokio::task::spawn_blocking(move || write_samples_to(file, None, receiver));
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let result = tokio::select! {
+                result = record_samples(&mut recorders, None, &sender) => result,
+                _ = stopped => Ok(()),
+            };
+            // Finish the MCAP index even when capture fails or the owner drops.
+            drop(sender);
+            let written = writer.await.wrap_err("MCAP writer failed to join")??;
+            result?;
+            Ok(written)
+        });
+        Ok(Self { stop, task })
+    }
+
+    /// Call after publishers have stopped and their final messages have arrived.
+    pub async fn finish(self) -> Result<usize> {
+        let _ = self.stop.send(());
+        self.task.await.wrap_err("MCAP recording failed to join")?
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize, Message)]
 #[serde(deny_unknown_fields)]
@@ -145,7 +184,7 @@ fn spawn_writer_task(
 fn write_samples(
     mcap_path: PathBuf,
     raw_image_min_interval: Option<Duration>,
-    mut write_receiver: mpsc::Receiver<WriteRequest>,
+    write_receiver: mpsc::Receiver<WriteRequest>,
 ) -> Result<usize> {
     let file = File::create(&mcap_path).wrap_err_with(|| {
         format!(
@@ -153,6 +192,14 @@ fn write_samples(
             mcap_path.display()
         )
     })?;
+    write_samples_to(file, raw_image_min_interval, write_receiver)
+}
+
+fn write_samples_to(
+    file: File,
+    raw_image_min_interval: Option<Duration>,
+    mut write_receiver: mpsc::Receiver<WriteRequest>,
+) -> Result<usize> {
     let mut writer = McapWriter::new(BufWriter::new(file), raw_image_min_interval)?;
     let mut samples_written = 0;
 
@@ -180,7 +227,7 @@ async fn subscribe_topic(
         .wrap_err_with(|| format!("failed to discover schema for {topic}"))?;
     let subscriber = node
         .dynamic_raw_subscriber(topic, discovered.type_info())
-        .qos(recorder_qos(queue_depth))
+        .qos(recorder_qos(node, &discovered.qualified_topic, queue_depth))
         .build()
         .await
         .wrap_err_with(|| format!("failed to subscribe to {topic}"))?;
@@ -201,12 +248,23 @@ async fn subscribe_topic(
     Ok(())
 }
 
-fn recorder_qos(queue_depth: usize) -> QosProfile {
-    QosProfile {
+fn recorder_qos(node: &Node, qualified_topic: &str, queue_depth: usize) -> QosProfile {
+    let mut qos = QosProfile {
         reliability: QosReliability::BestEffort,
+        durability: QosDurability::TransientLocal,
         history: QosHistory::KeepLast(NonZeroUsize::new(queue_depth).unwrap_or(NonZeroUsize::MIN)),
         ..Default::default()
+    };
+    // Replay retained startup values such as joint limits and inference status.
+    // Request volatile durability if any publisher cannot provide retained data.
+    let graph = node.graph().lock();
+    let mut publishers = graph.publishers_on(qualified_topic).peekable();
+    if publishers.peek().is_none()
+        || publishers.any(|publisher| publisher.qos.durability != qos.to_protocol_qos().durability)
+    {
+        qos.durability = QosDurability::Volatile;
     }
+    qos
 }
 
 fn receive_sample(mut recorder: TopicRecorder) -> BoxFuture<'static, Result<RecordedSample>> {

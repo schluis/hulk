@@ -1,0 +1,68 @@
+{
+  "family": "fast-crossing",
+  "ball_position": [
+    1.2,
+    0.8
+  ],
+  "robot_position": [
+    0,
+    0
+  ],
+  "robot_yaw": 0,
+  "perception": {
+    "frame_period": 0.04,
+    "delivery_delay_seconds": 0.05,
+    "delivery_jitter_seconds": 0.015,
+    "center_noise_pixels": 2.0,
+    "false_positive_probability": 0.04,
+    "seed": 42
+  },
+  "steps": [
+    {
+      "until": 3,
+      "name": "fast-crossing",
+      "ball_present": true,
+      "ball_impulse": null
+    },
+    {
+      "until": 5,
+      "name": "fast-crossing",
+      "ball_present": true,
+      "ball_impulse": [
+        0.0,
+        -0.95
+      ]
+    },
+    {
+      "until": 13,
+      "name": "fast-crossing",
+      "ball_present": true,
+      "ball_impulse": [
+        0.08,
+        0.85
+      ]
+    },
+    {
+      "until": 22,
+      "name": "fast-crossing",
+      "ball_present": true,
+      "ball_impulse": [
+        -0.15,
+        -1.2
+      ]
+    },
+    {
+      "until": 40,
+      "name": "fast-crossing",
+      "ball_present": true,
+      "ball_impulse": [
+        0.15,
+        1.1
+      ]
+    }
+  ],
+  "minimum_coverage": {
+    "fast_ball_seconds": 0.5,
+    "reacquisition_opportunities": 1
+  }
+}

@@ -1,5 +1,10 @@
 [workspace]
 members = [
+  "tools/simulate",
+  "crates/nodes/motion_inference",
+  "crates/nodes/motion",
+  "crates/nodes/hardware_interface",
+  "crates/nodes/fall_detection",
   "crates/aliveness",
   "crates/approx_derive",
   "crates/argument_parsers",
@@ -26,7 +31,6 @@ members = [
   "crates/nodes/ball_filter",
   "crates/nodes/ball_state_composer",
   "crates/nodes/behavior_node",
-  "crates/nodes/booster_sdk_interface",
   "crates/nodes/button_event_bridge",
   "crates/nodes/button_event_handler",
   "crates/nodes/camera_matrix_calculator",
@@ -46,8 +50,6 @@ members = [
   "crates/nodes/line_detection",
   "crates/nodes/localization-2d",
   "crates/nodes/localization-3d",
-  "crates/nodes/look_around",
-  "crates/nodes/look_at",
   "crates/nodes/low_state_bridge",
   "crates/nodes/mcap_recorder",
   "crates/nodes/message_filter",
@@ -116,6 +118,11 @@ license = "GPL-3.0-only"
 homepage = "https://github.com/hulks/hulk"
 
 [workspace.dependencies]
+rsruckig = "=3.0.1"
+motion_inference = { path = "crates/nodes/motion_inference" }
+motion = { path = "crates/nodes/motion" }
+hardware_interface = { path = "crates/nodes/hardware_interface" }
+fall_detection = { path = "crates/nodes/fall_detection" }
 active_vision = { path = "crates/nodes/active_vision" }
 aliveness = { path = "crates/aliveness" }
 alsa = "0.11.0"
@@ -136,7 +143,6 @@ bevy_mujoco = { path = "crates/bevy_mujoco" }
 bincode = "1.3.3"
 bindgen = "0.71.1"
 booster = { path = "crates/booster" }
-booster_sdk_interface = { path = "crates/nodes/booster_sdk_interface" }
 button_event_bridge = { path = "crates/nodes/button_event_bridge" }
 button_event_handler = { path = "crates/nodes/button_event_handler" }
 bytemuck = "1"
@@ -206,8 +212,6 @@ localization-2d = { path = "crates/nodes/localization-2d" }
 localization-3d = { path = "crates/nodes/localization-3d" }
 localization-factrs = { path = "crates/localization-factrs" }
 log = "0.4.25"
-look_around = { path = "crates/nodes/look_around" }
-look_at = { path = "crates/nodes/look_at" }
 low_state_bridge = { path = "crates/nodes/low_state_bridge" }
 mcap = "0.25.0"
 mcap_recorder = { path = "crates/nodes/mcap_recorder" }
