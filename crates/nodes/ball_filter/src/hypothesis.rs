@@ -85,7 +85,11 @@ impl BallHypothesis {
     /// field eligibility and selection continue to use the baseline state.
     pub fn output_position(&self) -> BallPosition<Ground> {
         match &self.imm {
-            Some(imm) if imm.output_blend > 0.0 => {
+            Some(imm)
+                if imm.output_blend > 0.0
+                    && self.position().velocity.norm() <= 0.2
+                    && imm.combined().mean.fixed_rows::<2>(2).norm() <= 0.2 =>
+            {
                 let baseline = self.position();
                 let original = nalgebra::vector![
                     baseline.position.x(),
@@ -403,14 +407,40 @@ mod tests {
             assert_eq!(candidate.validity, baseline.validity);
             assert_eq!(candidate.last_seen, baseline.last_seen);
         }
-        assert!(
-            (candidate.output_position().position.x() - baseline.position().position.x()).abs()
-                > 0.01
-        );
         candidate.imm.as_mut().unwrap().output_blend = 0.0;
         assert_eq!(
             candidate.output_position().position,
             baseline.position().position
+        );
+    }
+
+    #[test]
+    fn output_correction_requires_agreed_slow_motion() {
+        let mut hypothesis = resting_hypothesis();
+        let state = MultivariateNormalDistribution {
+            mean: nalgebra::vector![0.1, 0.0, 0.0, 0.0],
+            covariance: Matrix4::identity(),
+        };
+        let mut estimator = imm::Imm::new(state, 1.0);
+        estimator.moving_probability = 0.05;
+        estimator.output_blend = 0.5;
+        hypothesis.imm = Some(estimator);
+        assert!((hypothesis.output_position().position.x() - 0.05).abs() < 1e-6);
+        hypothesis.imm.as_mut().unwrap().states[0].mean.z = 1.0;
+        hypothesis.imm.as_mut().unwrap().states[1].mean.z = 1.0;
+        assert_eq!(
+            hypothesis.output_position().position,
+            hypothesis.position().position
+        );
+        hypothesis.imm.as_mut().unwrap().states[0].mean.z = 0.0;
+        hypothesis.imm.as_mut().unwrap().states[1].mean.z = 0.0;
+        hypothesis.mode = BallMode::Moving(MultivariateNormalDistribution {
+            mean: nalgebra::vector![0.0, 0.0, 1.0, 0.0],
+            ..state
+        });
+        assert_eq!(
+            hypothesis.output_position().position,
+            hypothesis.position().position
         );
     }
 
