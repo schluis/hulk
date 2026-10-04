@@ -1,5 +1,14 @@
 # Ball filter method comparison, 2026-10-03
 
+## Current result — validated and enabled, 2026-10-04
+
+The final geometry-supported auxiliary filter is enabled in `etc/parameters/base/ball_filter.json5` (source commit `28ff65b02`). On **24 fresh independent recordings**, close-range RMSE improves **20.6%** (0.461851 -> 0.366802 m) and RMS spatial lag **17.1%** (0.819072 -> 0.678751 s). Correct-ball unavailability improves; false-track time is unchanged. Every per-clip and aggregate safeguard passes on ordinary inputs and at each predeclared localization-wobble amplitude (0.1, 0.25, 0.5 m per axis).
+
+Selection used 144 development recordings, with wobble variants of 48 inspected recordings. The final 24 recordings were reserved until parameters and evaluator were frozen. Integrated source and production parameters reproduce all **168** ordinary recording scores exactly. **146 filter/tuner tests**, strict library Clippy, simulator build and all four live approach continuity checks pass. See the final-result section below for per-family data and provenance. Earlier rejection/pending checkpoints are historical and superseded by this result.
+
+This validates the filter with synthetic detector noise, not CNN inference or real-robot accuracy. Spatial lag is a position-derived metric, not processing latency. Live approach checks establish fixed-pose command continuity, not physical kick success.
+
+
 The experiment compares the current multi-hypothesis filter with three research-inspired alternatives. These are small, independently written adaptations to HULKs 2D ground tracking problem, not claims to reproduce published benchmark results or to establish state of the art. All alternatives default to disabled and use the same original capture parameters for exact replay verification.
 
 ## Research and implementations
@@ -157,3 +166,58 @@ These recordings are now development, totaling 144 ordinary clips plus stress va
 ### Sixth-audit freeze: partial correction
 
 Both 1.5 m and 2 m auxiliary margin grids select blend0.7 and have identical ordinary scores. The declared tie-break chooses the smaller margin1.5 m. Development144 close RMSE0.420717->0.348359m (17.2%), RMSlag0.783866->0.654177s (16.5%), correct-unavailable1286.682->1235.402s, false616.936s unchanged. All144 ordinary clips and all48 inspected clips at each .1/.25/.5m wobble pass every per-clip and aggregate guard. Frozen `candidate144-before-sixth-audit.json` and manifest; unchanged source9c15aecea / buffered-prior-tuner. The candidate also passes all four live approach cases (`approach144-verdict.json`). Sixth fresh capture uses seeds119,000,000+; ordinary and all three stress amplitudes are predeclared, and no sixth scores have been inspected. Main parameter enablement remains reverted pending this independent verdict.
+
+## Sixth independent audit — final configuration
+
+All eight families passed capture coverage on the first attempt. The frozen configuration uses:
+
+| Parameter | Value | Purpose |
+|---|---:|---|
+| `publication_filter_blend` | 0.7 | Correct implausible selected observations with a partial auxiliary estimate; zero disables the auxiliary filter. |
+| `publication_detection_noise` | 0.2 | Auxiliary measurement-noise scale. |
+| `publication_maximum_age` | 5 s | Fall back to the original estimate when auxiliary visual evidence is older. |
+| `publication_maximum_distance` | 0 | No distance cutoff. |
+| `publication_field_boundary_margin` | 1.5 m | Auxiliary ranking uncertainty buffer; main field margin remains 0.5 m. |
+
+The auxiliary history does not accumulate localization-dependent stored-validity decay, but retains a soft field-ranking prior. Main association and output presence remain authoritative. Ordinary physically plausible observations retain their original estimate; correction uses the older observation timestamp. These controls can be varied through simulator parameter files or fixed `--evaluation-parameters` / `--trials 0` comparisons. They are held fixed by the existing 21-dimension continuous search; the archived grids explicitly evaluate the additional controls.
+
+Independent ordinary-input results (24 clips):
+
+| Metric | Baseline | Final |
+|---|---:|---:|
+| Close-range RMSE | 0.461851 m | 0.366802 m |
+| RMS spatial lag | 0.819072 s | 0.678751 s |
+| Mean absolute spatial lag | 0.232810 s | 0.200614 s |
+| Correct-ball unavailable | 229.670 s | 219.390 s |
+| Close correct-ball unavailable | 17.870 s | 16.802 s |
+| Initial acquisition unavailable | 49.660 s | 49.660 s |
+| Established-track unavailable | 180.010 s | 169.730 s |
+| Wrong selected output | 98.090 s | 87.810 s |
+| False-track time | 109.576 s | 109.576 s |
+
+Per-family independent results (three recordings each):
+
+| Family | Close RMSE, m (base → final) | RMS spatial lag, s (base → final) | Correct-ball unavailable, s (base → final) |
+|---|---:|---:|---:|
+| approach | 0.113 → 0.104 | 1.083 → 1.072 | 6.234 → 6.074 |
+| brief-gaps | 0.400 → 0.319 | 0.245 → 0.216 | 15.190 → 14.350 |
+| contested | — → — | 0.730 → 0.491 | 97.634 → 96.474 |
+| empty-false | — → — | — → — | 0.000 → 0.000 |
+| fast-crossing | 0.395 → 0.383 | 0.358 → 0.162 | 8.550 → 8.470 |
+| long-occlusion | — → — | — → — | 22.972 → 15.092 |
+| sideline | 1.748 → 1.336 | 1.426 → 0.888 | 77.478 → 77.318 |
+| stationary-close | 0.011 → 0.011 | — → — | 1.612 → 1.612 |
+
+All false-track time belongs to the empty-scene family and is unchanged. Completed reacquisition-event mean is 0.158419 -> 0.167395 s, maximum 2.392 s unchanged, with zero supported censored events. Event counts differ (129 -> 119) and established loss runs decrease (138 -> 132), so these means are not matched-event latency measurements and are not evidence of faster reacquisition. Initial acquisition is unchanged; established-track unavailable duration decreases.
+
+Predeclared independent localization stress (same 24 clips, scoring truth/cameras/odometry unchanged):
+
+| Prior wobble per axis | Close RMSE, m (base → final) | RMS spatial lag, s (base → final) | All guards |
+|---|---:|---:|---|
+| 0.1 m | 0.468 → 0.372 | 0.842 → 0.697 | pass |
+| 0.25 m | 0.499 → 0.375 | 0.953 → 0.784 | pass |
+| 0.5 m | 0.507 → 0.255 | 1.153 → 0.851 | pass |
+
+Reproduction/provenance artifacts live under `logs/ball-improvement-20261003` on this server: `candidate144-before-sixth-audit-manifest.json` (frozen source/parameters/binary hashes), `sixth-audit-complete-manifest.json` (capture hashes and commands), `sixth-audit-verdict.json` (every ordinary/wobble guard), `sixth-audit-diagnostics-{baseline,candidate}/availability.json` (per-recording acquisition/reacquisition), `final168-verification/report.json` and `final168-integration-verdict.json` (exact integrated replay), `final168-tests.log`, `final168-clippy.log`, `final168-simulator-build.log`, `final168-approach/report.json`, and `final-completion-audit.json`. Captures and immutable binaries are local artifacts, not a clean-checkout download guarantee. Use a new output directory when reproducing evaluator commands; existing reports are protected from overwrite.
+
+The Student-t, IMM and PDA adaptations remain separate worktree experiments. Their matched comparison is documented above; the promoted change is the geometry-supported auxiliary history, not a claim of reproducing a published SOTA method. No parameters were selected from the sixth audit.

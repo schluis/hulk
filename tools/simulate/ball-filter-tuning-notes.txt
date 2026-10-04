@@ -1,3 +1,6 @@
+FINAL STATUS — 2026-10-04
+The optimization is validated and enabled at source commit28ff65b02. Final24fresh clips pass every ordinary/.1/.25/.5m-wobble guard: closeRMSE .461851->.366802m (20.6%), RMSlag .819072->.678751s (17.1%), correctunavailable229.670->219.390s, false109.576s unchanged. Parameters: publication blend.7, detectionnoise.2, maxage5s, maxdistance0, auxiliaryfieldmargin1.5m. Mainfieldmargin/eligibility stay unchanged. All168ordinary recording scores exactly reproduce the frozen candidate after integration. 108filter+38tuner tests, strictlibraryClippy, simulatorbuild and allfour liveapproach cases pass. See ball-filter-method-comparison.md for full per-family/stress/initial-acquisition/reacquisition results, research variants and limitations. This supersedes historical pending/rejected/reverted checkpoints below.
+
 Ball filter realism and optimization work log
 ===========================================
 
@@ -1390,3 +1393,9 @@ Stationary training diagnostic: odometry versus recorded Field pose drifts about
 2026-10-04 candidate144 frozen for sixth audit
 - Both margin1.5m/2m grids choose blend.7 with identical development loss; smaller margin1.5m wins tie-break. 144ordinary clips + three wobble amplitudes on48inspected clips all pass. CloseRMSE .420717->.348359m, RMSlag .783866->.654177s, correctunavailable1286.682->1235.402s, false616.936s unchanged. Allfour live approach cases pass, hash matched frozen config.
 - Frozen candidate144-before-sixth-audit.json + manifest, source9c15aecea / buffered-prior-tuner unchanged. Sixth capture/finisher/evaluator/diagnostic-export watchers live. Fresh seeds119,000,000+, no scores inspected; predeclared .0/.1/.25/.5m prior wobble checks. Main optional filter remains disabled. If all fresh guards pass with substantial gains, integrate buffered types/tracker from hulk-ball-publication-filter and enable the five frozen publication parameters, then verify integrated replay/build and document results.
+
+2026-10-04 final completion verification
+- Sixth independent24clips all pass ordinary and predeclared .1/.25/.5m per-axis prior-wobble checks. All eight families meet coverage; all1–5frame dropout lengths were actually observed in every brief-gap clip. Capture/evaluator/parameter hashes verified.
+- Integrated buffered auxiliary source and enabled frozen five publication parameters in etc/parameters/base/ball_filter.json5. Exact parameter equality and exact per-recording/aggregate score equality on all168ordinary clips verified against frozen reports. Final source28ff65b02 matches frozen filter source9c15aecea byte-for-byte in relevant filter/types files.
+- Tests108filter+38tuner pass, strict Clippy passes, simulator builds, final production parameter root passes allfour liveapproach continuity cases. final-completion-audit.json records evidence. No remaining optimization/capture workers are needed.
+- Scope remains filter validation with synthetic detector noise and simulator trajectories. No CNN or real-robot performance claim; liveapproach checks do not establish physical kick success. Reacquisition-event means change populations (129->119 events), so report them without claiming faster matched-event recovery.
