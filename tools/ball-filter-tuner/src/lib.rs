@@ -720,7 +720,7 @@ mod tests {
     }
 
     #[test]
-    fn localization_gate_is_fixed_for_search_and_opposite_warm_starts() {
+    fn localization_gate_is_fixed_for_search_and_requires_explicit_configuration() {
         let mut baseline: BallFilterParameters = json5::from_str(include_str!(
             "../../../etc/parameters/base/ball_filter.json5"
         ))
@@ -740,12 +740,11 @@ mod tests {
         }
         let mut legacy = serde_json::to_value(&baseline).unwrap();
         legacy.as_object_mut().unwrap().remove("good_localization");
-        let legacy: BallFilterParameters = serde_json::from_value(legacy).unwrap();
-        assert!(legacy.good_localization);
+        assert!(serde_json::from_value::<BallFilterParameters>(legacy).is_err());
     }
 
     #[test]
-    fn field_boundary_margin_is_fixed_and_legacy_omission_has_no_buffer() {
+    fn field_boundary_margin_is_fixed_and_requires_explicit_configuration() {
         let mut baseline: BallFilterParameters = json5::from_str(include_str!(
             "../../../etc/parameters/base/ball_filter.json5"
         ))
@@ -768,8 +767,9 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("field_boundary_margin");
-        let legacy: BallFilterParameters = serde_json::from_value(legacy).unwrap();
-        assert_eq!(legacy.field_boundary_margin, 0.0);
+        assert!(serde_json::from_value::<BallFilterParameters>(legacy).is_err());
+        let mut legacy = baseline.clone();
+        legacy.field_boundary_margin = 0.0;
         assert_eq!(warm_start(&legacy, &baseline).field_boundary_margin, 0.0);
         assert_eq!(warm_start(&baseline, &legacy).field_boundary_margin, 0.5);
     }
@@ -903,7 +903,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_visibility_baseline_stays_disabled_even_with_new_warm_start() {
+    fn explicit_legacy_visibility_baseline_stays_disabled_even_with_new_warm_start() {
         let current: BallFilterParameters = json5::from_str(include_str!(
             "../../../etc/parameters/base/ball_filter.json5"
         ))
@@ -911,20 +911,20 @@ mod tests {
         assert!(!current.visible_missed_detection_timeout.is_zero());
         assert_eq!(current.field_boundary_validity_decay_rate, 2.0);
         assert_eq!(current.maximum_detection_distance, 15.0);
-        let mut legacy_json = serde_json::to_value(&current).unwrap();
-        let object = legacy_json.as_object_mut().unwrap();
-        object.remove("visible_missed_detection_timeout");
-        object.remove("maximum_obstacle_time_difference");
-        object.remove("field_boundary_validity_decay_rate");
-        object.remove("maximum_detection_distance");
-        object.remove("hidden_validity_decay_rate");
-        object.remove("visible_missed_validity_decay_rate");
-        object.remove("competing_hypothesis_validity_decay_rate");
-        object.remove("near_visible_missed_validity_decay_rate");
-        object.remove("nearby_spawn_validity_factor");
-        object.remove("near_visible_missed_detection_timeout");
-        object.remove("near_visible_missed_detection_distance");
-        let legacy: BallFilterParameters = serde_json::from_value(legacy_json).unwrap();
+        // Historical captures must supply their old behavior explicitly now
+        // that production parameter defaults live in configuration files.
+        let mut legacy = current.clone();
+        legacy.visible_missed_detection_timeout = std::time::Duration::ZERO;
+        legacy.maximum_obstacle_time_difference = std::time::Duration::from_millis(100);
+        legacy.field_boundary_validity_decay_rate = 0.0;
+        legacy.maximum_detection_distance = 0.0;
+        legacy.hidden_validity_decay_rate = None;
+        legacy.visible_missed_validity_decay_rate = None;
+        legacy.competing_hypothesis_validity_decay_rate = None;
+        legacy.near_visible_missed_validity_decay_rate = None;
+        legacy.nearby_spawn_validity_factor = None;
+        legacy.near_visible_missed_detection_timeout = std::time::Duration::ZERO;
+        legacy.near_visible_missed_detection_distance = 0.0;
         assert!(legacy.visible_missed_detection_timeout.is_zero());
         assert_eq!(legacy.field_boundary_validity_decay_rate, 0.0);
         assert_eq!(legacy.maximum_detection_distance, 0.0);
