@@ -59,7 +59,7 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E22 conservative calibration on 108 inspected recordings. Runtime/default
+Next: E26 recalibrate existing output correction on108 inspected recordings. Runtime/default
 parameters remain at the original retained baseline until fresh validation succeeds.
 
 
@@ -843,6 +843,46 @@ close-position/velocity guards; do not add unused production complexity.
 E22 completed1,040 configurations; none beats baseline under all eleven p/v/fast
 group guards. Several improve all close p/v groups but regress fast velocity in
 one or two. Full results retained for targeted follow-up, not fresh evidence.
+
+### E24 — Existing speed threshold and obsolete velocity
+
+**Status:** running. E21 regressions include opposite-direction residual motion
+where baseline reports rest. Vary the existing resting-speed threshold0.03–0.5m/s
+and resting noise ×0.7/1/1.3 on original and three E22 centres (88 configs).
+No covariance-transition algorithm or additional tracker. Same eleven-group
+close p/v/fast and availability guards. Defaults remain unchanged; original
+frozen E22 evaluator used, not confidence-cap experimental binary.
+Artifacts: `G/resting-calibration/`.
+
+E24 complete:88 configurations, no passing improvement. Preserved results and
+unchanged defaults. No additional covariance-transition mechanism introduced.
+
+### E25 — Two-observation initialization for clearly fast motion
+
+**Status:** experimental. Keep three-observation confirmation except for an
+associated pair20–100ms apart, displacement significance>36 and conservative
+three-sigma speed lower bound>2m/s. Preserve position/velocity covariance cross
+terms. Hypothesis: reduce fast-shot onset delay without promoting noisy or slow
+motion. Unlike E07, do not loosen all three-point consistency gates. Risks:
+isolated outliers or genuine sudden reversals; require existing tests and all108
+recordings before fresh validation. Artifact: `G/fast-start/`. Original source
+saved; no defaults or new user parameters added.
+
+E25 rejected at unit-test gate:118 pass, existing
+`isolated_false_observation_does_not_confirm_motion` fails. An isolated outlier
+can satisfy both the six-sigma displacement and conservative speed criteria;
+two observations cannot distinguish it from a shot. Preserve experiment source,
+restore original confirmation. Do not weaken the test or claim replay benefit.
+
+### E26 — Revisit existing output correction with expanded evidence
+
+**Status:** running. E16 explored this on54 clips and found its extra changes
+unnecessary; now108 inspected clips expose new fast-velocity regressions in the
+E22 candidates. Test only existing auxiliary detection noise, output blend and
+covariance ratio around original and three E22 centres. No additional tracker,
+new blending rule or runtime change. Same eleven-group guards and missing-time
+checks. This is an explicit revisit of E16, not a new mechanism. Artifacts:
+`G/publication-recalibration/`. Fresh validation still required.
 
 ## 5. Evidence map and operational handoff
 
