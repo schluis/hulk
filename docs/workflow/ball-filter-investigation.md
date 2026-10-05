@@ -59,7 +59,7 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E27 independent-axis noise calibration on108 inspected recordings. Runtime/default
+Next: E30 reserved independent validation of the minimax parameter candidate. Runtime/default
 parameters remain at the original retained baseline until fresh validation succeeds.
 
 
@@ -915,6 +915,53 @@ seed2026100535. Preserve missing/bounded-loss constraints; allow small existing
 publication blend variation. Every generation records its centres and settings.
 Stop early only after all group ratios<0.999, then freeze for reserved validation.
 No new data enters optimization.
+
+E27 minimax completes8×64 samples; best evo-7-015 still regresses worst group
+0.0158%, no full pass. Runtime/defaults unchanged, reserved validation untouched.
+
+### E28 — Association refinement around the minimax candidate
+
+**Status:** running. Vary existing association maximum cost, uncertainty penalty,
+and quiet far-ball reacquisition range around E27 evo-7-015. These dimensions
+were fixed during E27; aim to remove the remaining small mismatched-output
+regression without reducing availability. 182 configs including controls,
+same108 clips and eleven-group p/v/fast checks. No runtime change. Artifacts:
+`G/association-refinement/`. No held-out candidate evaluation yet.
+
+### E29 — Initialize current velocity rather than interval-average velocity
+
+**Status:** experimental, parallel to frozen-binary E28 parameter evaluation.
+Three-point confirmation and its significance/consistency checks remain intact.
+Current endpoint slope is an interval-average velocity, while prediction expects
+velocity at the newest observation. For existing exponential damping, multiply
+velocity by x/expm1(x), x=lambda×span, and transform covariance cross/velocity
+blocks consistently. No new parameters. Unit-test exact damped trajectory and
+run existing false-observation safeguards, then compare on108 clips against the
+original runtime with identical parameter files. Artifacts:
+`G/damped-initialization/`. This is not E13's constant-velocity weighted fit.
+
+E28 complete:182 configurations, no full pass; association variations do not
+remove the tiny development velocity regression. No changes retained.
+
+E29 complete:118 tests pass. Original parameters improve pooled position0.27%,
+velocity0.13%, fast velocity0.008%, but worst group regresses0.029%. With E27
+centre, worst group regresses0.318% versus0.0158% without the change. Preserve
+source and reject as unnecessary mixed-benefit complexity; restore original
+runtime. Evidence includes paired fixed-parameter controls.
+
+### E30 — Reserved independent audit of minimax parameter candidate
+
+**Status:** frozen before evaluation. Select E27 evo-7-015 by smallest maximum
+of all11 development-group p/v/fast ratios after the prespecified8 generations.
+Its worst ratio is1.00015809, so it **does not pass** E22's extra strict all-group
+screen. All group positions improve; pooled p/v/fast improve. The0.0158%
+velocity tradeoff is recorded, not rounded to a pass. Use the original fresh
+acceptance rules (E17/E19/E21), unchanged, to assess generalization on reserved
+seed51/55. This explicitly changes development candidate-selection policy from
+requiring an exact all-group pass to minimax selection; it does not change any
+fresh success criterion or claim success on development. No held-out scores have
+been inspected before this decision. No runtime algorithm changes. Exact config,
+hashes,selection,protocol: `G/audit5/`. Defaults remain original pending outcome.
 
 ## 5. Evidence map and operational handoff
 
