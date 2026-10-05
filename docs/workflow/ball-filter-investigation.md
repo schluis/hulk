@@ -1111,6 +1111,34 @@ mechanism. Dataset162 inspected clips,17groups; separate seed57 reversal
 score is not counted twice. Assess near duplicates and availability explicitly
 before another freeze. Artifacts: `G/merge-response/`.
 
+E36 coarse191 complete: no nonbaseline full pass; best worst-group close p/v
+regression0.35%. Expand with144 controlled probes of initial position covariance
+and hidden-confidence decay, alongside merge/damping. This explicitly revisits
+E08/E10 under the now-improved velocity settings/correction gate and162 clips;
+not a new mechanism. Existing hidden decay can shorten weak clutter retention
+while stronger observed support survives. Availability must not regress. Exact
+ranges and centre in `G/merge-response/retention-protocol.json`.
+
+E36 retention probes144 complete: no full pass; stronger hidden decay sometimes
+reduces wrong-output but adds missing velocity (up to2.548s in leading rows), so
+those candidates remain excluded. Baseline162-clip parity verified: first15
+groups exact, new2 moments within1e-10.
+
+A controlled merge-distance comparison does demonstrate a substantial duplicate
+benefit. On the18 recent recordings, grid0041 (merge0.1) vs grid0149 (merge0.3),
+otherwise identical parameters: close multiple-near time41.230→4.802s,
+zero-near9.910s unchanged, one-near163.748→200.176s; total hypothesis integral
+1411.902→1262.962 over214.888s. These are primary hypotheses within0.30m of
+truth, not persistent identity; exact parameter/score parity checked. Evidence:
+`G/merge-response/merge-counts.json`. No missing-velocity increase in these configs.
+
+Continue with up to8×64 minimax refinements, seed2026100537, fixed merge0.3.
+Select centres only with no added missing velocity, improved bounded losses,
+non-regressing pooled fast velocity and targeted reversal close/fast velocity.
+Minimize worst17-group close p/v ratio; generation centres/ranges saved. No
+fresh data or new code mechanism. This targets the residual0.35% velocity
+regression while retaining the demonstrated duplicate reduction.
+
 ## 5. Evidence map and operational handoff
 
 - `M` = `/home/schluis/hulk/logs/ball-filter-motion-fixes-20261005/`.
