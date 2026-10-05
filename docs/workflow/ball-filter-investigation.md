@@ -59,7 +59,7 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E35 independent validation of E34 local-0381. Runtime/default
+Next: E36 merge-distance/velocity response calibration after E35 rejection. Runtime/default
 parameters remain at the original retained baseline until fresh validation succeeds.
 
 
@@ -1084,6 +1084,32 @@ manual review unchanged. Explicitly inspect reversal/recovery and duplicate
 hypotheses, since the preceding numerical pass did not establish the full goal.
 No scores from these recordings informed selection. All runtime code remains
 original retained extended filter; only existing parameters differ.
+
+E35 rejected. Seed59 failed fast-crossing reacquisition coverage0<1 after two
+complete scenarios; next ordered seed60 valid. Strict baseline verification passed
+on reserved58/new60. Fresh18 pooled p0.194773→0.105326m (-45.92%),
+v0.629042→0.618628m/s (-1.655%), fast2.213166→2.144758m/s (-3.091%).
+Suite1 velocity0.660066→0.663052m/s (+0.452%) fails unchanged criterion;
+both suites position improve. Wrong-output102.628→96.104s, false79.24s unchanged,
+close correct missing9.076→5.504s, velocity missing2.36s unchanged.
+
+Recovery gain is now concrete: first200ms velocity3.385829→3.201773m/s (-5.44%),
+position0.239321→0.236870m, no missing. Contested family close velocity
+1.125471→0.797944m/s (-29.10%), fast2.416058→1.643323m/s (-31.98%).
+But close multiple-near hypotheses23.296→41.224s, zero-near10.990→9.278s,
+mean total primary6.304→6.567. Preserve results, do not hide duplicate regression
+behind position gains. Defaults unchanged. All successful unused captures have
+now been inspected; next independent validation requires newly captured seeds.
+
+### E36 — Existing merge distance with improved velocity response
+
+**Status:** running. 191 configurations: merge distance0.05/0.1/0.15/0.2/0.25/
+0.3/0.4m crossed with small moving-position/velocity noise and damping factors,
+plus baseline/E35 controls. Keep all existing same-image, velocity-consistency,
+confirmation and observation-history merge safeguards. No runtime change or new
+mechanism. Dataset162 inspected clips,17groups; separate seed57 reversal
+score is not counted twice. Assess near duplicates and availability explicitly
+before another freeze. Artifacts: `G/merge-response/`.
 
 ## 5. Evidence map and operational handoff
 
