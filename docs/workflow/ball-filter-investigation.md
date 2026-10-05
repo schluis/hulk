@@ -37,7 +37,7 @@ robot, kicks, and recovery after a robot obstacle occludes the ball.
 
 ## 2. Current checkpoint
 
-### 2.1 Retained implementation
+### 2.1 Comparison baseline and selected implementation
 
 At `0ed7a0910`, the latest investigation retained a **selection tie fix**:
 equal ranks prefer recent observations, then effective confidence, without
@@ -49,7 +49,7 @@ demos, and the image observer.
 E06 association tracing is complete. E07 tested a full-span motion-significance
 check with fixed parameters and was rejected on all three replay partitions.
 The retained baseline runtime and parameters are those of `0ed7a0910`. The accepted baseline runtime and parameters remain the comparison reference.
-Goal mode is active at the user’s request. E08 failed fresh validation; E10
+The user-requested goal is fulfilled by E120/E121/E125; see the current result below. E08 failed fresh validation; E10
 retention calibration found a publication dependency (E15). A joint primary/auxiliary
 parameter search completed (E16) on all 54 inspected development clips. The
 parameter-only ablation-0260 candidate failed the second audit’s per-suite
@@ -59,8 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Current frozen candidate: **E120**, validated only on consumed development data so
-far. It combines confirmed resting-association competition, selective stale-resting
+Current selected implementation: **E120**, passed frozen fresh validation E121 and
+final integration/build audit E125. Code and parameters are committed locally as **ac9522232**. It combines confirmed resting-association competition, selective stale-resting
 merging with fresh endpoint only beyond one ball radius, uncertainty-aware close
 reversal recovery with a prior size-consistency veto, and publication covariance
 ratio7. No new tunable parameter is introduced. See E114–E120 for causal ablations,
@@ -81,15 +81,16 @@ regressions and fixes; E81–E113 preserve earlier rejected experiments.
   coverage and worse far-occlusion windows. Surplus86 remains unscored.
 - E122 supplemental challenges: extreme>15m/s and airborne velocity remain weak;
   no claim to solve those cases. Preserve raw incidental-flight velocity regression.
-- **E125 integration in progress:** working source/defaults now contain E120 plus
+- **E125 integration complete:** working source/defaults contain E120 plus
   behavior-preserving association-loop cleanup and corrected merge documentation.
-  Rebuilt130 tests pass; exact54 fresh-frame parity passes so far. Full216 score
-  parity also passes; simulator build pending. These source/config edits are not committed
-  yet. Comparison benchmark remains0ed7a0910; no pushes or agents.
+  All130 tests pass; exact54 fresh-frame/score parity and216 development-score
+  parity pass. Simulator release build and demo CLI smoke pass. Source/config
+  committed locally as ac9522232. Comparison benchmark remains0ed7a0910;
+  no pushes or agents, all investigation jobs terminal.
 
 Fresh67–77 are consumed; do not call them held out again. E111 failed fresh validation
 and E109 added false output; both remain documented. E120 succeeds on that consumed
-data after fixes, but **goal completion still requires E121 and final delivery audit**.
+data after fixes, but **fresh validation and final delivery/build audit have passed; the goal is complete**.
 
 
 ### 2.2 Baseline and terminology
@@ -148,7 +149,7 @@ for the image API and Twix Ball-filter optimization panel. Use a new `--output`
 directory if specifying one. Historical logs/binaries are local artifacts and are
 not automatically downloaded with this branch. Integration build/check status is E125.
 
-## 3. Next work — ordered plan
+## 3. Investigation plan — completed goal and historical workstreams
 
 ### 3.1 A: Establish an association trace [INITIAL TWO-CLIP AUDIT COMPLETE]
 
@@ -170,7 +171,7 @@ hypothesis fail to receive it?
 first incorrect decision identified. Separate measured causes from hypotheses.
 **Exit:** select the smallest correction supported by those traces.
 
-### 3.2 B: Improve velocity acquisition [ACTIVE; see E56–E63]
+### 3.2 B: Improve velocity acquisition [GOAL COMPLETE; see E120–E125]
 
 #### B1: Two-observation velocity initialization [TESTED; REJECTED E25]
 
@@ -3677,7 +3678,7 @@ velocity0.672266121, fast2.395125121, wrong320.110s, false235.840s,
 correct-close missing29.054s. Both datasets are development, not fresh proof.
 E120 full216 paired export/diagnostics96479 launched to verify exact coverage/credit.
 
-### E121 — Fresh frozen validation of E120 [METRIC PASS; FINAL AUDIT PENDING]
+### E121 — Fresh frozen validation of E120 [PASSED]
 
 G/wide-merge-fresh freezes E120 evaluator/parameters, five source hashes, baseline
 capture/runtime identities and validation scripts before capture. Protocol uses
@@ -3798,7 +3799,7 @@ Joint0.887711263→0.889853165, fast0.514910114→0.520498600. Seed79 fast veloc
 suite increases2.234e-7m/s; retained, not rounded away. All selected54 now consumed;
 surplus86 remains unscored. decision.json records metric pass, not goal completion.
 
-### E124 — Inspect fresh tradeoffs rather than hide behind pooled gains [IN PROGRESS]
+### E124 — Inspect fresh tradeoffs rather than hide behind pooled gains [ASSESSED]
 
 individual-audit.json lists all individual clip regressions. Largest close-position
 RMSE increase1.068mm in seed80 fast-crossing; suite position still improves2.54%.
@@ -3823,7 +3824,7 @@ not proof of uniformly improved occlusion tracking. No thresholds relaxed, no ne
 candidate edits or score-based exclusions. All jobs terminal. Final integration and
 explicit requirement audit remain before any completion claim.
 
-### E125 — Integrate validated candidate and prove cleanup parity [RUNNING]
+### E125 — Integrate validated candidate and prove cleanup parity [COMPLETE]
 
 Installed frozen E120's five source files and exact candidate parameters into the
 preferred simulator checkout, replacing E43 user-test settings. Review suggestions:
@@ -3845,6 +3846,30 @@ score matches frozen E120 exactly on all54; full216 groups/diagnostics exact too
 Review cleanup therefore preserves the validated behavior.130 tests pass with
 installed defaults. Only simulator release build/demo CLI smoke82964 remains active;
 aggregate~5.7GiB RAM, disk40GiB free. No new capture or tuning.
+
+E125 source/config/results note committed locally ac9522232. Completion audit checks
+committed file hashes and exact candidate-parameter identity,130 tests,54 fresh
+frame/score parity,216 score parity, all six fresh baseline live verifications and
+all frozen metric guards. Stored G/validated-integration/completion-audit.json;
+diagnostic example sources archived alongside evidence. No blanket per-frame or
+all-range improvement claim: E124 local tradeoffs and E122 extreme limits remain.
+Simulator build82964 still live and progresses through Bevy/robotics dependencies;
+aggregate~9.2GiB under45GiB cap, nice15. This build/smoke check is the sole remaining
+completion item; no new optimization or fresh capture requested.
+
+E125 FINAL: simulator release build82964 completed successfully in8m12s; compiled
+`demo --help` exits0 and exposes expected parameters/seed/headless/exit-after flags.
+All investigation jobs terminal. Completion audit status complete_with_documented_
+local_tradeoffs verifies every active-goal requirement against source/parameter
+hashes, tests, fresh baseline parity, frozen results, exact integration parity,
+resource constraints and preserved failed experiments. Code remains ac9522232;
+this final note update is a separate local checkpoint. No pushes or agents.
+
+Goal fulfilled at the predeclared suite/pooled accuracy scope, with individual
+tradeoffs explicitly retained in E124 and extreme/airborne limitations in E122.
+This is not a claim that every frame, clip or speed regime improves. No more tuning
+or capture is running. Future investigation of far-occlusion false switches or3D/
+extreme-speed tracking is separate follow-up work, not an unreported achieved result.
 
 ## 5. Evidence map and operational handoff
 
