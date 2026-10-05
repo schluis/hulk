@@ -59,7 +59,7 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E33 independent validation of the loosened-correction candidate. Runtime/default
+Next: E34 improve velocity response after E33 numeric pass but unresolved reversal lag. Runtime/default
 parameters remain at the original retained baseline until fresh validation succeeds.
 
 
@@ -1024,6 +1024,35 @@ before freeze and no accuracy-based replacements. Fresh rules unchanged: pooled
 close p/v improve, each suite close p/v non-regressing, pooled fast velocity and
 availability non-regressing, bounded close losses improve; inspect scenarios,
 events and wrong/duplicate hypotheses. Defaults remain unchanged until success.
+
+E33 numerical checks all pass on reserved56/new57 (baseline replay verified).
+Seed58 captured successfully but remains unscored/uninspected. Fresh18: position
+0.138001→0.109498m (-20.65%), velocity0.659313→0.655969m/s (-0.507%),
+fast velocity2.442831→2.418012m/s (-1.016%). Both suites improve close p/v.
+Wrong-output91.284→86.434s, false78.32→79.48s, close correct-track missing
+6.504→5.514s; missing velocity2.338s unchanged. All numeric checks pass.
+
+Manual review does **not** establish the full tracking goal yet. Seed57 contested
+close velocity0.933644→1.056514m/s (+13.16%), fast2.735359→3.049205m/s
+(+11.47%). At28.4s candidate continues old opposite motion while baseline has
+rested; at28.6s baseline has initialized the new velocity while candidate lags.
+Close multiple-near primary time35.574→43.846s, zero-near8.052→7.148s;
+mean total primary7.054→7.501. Counts are geometric, not identities. First200ms
+impact velocity3.37370→3.37517m/s (essentially unchanged). Exploratory200–1000ms
+recovery improves2.56377→2.32736m/s (-9.22%), with no missing output. Preserve
+as a numerical benchmark, not a completed goal or changed default. Detailed
+paired diagnostics/proximity/decision are in `G/audit6/`.
+
+### E34 — Velocity response after reversal with the corrected output gate
+
+**Status:** running. E33 moving-position noise is about2.6× original; it may let
+new positions update without correcting velocity promptly. The old stationary
+regression is now addressed by the correction gate, so retest lower moving
+position noise against velocity noise/damping while preserving that gate.
+182 configurations on144 inspected clips/15 groups, plus explicit review of
+seed57 contested reversal and duplicates before another freeze. Seed58 remains
+unused. All changes are existing parameters; runtime unchanged. Artifacts:
+`G/velocity-response/`. Original baseline remains the reference, not E33.
 
 ## 5. Evidence map and operational handoff
 
