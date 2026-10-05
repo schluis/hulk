@@ -76,6 +76,9 @@ the other is physically hidden. Do not apply a common clear-miss deletion rule.
 E89 conditional merging removes dominant two-clip duplicate increases and preserves
 pooled velocity gains, but development position regresses0.124%; inspect before
 fresh validation. Broad0.21m merge control regresses one suite8.64% and is rejected.
+E90 localizes remaining discrepancy to approach49.532s; E91's stale precise-state
+fusion endpoint does not change that frame and is rejected. Instrument the actual
+merge/selection before further policy changes.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2725,6 +2728,44 @@ need for conservative conditions but still fails a position guard. Broad control
 is rejected despite larger pooled gain. Next trace development position regression
 (index27–35) before acceptance; avoid adding more policy merely to fit one case.
 All jobs terminal; source restored; no adopted runtime or push. Fresh67/68 unused.
+
+### E90 — Conditional-merge development regression [DIAGNOSED]
+
+`G/stale-resting-merge/development-audit/` contains paired9-clip compact exports,
+position-window ranking and first100 differing estimates. Regression is in approach
+(index28 globally), first differing output49.532s: same last_seen49.482s, zero
+velocity both, position(0.200788,0.022069) baseline versus(0.195616,0.024506) E89,
+a≈5.7mm displacement. Truth(0.220862,0.001281). The difference persists into coasting
+and already-wrong output:51.0–51.2s position SSE0.119454→0.121068m²s. This is
+consistent with covariance-intersection mean perturbation; no instrumented merge
+call yet proves it exclusively. E91 tests that mechanism rather than assuming it.
+
+### E91 — Preserve precise recent state in stale resting merges [REJECTED]
+
+E89 plus a valid covariance-intersection endpoint: choose the recent resting
+Gaussian unchanged when observation times differ≥1s, recent support≥3, recent size
+plausible, and old covariance minus recent covariance is positive definite. Otherwise
+retain existing equal-weight covariance intersection. Existing merge eligibility,
+observation intervals, max-support policy and evidence-reset behavior are unchanged.
+No moving-state fusion change. This avoids shifting/inflating a precise recent state
+merely to consolidate a much less certain resting history; it does not prove identity.
+
+`G/stale-resting-endpoint/` freezes all source before/after, config, tested binaries
+and SHA256 protocol. Unit test checks both merge orders, exact mean/covariance
+preservation, and recent/weak/implausible negative cases; all121 tests pass. Full216
+replay completed under45GiB/nice15. Working source restored after build. Original
+parameters except E89's0.21m merge maximum; fresh67/68 untouched, no adopted change.
+
+Results essentially unchanged from E89: close position0.242464325m (−0.44565%),
+close velocity0.677871787m/s (−0.01938%), fast2.349776931m/s (−0.02896%). Worst
+position remains development+0.123765%; wrong−7.962s, correct-close missing−2.060s.
+At diagnostic49.532s, output remains exactly(0.195616439,0.024505677), identical to
+E89. Thus this endpoint rule does not address E90's observed discrepancy. Reject
+added complexity; do not claim the older-less-precise fusion hypothesis proven.
+Full-state diagnostic saved at `diagnostic/frames-0.jsonl`. Next instrument the
+actual49.532s merge/selection (including auxiliary output) and test whether the
+ordinary resting limit0.105m versus baseline0.1m is involved, before another change.
+All jobs terminal, memory returned≈4.86GB, no pushes. Goal remains incomplete.
 
 ## 5. Evidence map and operational handoff
 
