@@ -92,7 +92,9 @@ before changing calibration or consuming fresh validation; no candidate accepted
 E98 confirms older resting auxiliary suppresses newer moving primary velocity.
 E99 preserves primary velocity for that combination: fixes the target frame but
 worsens pooled velocity and audit6a, rejected. Inspect that counterexample before
-adding any motion-dependent publication rule.
+adding any motion-dependent publication rule. E100 confirms primary velocity points
+opposite actual motion after a displaced match; E101 evaluates25 existing
+publication settings on E93 (no new velocity policy), exec78335 currently live.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -3017,6 +3019,36 @@ E99 audit6a primary velocities on position-correct frames to determine whether
 motion evidence can distinguish true reacquisition from false moving-primary
 corrections. Preserve the simpler-control comparison; no additional complexity
 accepted based on a single successfully fixed frame.
+
+### E100 — Counterexample to newer-primary velocity preference [COMPLETE]
+
+E99 audit6a9-clip export complete under resource runner. Fixed common-correct-frame
+window analysis (`G/publication-moving-velocity/velocity-regression-windows.json`)
+locates regression in approach recording127 at47.0–47.2s: velocity SSE0.197045→
+1.066969 versus E96. At47.160s truth Ground(0.474005,0.225616), primary position
+(−0.158720,−0.681398), velocity(−1.44493,−2.33076), lastseen47.122. Blended position
+(0.328420,0.012418) remains correct, but retaining primary velocity exposes wrong
+motion. Earlier47.102 primary was near truth; latest size-implausible match causes
+large jump. In E98 the primary is closer (0.428m error) but still displaced; both
+primary position/velocity covariance diagonals are similar, confidence high and
+latest size implausible. Recency/mode/confidence alone do not distinguish them.
+Do not add a fitted distance cutoff based solely on these two frames. E12 already
+rejected broad size gating, with severe close-position regression; not rediscovered.
+
+### E101 — Existing publication calibration on E93 runtime [RUNNING]
+
+E93 improves close/fast velocity with no fast-suite regression but has small position
+regressions. E95 continuous taper worsens position at original settings; E96's ratio
+1000 admits problematic older auxiliary outputs. Test25 combinations of existing
+blend(0.90,0.92,original0.944531,0.96,1.0) and covariance limit(5,original6.048,7,8,10)
+on frozen E93 hard-gate runtime. No new code or velocity preference. Same216
+inspected clips, original guards/correctness requirements, fresh67/68 untouched.
+`G/aligned-publication-calibration/protocol.json` freezes grid and binary SHA.
+Eight shared-data workers under nice15 resource runner/45GiB aggregate limit.
+Reject pooled-only improvements; compare parameter-only control if candidate merits
+further audit. Runtime working tree unchanged. No agents/pushes. Exec78335 confirmed live,
+evaluator PID865092 at nice15; aggregate memory approximately8GiB after data load.
+Poll same handle before restarting; inspect results/ranked.json after terminal run.
 
 ## 5. Evidence map and operational handoff
 
