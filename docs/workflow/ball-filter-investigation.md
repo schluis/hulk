@@ -59,8 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E38 diagnose and calibrate the sideline position failure; seed63/64 reserved. Runtime/default
-parameters remain at the original retained baseline until fresh validation succeeds.
+Next: audit9 frozen E39 cap4 candidate on reserved63/64. Working runtime has
+experimental optional cap; default parameters remain original until fresh validation succeeds.
 
 
 ### 2.2 Baseline and terminology
@@ -1184,7 +1184,7 @@ this is not a new velocity error (both outputs at rest). Evidence:
 
 ### E38 — Field-boundary confidence near a real off-field ball
 
-**Status:** running. 402 configurations (400 grid +2 controls), existing field
+**Status:** running. 202 configurations (200 grid +2 controls), existing field
 margin, confidence distance, stored decay rate and publication margin only.
 Keep localization assertion true and all velocity/merge settings frozen at E37.
 180 inspected clips/19groups, original reference unchanged; no scoring, pose,
@@ -1192,8 +1192,50 @@ physics or runtime changes. Require close p/v, pooled fast/bounded/availability
 and targeted reversal guards; inspect sideline and duplicates. Artifacts:
 `G/boundary-calibration/`. Reserved63/64 remain untouched until next freeze.
 
+E38 complete:202 configurations, no full pass. Doubling boundary confidence
+distance0.3→0.6 reduces the new suite's position regression from41.33% to3.07%,
+with other close p/v groups passing. Do not promote; field tuning alone did not
+close the failure.
+
+Observer shows why recency ranking alone cannot recover: selected9.854s-old
+primary has confidence73.045; newer1.454s/2.254s tracks have2.626/1.876, below
+the existing confirmation threshold3. The established-track rule excludes them
+before the zero-capped ranking ties are broken by recency. Selected size flag is
+false already, so adding a new radius-gate bypass would not target this case.
+Evidence: `G/audit8/diagnosis/candidate-frame36.json`, observer8769.
+
+### E39 — Stored-confidence cap near the confirmation threshold
+
+**Status:** experimental revisit of E23, motivated by the user's cap suggestion
+and this observed failure. E23 tested3/5/10/etc on earlier parameters; cap3 loses
+confirmed status after any decay, explaining why that setting was especially
+harmful. Test3.25/3.5/3.75/4/4.5/5/6/8/10 plus None, crossed with boundary
+confidence distances0.3/0.45/0.6/0.75 (41 configs including original baseline).
+At baseline hidden decay, cap4 falls below confirmation3 after8.3s, while a
+recently observed track remains confirmed. Keep the existing confirmation rule.
+
+Reuse exactly E23's optional stored-confidence ceiling, no additional mechanism.
+Require uncapped replay parity and existing tests before comparison. Current
+working runtime is experimental with defaultNone; production parameters remain
+unchanged. Reserve63/64 stays unscored. Artifacts: `G/confidence-revisit/`.
+
+E39 initial41 complete:118 tests pass; uncapped baseline has exact score parity.
+Cap4 alone lowers audit8b position ratio1.41332→1.11841; combining boundary
+distance0.75 lowers it to1.002814, with all other close p/v groups passing and
+no extra missing velocity. Target reversal unchanged. Still no accepted winner.
+Refine48 combinations around cap3.85–4.25 and distance0.65–1.5 on development
+only; reserved63/64 remain untouched.
+
+E39 refine complete89 total: refine-019 (cap4, boundary distance0.8) passes all19
+development close p/v groups; pooled position−26.33%, velocity−6.04%, fast−3.51%;
+wrong−14.488s, false+12.184s, correct-missing−11.614s, velocity-missing unchanged.
+Reversal improvement preserved. Freeze exact candidate/runtime in `G/audit9/`
+before scoring previously reserved63/64. Fresh criteria unchanged; review false
+time and duplicates as well as numerical guards. Default parameters unchanged.
+
 ## 5. Evidence map and operational handoff
 
+- `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
 - `M` = `/home/schluis/hulk/logs/ball-filter-motion-fixes-20261005/`.
 - Original diagnostic capture:
   `/home/schluis/hulk/logs/ball-filter-image-interface-20261005/`.
