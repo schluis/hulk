@@ -59,8 +59,9 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: combine stable velocity calibration with evidence-based tentative publication,
-starting with correctness-aware comparisons of E51/E61 before further search.
+Next: diagnose the largest remaining baseline velocity-error windows by motion
+and observation age. E63 confirms publication tuning adds only 0.022% common-frame
+velocity improvement, with slight per-suite regressions; it is not a winner.
 E56 isolates excessive velocity noise as a cause of direction jitter. E62's paired
 216-recording audit confirms E61's one-second clear-miss gate removes 57.132 seconds
 of wrong output, loses no correct output, and changes no remaining estimate.
@@ -106,11 +107,13 @@ hypothesis fail to receive it?
 first incorrect decision identified. Separate measured causes from hypotheses.
 **Exit:** select the smallest correction supported by those traces.
 
-### 3.2 B: Improve velocity acquisition [NEXT; informed by E06/E07]
+### 3.2 B: Improve velocity acquisition [ACTIVE; see E56–E63]
 
-#### B1: Two-observation velocity initialization [UNTESTED]
+#### B1: Two-observation velocity initialization [TESTED; REJECTED E25]
 
-Test whether compatible timestamped observations can initialize velocity with
+E25 tested this idea and failed the isolated-false-confirmation check. Do not
+repeat without a new mechanism addressing that failure. Original question:
+whether compatible timestamped observations can initialize velocity with
 appropriate uncertainty, leaving isolated detections tentative. Account for
 robot motion and observation interval. Check noise amplification at short
 intervals and false pairing across obstacles/clutter.
@@ -118,14 +121,17 @@ intervals and false pairing across obstacles/clutter.
 This is **not** the same as the rejected experiment that merely delayed resting
 until multiple observations (E02 below). Do not conflate their conclusions.
 
-#### B2: Existing-model velocity correction [UNTESTED diagnosis]
+#### B2: Existing-model velocity correction [DIAGNOSED; CALIBRATION ONGOING]
 
-Check whether uncertainty allocation makes updates correct position while leaving
+E56 confirms excessive velocity process noise causes rapid reversals; lowering
+it helps stability but has recovery tradeoffs. E63 checks publication calibration
+using correctly tracked velocity before further search. Original question:
+whether uncertainty allocation makes updates correct position while leaving
 velocity too small. Initial position covariance is now tunable, but its search
 with the previous resting experiment did not yield an accepted candidate.
 Inspect the actual update before introducing another model or parameter.
 
-### 3.3 C: Improve recovery and matching [PLANNED; depends on A]
+### 3.3 C: Improve recovery and matching [INVESTIGATED; NOT RESOLVED]
 
 #### C1: Propagation and gates after occlusion
 
@@ -1804,6 +1810,56 @@ change. Production scoring and branch parameters remain unchanged. Next compare
 publication-only E51 and its combination with E61 using paired correctness and
 velocity diagnostics; freeze any revised objective before further optimization.
 Fresh seeds 67/68 remain untouched. No goal-completion claim.
+
+### E63 — Publication tuning with correctness-aware paired velocity [COMPLETE; NOT A VELOCITY WINNER]
+
+Compare E51 grid-009 and the same publication parameters with E61's one-second
+clear-miss gate against the original accepted baseline on all 216 development
+recordings. Reuse E62 baseline exports. Freeze evaluator/parameter hashes in each
+protocol before evaluation; fresh seeds 67/68 remain untouched. Preserve v11
+reports and the supplementary E62 diagnostics.
+
+Also measure close-range velocity on identical frames where both outputs are
+within the existing 0.5 m correct-track radius. Report lost/gained correct coverage
+separately, and per-suite results, so changes in the evaluated population cannot
+masquerade as velocity improvement. This diagnostic definition was written before
+reading the candidate results. No revised optimization objective is adopted yet.
+
+Evidence: `G/correctness-publication/`, including both protocols, compact frame
+exports, and `common_velocity.py`. Both evaluator and analysis jobs completed successfully at nice 15 under the
+45 GiB aggregate cap; observed aggregate memory about 8 GiB during export.
+
+#### E63.1 Results and decision
+
+Combined E51/E61 versus original baseline, all 216 development recordings:
+
+| Diagnostic | Baseline | Combined candidate |
+| --- | ---: | ---: |
+| Raw close position RMSE (m) | 0.243550 | 0.221130 |
+| Raw close velocity RMSE (m/s) | 0.678003 | 0.676738 |
+| Correctly associated close velocity RMSE (m/s) | 0.626022 | 0.625058 |
+| Correctly associated close velocity missing time (s) | 103.618 | 89.348 |
+| Velocity RMSE on identical correct close frames (m/s) | 0.625915 | 0.625780 |
+| Correctly associated fast-close velocity RMSE (m/s) | 2.304482 | 2.305480 |
+
+Common-frame velocity improves only 0.02158%; several suites regress (worst about
+0.146%). Close correct-position coverage gains 17.116 s but loses 2.870 s elsewhere;
+this net improvement must not conceal those losses. For velocity-eligible frames,
+the corresponding gains/losses are 17.108/2.838 s. The two eligibility definitions
+explain the small difference; do not mix them.
+
+Compared with original baseline, the combined candidate withholds 53.422 s of
+previously wrong publication and zero correct publication. Publication tuning
+also changes remaining estimates; hypothesis counts stay identical. E51 alone
+and E51+E61 have identical correctly associated velocity metrics and common-frame
+velocity: the clear-miss gate adds no measured velocity benefit. Legacy reports
+remain preserved; diagnostic counterexample tests and raw-metric reconciliation
+passed. No production source/parameter changes, no fresh-seed evaluation.
+
+Decision: do not promote this as the velocity improvement. Keep the clear-miss
+mechanism as a separate promising correction. Next isolate the largest original
+baseline velocity-error windows by motion, observation age and scenario, then
+choose a targeted model/update change rather than another undirected search.
 
 ## 5. Evidence map and operational handoff
 
