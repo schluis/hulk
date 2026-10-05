@@ -910,8 +910,9 @@ saved in the new output directory.
 The image interface renders a Ground-frame diagnostic view with truth, all
 primary hypotheses, mode, confidence, velocity arrows and the published estimate.
 The dashed circle marks 1 metre. Orange circles show recorded robot obstacles,
-transformed through their own recorded pose into the output frame; their age is
-shown, and missing transforms are left unknown. It also renders synthetic detection boxes and
+transformed through the closest recorded source pose (within 20 ms) into the
+output frame; observation age and pose offset are shown. Missing transforms are
+left unknown. It also renders synthetic detection boxes and
 projected hypotheses in camera coordinates; **these are not RGB camera images**.
 Camera exposure and output timestamps are separate. Hypothesis indices are local
 to each displayed frame, not persistent IDs. Truth velocity is a Field-frame

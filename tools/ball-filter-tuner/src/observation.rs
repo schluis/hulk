@@ -148,11 +148,15 @@ impl Clip {
             if camera_frame.is_none() {
                 continue;
             }
-            // Transform old obstacle observations through their exact recorded
-            // source pose, never through the current pose directly. Positions are
-            // not extrapolated; expose their age and omit missing transforms.
+            // Match a source pose within 20ms, like the 3D viewer. Report its
+            // timestamp; never silently use today's pose for old observations.
+            let mut obstacle_pose_time = None;
             let obstacles = obstacle_snapshot.as_ref().and_then(|snapshot| {
-                let old_to_current = cycle.ground_to_field?.inverse() * *poses.get(&snapshot.time)?;
+                let (stamp, pose) = [poses.range(..=snapshot.time).next_back(), poses.range(snapshot.time..).next()]
+                    .into_iter().flatten().min_by_key(|(stamp, _)| stamp.as_nanos().abs_diff(snapshot.time.as_nanos()))
+                    .filter(|(stamp, _)| stamp.as_nanos().abs_diff(snapshot.time.as_nanos()) <= 20_000_000)?;
+                obstacle_pose_time = Some(stamp.as_nanos());
+                let old_to_current = cycle.ground_to_field?.inverse() * *pose;
                 Some(snapshot.inner.iter().filter(|o| o.kind == types::obstacles::ObstacleKind::Robot).map(|obstacle| {
                     let p = old_to_current * obstacle.position;
                     json!({"position":[p.x(),p.y()],"radius":obstacle.radius_at_foot_height.max(obstacle.radius_at_hip_height)})
@@ -177,7 +181,7 @@ impl Clip {
                 "estimate": estimate.map(|e| json!({"position": [e.position.x(),e.position.y()],"velocity":[e.velocity.x(),e.velocity.y()]})),
                 "camera": camera_frame, "ground_to_field": cycle.ground_to_field,
                 "field_prior_pose": cycle.field_prior_pose, "field_dimensions": cycle.dimensions,
-                "obstacles": obstacles, "obstacle_time_ns": obstacle_snapshot.as_ref().map(|o|o.time.as_nanos()),
+                "obstacle_pose_time_ns": obstacle_pose_time, "obstacles": obstacles, "obstacle_time_ns": obstacle_snapshot.as_ref().map(|o|o.time.as_nanos()),
             }));
         }
         ensure!(!frames.is_empty(), "recording contains no detection frames");
@@ -423,11 +427,12 @@ fn render(frame: &Value) -> String {
         arrow(&mut svg, x, y, &e["velocity"], "#ffd06b");
     }
     svg.push_str("</g>");
-    if let (Some(now), Some(stamp)) = (
+    if let (Some(now), Some(stamp), Some(pose_stamp)) = (
         frame["time_ns"].as_i64(),
         frame["obstacle_time_ns"].as_i64(),
+        frame["obstacle_pose_time_ns"].as_i64(),
     ) {
-        write!(svg,r#"<text x="28" y="668" class="small">Orange: robot observations, {:.0}ms old (pose-corrected)</text>"#,(now-stamp) as f64*1e-6).unwrap();
+        write!(svg,r#"<text x="28" y="668" class="small">Orange robots: age {:.0}ms; source-pose offset {:+.0}ms</text>"#,(now-stamp) as f64*1e-6,(pose_stamp-stamp) as f64*1e-6).unwrap();
     }
     svg.push_str(r##"<text x="650" y="56">Camera projection (synthetic; no RGB)</text><rect x="650" y="80" width="610" height="360" fill="#243346"/><g clip-path="url(#camera)">"##);
     let camera = &frame["camera"];
