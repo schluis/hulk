@@ -320,8 +320,8 @@ spin, friction and contact, including any robot kicks. Capture reports walking a
 simultaneous robot/ball motion; episodes where behavior searches or stops after
 losing the ball remain valid training data. Capture rejects falls and insufficient
 ball motion. It also verifies peak ball speed exceeds
-2.5 m/s and at least half a second is spent above 2 m/s. Baseline profiles use 2 px Gaussian center
-noise and 4% false detections; stress profiles add 5 px noise, pixel bias, 8% false detections, random
+2.5 m/s and at least half a second is spent above 2 m/s. Baseline profiles use 1 px Gaussian center
+noise and 4% false detections; stress profiles add 2.5 px noise, a [1.5, -1.0] px center bias, 8% false detections, random
 misses, eight-frame dropout bursts and eight-frame false detections.
 
 Perception runs now also delay detector delivery by 50 ms with uniform ±15 ms

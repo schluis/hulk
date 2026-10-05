@@ -69,7 +69,7 @@ impl Default for Parameters {
             delivery_delay_seconds: 0.0,
             delivery_jitter_seconds: 0.0,
             close_dropout_pattern: Vec::new(),
-            center_noise_pixels: 2.0,
+            center_noise_pixels: 1.0,
             center_bias_pixels: [0.0; 2],
             dropout_probability: 0.0,
             dropout_burst_probability: 0.0,

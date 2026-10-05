@@ -13,7 +13,7 @@
     "frame_period": 0.04,
     "delivery_delay_seconds": 0.05,
     "delivery_jitter_seconds": 0.015,
-    "center_noise_pixels": 2.0,
+    "center_noise_pixels": 1.0,
     "false_positive_probability": 0.16,
     "seed": 42,
     "false_positive_burst_frames": 15

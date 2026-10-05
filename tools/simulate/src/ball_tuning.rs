@@ -887,8 +887,8 @@ fn record(
     parameters.opponents = opponents;
     if !seed.is_multiple_of(2) {
         let noise = &mut parameters.ball_perception;
-        noise.center_noise_pixels = 5.0;
-        noise.center_bias_pixels = [3.0, -2.0];
+        noise.center_noise_pixels = 2.5;
+        noise.center_bias_pixels = [1.5, -1.0];
         noise.false_positive_probability = 0.08;
         noise.false_positive_burst_frames = 8;
         noise.dropout_probability = 0.08;
