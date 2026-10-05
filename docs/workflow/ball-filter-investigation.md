@@ -48,7 +48,9 @@ demos, and the image observer.
 
 E06 association tracing is complete. E07 tested a full-span motion-significance
 check with fixed parameters and was rejected on all three replay partitions.
-Runtime code and preferred parameters remain unchanged from `0ed7a0910`.
+The retained baseline runtime and parameters are those of `0ed7a0910`. The
+working parameter file currently contains the frozen E17 candidate for testing;
+it is provisional pending independent validation. Runtime code is unchanged.
 Goal mode is active at the user’s request. E08 failed fresh validation; E10
 retention calibration found a publication dependency (E15). A joint primary/auxiliary
 parameter search completed (E16) on all 54 inspected development clips. The
@@ -555,7 +557,8 @@ checks, but none improved while also meeting all bounded-loss and false/wrong
 output checks: weak expiry hides additional output in the diagnosed approach
 case. A focused 2,048-configuration local search now holds weak expiry disabled,
 varies primary/auxiliary noise, damping, matching and hidden decay around four
-centres, and keeps selection uncapped. Seed 2026100525, exact protocol and configs
+centres, and keeps the baseline selection cap at literal zero (recency breaks
+ranking ties; this is not an uncapped setting). Seed 2026100525, exact protocol and configs
 under `G/joint/refine-*`. Do not promote conditional-error gains caused by loss
 of availability. All results use the parity-verified rebuilt binary.
 
@@ -593,6 +596,43 @@ baseline live/replay equality. Parameter SHA256:
 
 Optional weak-expiry runtime code was restored out of the working tree; its
 experiment branch and artifacts preserve the rejected investigation.
+
+
+#### E17.1 Development evidence and operational checkpoint
+
+Against the retained tuned baseline on 54 inspected clips:
+
+| Metric | Baseline | Frozen candidate | Change |
+| --- | ---: | ---: | ---: |
+| Close position RMSE (m) | 0.272425 | 0.190507 | -30.07% |
+| Close velocity RMSE (m/s) | 0.663743 | 0.620764 | -6.48% |
+| Fast-close velocity RMSE (m/s) | 2.319617 | 2.257681 | -2.67% |
+| Close velocity missing (s) | 6.506 | 6.506 | unchanged |
+| Close correct-track missing (s) | 33.588 | 32.802 | -2.34% |
+| Global wrong-track time (s) | 261.318 | 276.400 | +5.77% |
+| False-output time (s) | 227.616 | 235.432 | +3.43% |
+| Mean primary hypotheses | 6.3555 | 7.1587 | +12.64% |
+
+Maximum primary hypothesis count remains 15. Counts include clutter, not tracked
+truth identities. This is an accuracy/velocity candidate, **not** a demonstrated
+reduction in all wrong candidates or a single-model solution. V11 aggregate loss
+falls 0.543304 → 0.512535 (-5.66%). First-200ms kick/impact velocity RMSE improves
+3.314619 → 3.264105 m/s (-1.52%) over 4.188 s of event coverage, with no missing
+output. Original occluded-kick published motion starts 162 ms earlier. Recovery
+plots and timing: `G/audit2/development-recovery.{png,svg}` and timing JSON.
+
+Prepared configuration passes 117 filter tests and 43 tuner/observer tests
+(one existing observer test ignored). No added runtime code. All calibration
+uses the parity-verified binary; final candidate replays through the original
+frozen baseline binary, independently of the abandoned weak-expiry feature.
+
+Parallel audit capture hit the fixed Zenoh port 7448. Preserved seed-50000046's
+startup failure; retry **the same seed** sequentially, not a coverage/accuracy
+replacement. Seed 50000045 completed all nine scenarios; seed 50000046 is running.
+`G/audit2/resume_capture.py` resumes capture; `evaluate_fresh.py` waits for two
+complete suites and then verifies/scorers both frozen configurations. Artifacts
+and logs persist under `G/audit2/`. Aggregate RAM remains under 10 GiB here;
+45 GiB cgroup cap continues to apply. No subagents, no pushes.
 
 ## 5. Evidence map and operational handoff
 
