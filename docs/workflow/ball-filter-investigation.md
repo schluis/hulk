@@ -3520,6 +3520,38 @@ with explicit false-output and old counterexample checks. This remains untested.
 Sources/defaults unchanged; ranking40334, full-state62467 and E10913973 all terminal.
 No fresh data consumed, no pushes or agents. Goal remains incomplete.
 
+### E117 — Observation-uncertainty speed guard [RUNNING]
+
+E116 exact observation-gate reconstruction at133.214: intervals40/40ms,
+displacement dot0.05357>0, significance131.85/151.13>9, consistency0.19463<9,
+latest observed range0.81393m. Thus the observed sequence passes motion confirmation
+and range. Observed speed5.79042m/s, directional speed sigma0.24993; previous
+published speed5.08163 before the final update. Speed excess~0.71 is within3sigma.
+Simply storing first-history speed5.60 would still fail a strict speed inequality;
+therefore defer extra historical state and test uncertainty-aware comparison first.
+
+Candidate combines E115 association with E109 reversal, replacing strict observed
+speed<=current speed with positive speed-excess squared<=9*observed directional
+velocity variance. Retains3-observation consistency, close-range and statistically
+opposite direction requirements; never adds large old velocity covariance. No
+new parameter/state. Unit regression explicitly shrinks old speed to1.9 before
+confirmed2m/s reversal; existing clearly accelerating and outlier tests remain.
+Artifacts G/uncertain-speed-reversal; build74335 under resource runner, source
+backups/experimental snapshots archived. Restore owned source after terminal build.
+Then target seed69, known E108 bad cases via full216, and consumed54 including false
+seed76 before considering any fresh test. This change is unvalidated, not adopted.
+
+E117 frozen build complete:128 tests pass including new cancellation case. Restored
+four runtime source files byte-for-byte; only investigation note changed in checkout.
+Target seed69 fast-shot against E115: close velocity2.053049477→1.828250733m/s
+(~10.95% improvement), position0.672787540→0.672387561m, wrong15.184s and
+correct-close missing2.216s unchanged. At133.214 reversal now activates; no claim
+of unobserved-contact prediction. Evidence target-comparison.json and fast-shot/.
+Full216 comparison exec98115 running; consumed54 paired export/analysis exec90593
+launched using existing verified baseline frames. Both resource runner/nice15,
+aggregate45GiB cap; observed~5.4GiB before second job. Must inspect old accelerating
+counterexamples and false seed76; this is targeted evidence only, not acceptance.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
