@@ -59,9 +59,10 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: extend simulator/evaluation coverage for the user's fast and airborne kicks.
-E73's longer-window motion fallback failed full replay and is archived; do not
-relax activation further without tracing downstream hypothesis effects.
+Next: trace first-observation acquisition on E75's high-speed challenge and audit
+flight projection. Explicit >15m/s/airborne captures expose large baseline errors;
+they supplement, not replace, the original close-accuracy/fresh-validation goal.
+E73's longer-window fallback is rejected; do not relax activation blindly.
 E67's smooth position-weighted velocity credit is implemented as a diagnostic;
 the publication candidate slightly worsens it. E66's moving reconfirmation fails
 full replay and is archived, with working runtime restored.
@@ -71,7 +72,7 @@ of wrong output, loses no correct output, and changes no remaining estimate.
 Correctly associated close-velocity error and coverage are unchanged: this is a
 false-output improvement, not a velocity winner. The production objective remains
 v11; supplementary scoring is diagnostic only. No accepted winner. Experimental
-runtimes are archived and prior runtime restored; E74 challenge capture is running.
+runtimes are archived and prior runtime restored; E74 captures and E75 analysis completed.
 Reserved67/68 remain unscored. Working runtime has
 experimental optional cap. At the user’s explicit request to push for local testing,
 the checkout now uses E43 parameters; this is not acceptance or a merge recommendation.
@@ -2190,7 +2191,7 @@ baseline scores, then measure projection/flight/landing failures before choosing
 more filter changes. This does not replace the original close-accuracy goal or its
 fresh validation requirement. No adopted runtime changes and no fresh seeds used.
 
-### E74 — Explicit airborne and high-speed challenge captures [CAPTURE IN PROGRESS]
+### E74 — Explicit airborne and high-speed challenge captures [CAPTURES COMPLETE]
 
 Simulator recipe adds optional `ball_vertical_impulse` (upward world-frame N s,
 default0), applied through the existing one-step external-force integration. Existing
@@ -2223,6 +2224,52 @@ memory about5GiB, nice15,45GiB cap. Inspect live handle before restarting any jo
 Next: verify actual challenge coverage, export original-baseline estimates, and
 measure high-speed/flight/landing accuracy without the legacy15m/s exclusion. Keep
 those supplemental metrics distinct from old scores. Fresh67/68 remain unscored.
+
+### E75 — Baseline performance on airborne and >15m/s challenges [COMPLETE]
+
+Both three-recording captures completed with required coverage. Airborne peaks
+0.677–0.724m, airborne time0.772–0.872s per recording. High-speed peaks20.762–22.640m/s.
+Original accepted parameters used; source/scenario/evaluator hashes in
+`G/airborne-challenges/challenge-protocol.json`. New development seed offset80000000;
+filenames include `validation` from capture CLI but these inspected recordings are
+not held-out final validation. Fresh67/68 untouched. Airborne replay matches captured
+live output (`airborne-verified/report.json`, live_replay_verified=true).
+
+Supplemental analyzer `analyze_challenge.py` scores all finite Field velocities
+with valid time/pose, without the legacy15m/s exclusion. Position/velocity are
+horizontal only. Flight: centre>radius+0.1m; landing window: first500ms after descent
+to radius+0.02m following flight; wall approach: within0.25m of enclosure boundary.
+These are geometric diagnostic categories, not a contact classifier. Missing and
+incorrect coverage reported alongside RMSE; old objective/reports unchanged.
+
+| Diagnostic interval, pooled3 recordings | Time (s) | Position RMSE (m) | Velocity RMSE (m/s) |
+| --- | ---: | ---: | ---: |
+| Airborne recipe: flight | 2.486 | 1.4914 | 3.0380 |
+| Airborne recipe: close flight | 0.964 | 0.4666 | 3.1572 |
+| Airborne recipe: flight before first wall approach | 2.366 | 1.5287 | 3.1126 |
+| Airborne recipe: first500ms after landing | 3.240 | 2.8522 | 2.9196 |
+| High-speed recipe: >15m/s | 1.796 | 5.3585 | 18.5111 |
+| High-speed recipe: close and >15m/s | 0.294 | 1.5121 | 19.9643 |
+
+No missing estimates in these intervals: most failure is wrong published output.
+Close >15m/s is position-incorrect (>0.5m) for0.268 of0.294s. This is only three
+stress scenarios and a short close exposure; not a population-level opponent estimate.
+Airborne figure `airborne-baseline.png` was rendered and inspected: estimated
+horizontal motion lags true motion during flight and after landing, before the
+wall rebound. This supports investigating projection and acquisition, not blaming
+wall physics alone.
+
+Reconciliation: supplemental airborne close velocity matches legacy within1e-4.
+Close position differs0.000107m because supplemental position uses velocity-eligible
+Field-range frames while legacy position uses Ground-reference range independently;
+recorded in `airborne-analysis/reconciliation.json`, not hidden by loosening tolerance.
+
+Measurement caveat: simulator detection centres have Gaussian pixel noise, while
+ball radius is generated directly from true depth. A size-based height/range method
+must be stress-tested with imperfect radius estimates before claiming real-world
+benefit; do not exploit synthetic perfect radius. Next trace high-speed first
+observations and ground-projection rejection during flight before choosing an
+implementation. All capture/export/analysis jobs terminal; no filter change adopted.
 
 ## 5. Evidence map and operational handoff
 
