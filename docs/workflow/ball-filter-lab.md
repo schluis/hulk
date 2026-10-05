@@ -222,7 +222,7 @@ Local evidence and reproducible commands are under
 adding instrumentation to the production filter. All jobs are finished.
 
 
-### Current close-range kicking objective (2026-10-05)
+### Earlier close-range kicking objective (v10, 2026-10-05)
 
 At the user's request, `close_ball_position_velocity_v10` optimizes only ball truth
 within 1 metre of the robot. It sums the independently normalized bounded position
@@ -305,3 +305,89 @@ The tuner also searches the shared initial x/y position covariance from 1e-6 to
 1 square metre. Initial velocity covariance remains fixed. Excessive initial
 position uncertainty lets the first moving observation correct position without
 learning enough velocity, so this parameter matters for short acquisitions.
+
+
+### Validation decision after the motion investigation (2026-10-05)
+
+The preferred simulator branch retains only the selection tie fix in production
+filter code: equally ranked confirmed hypotheses prefer the latest observation,
+then effective confidence. Confirmation eligibility is unchanged. The original
+preferred parameters and resting/moving transition rules remain unchanged.
+The v11 objective, initial-position-covariance search dimension, and seeded demo
+support remain available for further experiments. No commits were pushed.
+
+The baseline below is the preferred extended filter at `e5672d82e`, **not main or
+the game build**. Results replay identical inputs for each implementation.
+
+| Data | Variant | Within-1m position RMSE (m) | Within-1m velocity RMSE (m/s) |
+| --- | --- | ---: | ---: |
+| Development seed 4243, nine scenarios | Before this run | 0.22013 | 0.58925 |
+| Same | Retained selection fix, original parameters | 0.15759 | 0.58672 |
+| Same | Rejected v11 parameter/resting candidate | 0.24280 | 0.67478 |
+| Fresh seed 8675309, **two scenarios only** | Before this run | 0.17811 | 0.39275 |
+| Same | Retained selection fix, original parameters | 0.14417 | 0.39275 |
+
+The fresh audit stopped at fast-crossing: its required reacquisition coverage
+was zero instead of at least one. Only stationary-close and approach completed.
+The retained evaluator verified live/replay parity for both. This is not a
+completed independent nine-scenario benchmark, and contains no qualifying
+near-ball velocity-jump windows for the first-200-ms diagnostic. Fast-close
+velocity RMSE was identical at 1.98158 m/s, with 1.292 seconds of truth coverage;
+mean/max hypothesis counts were identical at 6.017/11. Selection does not itself
+reduce hypothesis creation. Fast-shot velocity acquisition remains unresolved.
+
+The v10 search ran 32,768 trials and 96 probes. The v11 search ran 16,384 trials
+and 56 probes; it stopped at its four-batch budget, not a demonstrated plateau.
+Although the v11 candidate improved training and fast-close velocity, development
+close position and velocity regressed 10.3% and 14.5%, respectively. A separate
+38-configuration observation-based resting experiment also failed validation.
+Neither candidate was adopted. Code is preserved on local branches
+`experiment/ball-filter-covariance-resting-20261005` and
+`experiment/ball-filter-observation-rest-20261005`; corresponding parameter files
+and rejection decisions are in the artifact directory below.
+
+The retained code passed 117 ball-filter tests, 41 tuner tests, 78 simulator tests
+(with one ORT smoke test ignored), and 24 remote-bridge tests. Twix checked
+successfully. Captures exercised the simulator's actual inference stack.
+Compute used low priority and a 45 GiB aggregate limit; observed search memory
+peaked around 26.3 GiB. All searches and captures are finished. The image observer
+on port 8765 still serves the original nine diagnostic recordings with their
+matching frozen binary; it is not a live view of the retained branch.
+
+#### Prediction-model audit
+
+The current Kalman transition already integrates exponentially decaying velocity:
+`dx/dt = v`, `dv/dt = -lambda*v`. It assumes constant heading between updates,
+not constant speed. Changing the physical transition does not require abandoning
+the Kalman framework. Kicks, contacts, and unseen changes of direction are separate
+sources of error that a smooth rolling model cannot predict in advance.
+
+An offline audit fitted exponential damping and constant rolling deceleration on
+training truth, then evaluated different recordings. It starts from **true**
+position and velocity to isolate dynamics; these are not end-to-end filter errors
+or adopted parameter values. For fast (at least 2 m/s), close (within 1 m), smooth
+rolls on seed 4243:
+
+| Prediction | 100 ms position RMSE (m) | 300 ms | 500 ms |
+| --- | ---: | ---: | ---: |
+| Current damping | 0.02567 | 0.11963 | 0.24401 |
+| Fitted exponential damping | 0.02240 | 0.06834 | 0.10102 |
+| Fitted constant deceleration | 0.02263 | 0.07358 | 0.11832 |
+
+There were 82/77/72 overlapping windows, respectively. Smoothness is classified
+using future truth (limited heading/speed changes), not an online detector.
+Training fitted damping 0.925/s and deceleration 2.5 m/s² for this fast subset;
+current damping is about 0.278/s. The simulator-specific result favors calibrating
+the existing model before adding complexity. It does **not** demonstrate fewer
+hypotheses, nor justify copying this damping into production without full-filter
+validation. Initial velocity estimation and association remain important.
+The kick and goalkeeper behavior code also extrapolate constant velocity
+independently; changing filter dynamics would not automatically change those
+interception calculations. No behavior changes were made.
+
+Reproducible diagnostics, immutable binaries, reports, scripts, and rejected
+parameters are under:
+`/home/schluis/hulk/logs/ball-filter-motion-fixes-20261005/`.
+See `trajectory-audit.json`, `trajectory_audit.py`, `v11/comparison.json`,
+`v11/decision.json`, `observation-rest/decision.json`, `tie-only/`,
+`final-before/`, `final-retained/`, and `final-holdout-capture.log`.
