@@ -49,7 +49,9 @@ demos, and the image observer.
 E06 association tracing is complete. E07 tested a full-span motion-significance
 check with fixed parameters and was rejected on all three replay partitions.
 Runtime code and preferred parameters remain unchanged from `0ed7a0910`.
-No search, capture, or evaluation job remains running.
+Goal mode is active at the user’s request. E08 parameter ablations are running.
+Stop only after a candidate beats the frozen current best with improved velocity
+and passes fresh validation; do not declare diagnostic progress a completed goal.
 
 Next: use the trace to design **uncertainty-aware velocity initialization**, with
 stationary and clutter negative cases; separately trace the lifetime of hypotheses
@@ -329,6 +331,59 @@ accuracy, rather than merely activating moving mode earlier? Separately determin
 whether long-lived off-truth births remain visible because of uncertainty,
 occlusion, retention rules, or real subsequent support. Do not conflate that
 lifetime problem with failed matching of consecutive real-ball observations.
+
+### 4.7 Active goal: beat the current tuned best
+
+#### E08 — Calibrate existing motion/update model [RUNNING, 2026-10-05]
+
+Frozen baseline: `ed1d39b67` runtime, original preferred parameters, tie-only
+frozen evaluator. Goal: better close velocity with no close-position regression,
+then independent fresh validation. Inspect fast velocity, missing-ball time,
+wrong/false output and hypothesis behavior before promotion.
+
+First isolate parameter effects on the **retained** algorithm, unlike previous
+searches combined with rejected resting changes. Probe damping, moving position
+versus velocity process noise, initial position covariance, and resting threshold.
+No new algorithm complexity. All 36 existing recordings (original nine, training
+18, prior development nine) are now explicitly development data. Candidates must
+pass close position/velocity checks in each partition; final fresh data remain
+unseen until candidate freeze. A parameter probe is not an adopted candidate.
+
+Evidence: `/home/schluis/hulk/logs/ball-filter-goal-20261005/`, including
+`protocol.json`, `probe.py`, `configs/`, and immutable evaluator identity.
+16 concurrent low-priority evaluation processes through the 45 GiB resource
+runner; no subagents. Further experiments follow evidence, not a fixed trial cap.
+
+38 initial probes completed. A 192-combination search then found combo-032,
+which improves close position, close velocity, and fast-close velocity in all
+three partitions. Pooled close position 0.29143 → 0.22018 m; close velocity
+0.68842 → 0.65429 m/s; fast-close velocity 2.28775 → 2.23075 m/s. False-track and
+velocity-unavailable durations are unchanged; wrong-output time varies and must
+be reported. These are development results only, not goal completion.
+A further 192 local perturbations are running before candidate freeze.
+`fresh-protocol.json` predeclares two complete new nine-scenario suites with
+coverage-only replacements and no accuracy-based seed selection.
+
+#### E09 — Preserve the birth observation for motion evidence [NOT ADOPTED]
+
+The existing three-observation motion test starts only when updating a resting
+track. A newly spawned track discards its first measured position before entering
+rest, effectively requiring four detections. Test retaining that actual birth
+measurement and its covariance, transforming it with odometry, and preserving
+it through the initial moving-to-resting transition. Keep all three-observation
+significance/consistency checks. Clear evidence after a moving update or activation.
+This differs from E02/E07: it preserves valid data rather than relaxing evidence.
+Compare fixed parameters first, then promising E08 parameters if warranted.
+
+Completed on all 36 development recordings with baseline and E08 combo-032
+parameters. Close position, close velocity, and fast-close velocity metrics were
+exactly unchanged; overall wrong-track time increased by 0.388/0.160 s,
+respectively. 118 tests passed, including birth-to-third-exposure motion and
+stationary behavior. No demonstrated benefit to justify adopting the change.
+Preserved branch: `experiment/ball-filter-birth-evidence-20261005`;
+`ball-filter-goal-20261005/birth-evidence/decision.json` contains its commit and
+metrics. Preferred runtime source restored.
+
 
 ## 5. Evidence map and operational handoff
 
