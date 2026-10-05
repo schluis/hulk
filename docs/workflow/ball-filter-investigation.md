@@ -74,11 +74,11 @@ regressions and fixes; E81–E113 preserve earlier rejected experiments.
 - Consumed54 (69/71/73/75/76/77): all frozen metric checks pass after E120; pooled
   position0.233376828→0.229637407m, velocity0.681333155→0.672266121m/s,
   false237.824→235.840s. These are development evidence, not fresh validation.
-- **E121 fresh validation running:** frozen sources/binaries/parameters/protocol
-  in G/wide-merge-fresh; first6 successful suites from seeds78..87, retain failures,
-  unchanged acceptance thresholds. Capture exec1564 confirmed live; seeds78/79/80
-  completed all9 scenarios each;81/83 also complete;82 excluded for robot fall;
-  next batch84/85/86 running. Candidate remains unmodified.
+- **E121 fresh validation scoring:** frozen sources/binaries/parameters/protocol
+  in G/wide-merge-fresh. Selected seeds78/79/80/81/83/85:54 valid recordings.
+  Seed82 robot fall and84 insufficient reacquisition excluded by predeclared rules;
+  surplus86 retained and unscored. Capture1564 terminal, evaluation48030 running
+  with live-baseline parity verification. Candidate remains unmodified.
 - E122 supplemental challenges: extreme>15m/s and airborne velocity remain weak;
   no claim to solve those cases. Preserve raw incidental-flight velocity regression.
 - Working checkout/defaults remain the previously pushed **E43 user-test experiment**;
@@ -3731,6 +3731,14 @@ provide the sixth, surplus successful captures retained/unscored per protocol.
 Observed child simulators nice15; aggregate memory~7GiB, cap45GiB. Candidate and
 validation script hashes verified unchanged earlier this turn. No scores inspected,
 no restart, no candidate modification or push. Fresh comparison still pending.
+
+E121 capture1564 terminal: selected78/79/80/81/83/85,54 clips; unused successful86
+retained unscored. Seed84 failed fast-crossing reacquisition_opportunities0<1 after
+2 complete families; seed82 fall failure preserved. No score-based exclusions.
+Frozen evaluation48030 launched via resource runner, paired baseline/candidate
+exports plus baseline --verify for every suite; source/parameter/binary hashes
+checked before scoring. Candidate unchanged. Wait for complete comparison and
+per-suite/coverage audit before any acceptance claim; no further captures launched.
 
 ## 5. Evidence map and operational handoff
 
