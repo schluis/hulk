@@ -371,7 +371,10 @@ RMSE improves only 3.11421 → 3.09140 m/s, with position almost unchanged
 (0.29572 → 0.29595 m). Mean total hypotheses rises 6.547 → 6.670 (maximum 15),
 so this is not evidence of fewer candidates. This count includes clutter.
 Fresh validation is running with the frozen candidate and protocol; no success
-claim until that completes. Preferred default parameters are still unchanged.
+claim until that completes. Seed 50000042 failed fast-crossing coverage (no
+reacquisition opportunity) before accuracy evaluation. Seed 50000043 completed
+all nine scenarios; seed 50000044 is running. No fresh accuracy results have
+been inspected. Preferred default parameters are still unchanged.
 `fresh-protocol.json` predeclares two complete new nine-scenario suites with
 coverage-only replacements and no accuracy-based seed selection.
 
