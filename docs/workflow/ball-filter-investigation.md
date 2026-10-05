@@ -59,10 +59,11 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E79 traced E78's worst regression to likely false-percept capture. E80's
-size-qualified preference removes the large regression but still fails original-suite
-velocity guards and high-speed velocity acquisition. Inspect those remaining failures
-and primary/auxiliary output interaction; airborne projection is independently open. Explicit >15m/s/airborne captures expose large baseline errors;
+Next: E81 identifies delayed reversal as E80's remaining velocity regression.
+E82 restricts changed association to resting-only competition, improving pooled
+close/fast metrics and wrong time, but audit8b position still regresses0.501mm RMSE.
+Inspect that paired regression and duplicate hypotheses before any fresh validation;
+high-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
 E67's smooth position-weighted velocity credit is implemented as a diagnostic;
@@ -2413,6 +2414,54 @@ as end-to-end high-speed tracking. All jobs terminal, no adopted runtime change.
 Next inspect original-suite velocity regression and candidate primary versus
 auxiliary output after the suspicious second percept; do not weaken acceptance
 criteria or fresh-test this configuration merely because pooled gains are positive.
+
+### E81 — Size-qualified preference delays a real reversal [DIAGNOSED]
+
+`G/association-size-log/original-audit/` contains paired compact original-suite
+exports, close-velocity200ms window ranking and detailed failure-window.json.
+The remaining original-suite close-velocity regression concentrates in fast-near-shot
+133.4–133.8s. Outputs are identical through133.314s; true motion reverses around133.3s.
+At133.336s baseline moving track is unmatched (age54ms), while E80 keeps a moving
+track matched (age14ms), with velocity still pointing the old way. At133.422s the
+baseline output velocity is(−4.8804,1.7115)m/s, while E80 is(2.3581,−0.0325)m/s.
+By133.516s truth is at0.938m range; baseline position error0.042m versus E80's0.158m,
+velocity(−4.4812,2.1455) versus(1.0111,0.1755). E80 subsequently adapts slowly.
+
+During the0.118s close portion of133.4–133.6s, true mean speed3.1503m/s, baseline
+mean speed4.8371, candidate0.7338; integrated velocity squared error0.340375 versus
+1.489320. This is not merely velocity credited at an incorrect position: baseline
+position is accurate after recovery. Matched-history persistence prevents the
+rapid alternative-track recovery seen in baseline. Avoid changing moving-track
+competition just to repair resting-track acquisition.
+
+### E82 — Restrict logarithmic preference to resting-track competition [DEVELOPMENT ONLY]
+
+E80's size-qualified relative log uncertainty is applied only when **every eligible
+hypothesis is resting**. If any eligible moving hypothesis exists, preserve baseline
+bounded uncertainty preference for that percept. Eligibility uses the same finite
+and maximum-cost gates as assignment. This targets E77's initially stationary
+competition while retaining baseline reversal association; no scenario/time checks.
+Original parameters unchanged. `G/association-resting-log/` preserves sources,
+config, build log, evaluators and SHA256 protocol. All118 existing filter tests pass.
+Full216 development replay completed; working source restored. Results:
+
+| Metric | Baseline | Candidate | Change |
+|---|---:|---:|---:|
+| Close position RMSE (m) |0.243549712|0.243503639|−0.01892%|
+| Close velocity RMSE (m/s) |0.678003173|0.677856122|−0.02169%|
+| Fast close velocity RMSE (m/s) |2.350457712|2.349776931|−0.02896%|
+| All velocity RMSE (m/s) |0.781474412|0.780696452|−0.09955%|
+
+Wrong output1045.142→1042.400s (−2.742s); correct-close missing106.924→106.886s;
+raw missing67.652s and close missing28.900s unchanged, missing runs192 unchanged.
+Fast-close velocity no worse in every suite. Worst close-velocity change+0.000465%
+audit9a; worst close position+0.19670%audit8b,0.254627421→0.255128268m (+0.501mm).
+This small regression remains a failed guard, not permission to declare success.
+Worst all-velocity+0.00826%audit10a. Duplicate hypotheses still need paired review
+before any promotion; score report lacks a duplicate count. No accepted runtime or
+fresh67/68 evaluation. Next inspect audit8b's position regression and test narrowly
+justified corrections, preserving reversal and isolated-outlier counterexamples.
+All jobs terminal; peak observed RAM<10GiB, CPU nice15, no pushes.
 
 ## 5. Evidence map and operational handoff
 
