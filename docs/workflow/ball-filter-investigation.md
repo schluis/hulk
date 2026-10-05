@@ -51,15 +51,16 @@ check with fixed parameters and was rejected on all three replay partitions.
 Runtime code and preferred parameters remain unchanged from `0ed7a0910`.
 Goal mode is active at the user’s request. E08 failed fresh validation; E10
 retention calibration found a publication dependency (E15). A joint primary/auxiliary
-parameter search is being prepared (E16) on all 54 inspected development clips.
+parameter search completed (E16) on all 54 inspected development clips. The
+parameter-only ablation-0260 candidate is frozen for a second independent audit.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: tune primary and auxiliary measurement noise together, damping, process
-noise, existing selection controls, and optional weak-track retention. Weighted
-initialization was tested and rejected (E13); unrestricted auxiliary publication
-failed the clear-view-miss test (E15). Require bounded close losses and availability
-checks as well as conditional RMSE before freezing another fresh-audit candidate.
+Next: finish fresh capture and validation of frozen ablation-0260 (`G/audit2/`).
+No experimental runtime changes remain: weak expiry, weighted initialization,
+and standalone auxiliary publication were all removed. Preserve the global
+false/wrong-output tradeoff when reporting the close-range gains; do not present
+this as a solution to all candidate/clutter failures.
 
 ### 2.2 Baseline and terminology
 
@@ -557,6 +558,41 @@ varies primary/auxiliary noise, damping, matching and hidden decay around four
 centres, and keeps selection uncapped. Seed 2026100525, exact protocol and configs
 under `G/joint/refine-*`. Do not promote conditional-error gains caused by loss
 of availability. All results use the parity-verified rebuilt binary.
+
+
+### E17 — Simplified parameter candidate, second independent audit
+
+**Status:** frozen before capture; running. E16 plus focused retention/selection
+and ablation searches used only the same 54 development clips. Exact configs,
+protocols, reports, and summaries are under `G/joint/`. `ablation-0260` retains
+almost all of local-0855's roughly 30% close-position and 6.5% close-velocity
+improvement with only damping, matching distance, and primary noise changes.
+No auxiliary-parameter change or new runtime mechanism is necessary.
+
+The earlier E16 screening rule also required global false and wrong output to
+improve. No substantial close-range winner satisfied that extra requirement.
+Before capturing this audit, explicitly return to the user's stated priority:
+close-range position and velocity are the hard requirements; global behavior is
+reported and inspected, rather than an automatic veto. This candidate has no
+extra missing output and less close-range wrong tracking on development data,
+but about 5–6% more global wrong-track time and 3.4% more false output. Do not
+hide that tradeoff or call it fewer wrong candidates overall. E08 remains rejected
+because its second fresh suite regressed close position and velocity as well.
+
+`G/audit2/freeze.json` hashes candidate and frozen baseline runtime binaries.
+`G/audit2/protocol.json` freezes acceptance and seed order 50000045–50000052.
+Capture the first two complete nine-scenario suites, replacing only capture
+coverage failures before scoring; no replacement on accuracy. Both suites must
+have non-regressing close position/velocity; pooled position/velocity and bounded
+close losses must improve, fast-close velocity must not regress, and missing close
+velocity time must not grow. Inspect scenario-specific failures and initial shot
+recovery. No candidate changes after this freeze. Captures use baseline runtime
+and parameters; evaluate baseline/candidate on identical inputs, strictly verify
+baseline live/replay equality. Parameter SHA256:
+`c6f596878caaaf1d4d3b4f7d2260c37e2a94bae4a49f08e8bd4edcc4b49d041c`.
+
+Optional weak-expiry runtime code was restored out of the working tree; its
+experiment branch and artifacts preserve the rejected investigation.
 
 ## 5. Evidence map and operational handoff
 
