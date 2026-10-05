@@ -59,42 +59,20 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E81 identifies delayed reversal as E80's remaining velocity regression.
-E82 restricts changed association to resting-only competition, improving pooled
-close/fast metrics and wrong time, but audit8b position still regresses0.501mm RMSE.
-E83 traces that regression to inherited support making a newly matched false-size
-resting track eligible to win recency. E84's re-confirmation restriction fixes it and
-improves pooled position/wrong time, but original-suite velocity regresses0.109%.
-E85 proves original raw-velocity regression rewards a misplaced stationary output;
-common-correct-frame velocity and joint credit improve across216, but near-truth
-duplicate exposure increases28.398 hypothesis-seconds, chiefly recordings144/177.
-E86 finds stale nearby resting histories with zero clear-miss exposure; E87 isolates
-selection-only improvement (position/wrong output, no fast-velocity gain). Investigate
-stale-history retirement without broad merge changes before fresh validation.
-E88 confirms one duplicate's center is visible but covariance makes exposure unknown;
-the other is physically hidden. Do not apply a common clear-miss deletion rule.
-E89 conditional merging removes dominant two-clip duplicate increases and preserves
-pooled velocity gains, but development position regresses0.124%; inspect before
-fresh validation. Broad0.21m merge control regresses one suite8.64% and is rejected.
-E90 localizes remaining discrepancy to approach49.532s; E91's stale precise-state
-fusion endpoint does not change that frame and is rejected. Instrument the actual
-merge/selection before further policy changes. E92 identifies the stale-age versus
-observation-gap mismatch; E93 aligns them and fixes the exact frame, while a smaller
-+0.059%audit6a position regression remains. E94 traces it to the hard auxiliary
-covariance gate switching output to a94.45% stale-history blend; test continuous
-publication weighting before further merge tuning. E95 taper fixes the local jump
-but fixed settings fail position; E96 calibration grid012 improves all-suite position
-and pooled velocity, with small per-suite velocity regressions still requiring the
-position-conditioned and duplicate audit before fresh validation. E97 completes that
-audit: duplicates improve31%, but joint credit worsens and audit5b has a real
-velocity regression at brief-gaps190.4–190.6s. Trace primary/auxiliary output there
-before changing calibration or consuming fresh validation; no candidate accepted.
-E98 confirms older resting auxiliary suppresses newer moving primary velocity.
-E99 preserves primary velocity for that combination: fixes the target frame but
-worsens pooled velocity and audit6a, rejected. Inspect that counterexample before
-adding any motion-dependent publication rule. E100 confirms primary velocity points
-opposite actual motion after a displaced match; E101 evaluates25 existing
-publication settings on E93 (no new velocity policy), exec78335 currently live.
+Current: E81–E93 developed resting-only association, selection re-confirmation,
+and conditional stale-resting merging. E95 continuous publication taper and E99
+newer-moving velocity preference were rejected after full replay; keep all evidence.
+E101 calibrated existing publication settings on E93; E102 verified ratio7 candidate
+improves development position1.51%, correctly associated velocity0.030%, duplicate
+exposure30.93%, joint credit and coverage. Raw suite velocity regressions include
+position-credit confounds, but three tiny common-correct regressions are preserved.
+E103 froze candidate before fresh67/68: position improves0.83%/1.33%, wrong output
+falls1.4s, correct-close coverage gains0.082s with no loss, duplicates improve0.786
+hypothesis-seconds; velocity is EXACTLY unchanged on both fresh suites. Thus strict
+fresh velocity improvement is not achieved; no goal winner adopted. Preserve this
+candidate as evidence of generalizing position/duplicate benefit. Continue motion
+recovery work; newly changed candidates require new reserved scenarios. Seeds67/68
+are consumed. No live E101–E103 jobs; runtime restored, no pushes.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -3035,7 +3013,7 @@ latest size implausible. Recency/mode/confidence alone do not distinguish them.
 Do not add a fitted distance cutoff based solely on these two frames. E12 already
 rejected broad size gating, with severe close-position regression; not rediscovered.
 
-### E101 — Existing publication calibration on E93 runtime [RUNNING]
+### E101 — Existing publication calibration on E93 runtime [COMPLETE]
 
 E93 improves close/fast velocity with no fast-suite regression but has small position
 regressions. E95 continuous taper worsens position at original settings; E96's ratio
@@ -3049,6 +3027,65 @@ Reject pooled-only improvements; compare parameter-only control if candidate mer
 further audit. Runtime working tree unchanged. No agents/pushes. Exec78335 confirmed live,
 evaluator PID865092 at nice15; aggregate memory approximately8GiB after data load.
 Poll same handle before restarting; inspect results/ranked.json after terminal run.
+
+E101 all25 complete, none passes every raw suite guard. Grid012 (ratio7, original
+blend) improves all-suite position, pooled position−1.51261%, close velocity−0.02741%,
+fast−0.02896%, no fast-suite regression. Worst raw close velocity+0.13248%audit6b;
+original also has E85-known position-credit confound. Ratio8/original blend has same
+fast/suite velocity limitation. Ratio10 adds E98's audit5b fast regression, so do not
+select it merely for larger pooled position gain. All rankings preserved.
+
+### E102 — Correctness audit of modest covariance-limit calibration [COMPLETE]
+
+Prioritize E101 grid012 (ratio7) over ratio10 because fast velocity does not regress
+in any suite and all-suite position improves. Export216 development frames with
+hypothesis positions, compare E85 baseline using fixed E63 common-correct velocity,
+E67 joint credit, duplicate proxies, and lost/gained coverage. Investigate audit6b
+rather than assuming every raw-velocity increase is a confound. Artifacts
+`G/aligned-publication-calibration/audit-grid012/`. No fresh67/68, no source changes.
+Resource runner/nice15/45GiB; no agents or pushes.
+
+E102 complete216 exports and fixed analyses. Common-correct2395.788s velocity
+0.625915140→0.625725297m/s (−0.03033%). Gained3.776s/lost0.040s correct close
+coverage. Audit6b raw+0.13248% is a coverage/position confound: same-frame correct
+velocity exactly0.649828858 both, gained0.040s/lost0. Tiny common-correct regressions
+remain audit2a+0.000016792m/s, audit3b+0.000000043, audit9a+0.000003090; preserve
+these, do not claim every raw/correct suite passes. Joint credit0.892923874→
+0.894313498; fast0.546846047→0.547368636. Duplicate exposure693.982→479.302
+hypothesis-seconds (−30.9345%), multiple-near-truth624→447.288s. Parameter-only
+ratio7 control: close position0.240921109 (−1.07929%), velocity0.677948696
+(−0.00803%), fast unchanged; candidate0.239865749/0.677817299/2.349776931.
+All jobs complete. Candidate merits frozen fresh evaluation, not adoption yet.
+
+### E103 — Frozen ratio7 candidate fresh67/68 validation [COMPLETE; NOT GOAL WINNER]
+
+Before scoring either reserved suite, freeze binaries/parameters with SHA256,
+recording manifest and explicit position/velocity/correctness/duplicate criteria in
+`G/frozen-ratio7-validation/protocol.json`. Candidate is E93 runtime plus ratio7;
+no E95 taper or E99 velocity preference. Development raw-suite failures retained
+with their paired audit explanation; no retroactive claim of full raw guard pass.
+Fresh18 clips comprise nine families each for seeds50000067/68. Once read, these
+are consumed validation data and cannot be called untouched again. No adjustment
+within this validation run. Compare both frozen evaluators, export exact frames,
+then fixed joint/common-correct/duplicate diagnostics. Resource runner/nice15,
+45GiB aggregate. No source edits, agents, or pushes. Goal not achieved yet.
+
+E103 both frozen18-frame exports and analyses complete. Fresh suite67 close-position
+0.096080277→0.095279872m (−0.83306%); suite68 0.105775364→0.104372894m
+(−1.32589%). Raw close/fast velocity EXACTLY unchanged on both:67 close0.593719125,
+fast2.056102358;68 close0.594902266, fast2.073031275. Common-correct218.586s
+velocity0.579067914 both; gained0.082s/lost0 correct coverage. Wrong-output47.590→
+46.190s. Extra near-truth hypothesis-seconds77.286→76.500; multiple-near-truth
+68.780→67.994s. Joint credit0.910056647→0.910325527; fast0.624782275→0.625639913.
+
+Decision: frozen candidate generalizes modest position/coverage/duplicate benefits,
+but fails the predeclared strict fresh velocity-improvement requirement. Do not call
+goal achieved or quietly weaken that requirement after observing results. Preserve
+candidate/code/parameters/protocol and every result (`decision.json`); working
+runtime remains unchanged. Seeds67/68 are now CONSUMED validation evidence.
+Next work must target motion recovery, not merely improve publication position.
+Any later adjusted candidate needs newly captured, frozen-before-scoring scenarios.
+All E101–E103 jobs terminal; no source edits, no pushes. Goal remains active.
 
 ## 5. Evidence map and operational handoff
 
