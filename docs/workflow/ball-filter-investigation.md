@@ -3683,6 +3683,45 @@ Memory5.96GiB at checkpoint, max45GiB. No candidate score inspected or changes;
 wait for six selected valid suites before frozen evaluation, baseline live verification
 and final acceptance audit. Last authoritative capture results in capture.log/status.json.
 
+### E123 — Frozen-source review while validation runs [COMPLETE]
+
+Used repository agent-review skill, all13 reference criteria, serially because the
+user explicitly forbids restarting agents. Read-only comparison of five E120 source
+snapshots against0ed7a091048c2166b79f14fe75a6477baef6325c plus call sites and frozen
+parameters. No source edits, formatters, broad checks or new performance claims.
+
+#### Findings
+
+- `suggestion` `lib.rs-after:451`: per-column association facts are recalculated
+  for every hypothesis row. Criterion: runtime performance. Evidence: radius
+  consistency, all-resting/confirmed scan and minimum log-trace scan sit inside the
+  row×column loop, though each is row-independent. Impact: avoidable O(H²P) scans
+  and projection/log work (configured H<=15), without measured deadline violation.
+  Proposed fix: compute these once per column while preserving calculation order
+  and scores; establish replay parity before replacing the frozen evaluator.
+- `suggestion` `hypothesis.rs-after:257`: merge documentation says equal-weight
+  covariance intersection for all merges. Criterion: docs/examples. Evidence:
+  wider qualified stale merges now retain the fresh endpoint instead. Impact:
+  misleading caller documentation. Proposed fix: document conditional endpoint
+  selection and the physical-distance argument at delivery time.
+
+#### Open Questions
+
+None blocking the ongoing frozen validation. Final integration must use the frozen
+parameters, not checkout E43 defaults; the checkpoint already distinguishes them.
+
+#### Scope Notes
+
+Reviewed frozen5-file candidate versus baseline, existing caller updates, bounded
+motion history, covariance/error fallbacks, parameter usage and tests. Criteria:
+duplicate concepts, API consistency, Rust ownership/errors/types, concurrency,
+performance, docs, minimality, architecture, config, usefulness, atomicity. No
+blocking findings for inspected scope. Capture/scorer implementation and unrelated
+historical branch commits were not re-reviewed. Optional cap support predates E120
+in the current checkout and is disabled in frozen parameters; do not present it as
+new tuned behavior. Runtime remains frozen. Candidate hashes verified unchanged;
+parent capture1564 live, seeds81/82/83 progressing through fast-shot, RAM~6.3GiB.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
