@@ -71,6 +71,8 @@ duplicate exposure increases28.398 hypothesis-seconds, chiefly recordings144/177
 E86 finds stale nearby resting histories with zero clear-miss exposure; E87 isolates
 selection-only improvement (position/wrong output, no fast-velocity gain). Investigate
 stale-history retirement without broad merge changes before fresh validation.
+E88 confirms one duplicate's center is visible but covariance makes exposure unknown;
+the other is physically hidden. Do not apply a common clear-miss deletion rule.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2641,6 +2643,40 @@ association without blindly widening merge distance, preserving separate observe
 balls and fast-moving transitions. Any such experiment must revisit all216 metrics
 and duplicate exposure, then freeze before fresh validation. Independent high-speed
 and airborne limitations remain.
+
+### E88 — Duplicate visibility differs between clear and occluded scenes [DIAGNOSED]
+
+Instrumented E84 association/decay at exact detector timestamps12.202s and259.482s.
+`G/duplicate-visibility/` preserves frozen instrumented source/binary, build log,
+trace and exact aggregate parity receipt against E86's two-clip replay. All source
+files restored after build; replay terminal. Repeated log entries are per-recording
+and aggregate evaluation, not repeated detector updates.
+
+- Stationary-close stale track last_seen9.482s, position(0.83483,−0.10687), support
+  3.802, covariance diagonal≈20.47594m², visibility scale3: center **Visible**,
+  full uncertainty footprint **Unknown**. The3σ half-width is≈13.575m. This is
+  uncertainty conservatism preventing clear-miss exposure, not physical occlusion.
+- Long-occlusion stale track last_seen257.202s, position(1.44489,−0.09329), support
+  159.340, covariance diagonal≈17.00335m²: center **Hidden**, full **Hidden**.
+  Do not count this as a clear miss merely because a nearby ball is observed.
+
+`negative_evidence::classify_with_detections` uses Robot detections as occluders;
+Ball-labelled detections do not directly shield all nearby candidates from misses.
+Thus two hypotheses sharing one percept is not the visibility mechanism here.
+Resting covariance growth is confirmed by source: Qrest≈0.014915m² per reference
+2ms, i.e.≈7.458m²/s per axis. This explains≈20m² after2.7s. It is a tuned adaptation
+noise scale, not a physically bounded stationary-ball displacement model. E02's
+covariance-aware resting transition is a different rejected experiment; do not
+conflate it with prediction-noise/visibility policy.
+
+Do not delete both stale tracks under one center-visible rule. Next evaluate a
+narrow duplicate-merge condition using existing covariance agreement and disjoint
+observation histories, distinguishing recently observed resting evidence from
+stale alternatives and preserving two simultaneous observations. A broader0.3m
+merge remains rejected (E36). Alternatively investigate resting uncertainty growth
+with explicit reacquisition/occlusion guards; neither is currently adopted.
+All jobs terminal, fresh67/68 untouched, no pushes. Existing candidate still has
+unresolved duplicate increase and fast/airborne limitations; goal not complete.
 
 ## 5. Evidence map and operational handoff
 
