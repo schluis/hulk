@@ -3445,6 +3445,27 @@ the preferred challenger, using development suites and explicit false-track guar
 do not globally relax selection eligibility or claim the proposed fix validated.
 All diagnostic jobs terminal; runtime/defaults unchanged, goal remains incomplete.
 
+### E115 — Confirmed resting association competition [RUNNING]
+
+E114 shows log-uncertainty association can send the true observation to an ineligible
+challenger while publishing the stale established track. Test E93+ratio7 with the
+stronger log-uncertainty rule only when every gated eligible competitor is resting
+AND has validity >= max(3, validity_output_threshold); otherwise use the original
+bounded penalty. This is deliberately conservative and may lose previous benefits;
+no selection, confirmation, velocity initialization or parameter changes. No E109
+reversal. Artifacts G/confirmed-resting-association, four source backups and frozen
+experimental snapshots. Build exec73683 under resource runner; existing121 tests
+pass. Planned tests: consumed seed77 brief-gap, then all216 development clips and
+consumed54 if useful. None counts as fresh validation. Restore checkout sources
+from exact owned backups after build, before evaluating frozen binaries.
+
+E115 build terminal,121 tests pass, frozen binaries ready; all four source files
+restored byte-for-byte. Target clip position0.208659474m, velocity0.606573426m/s,
+wrong1.440s: equals parameter-only control and fixes the observed failure. At173.716
+publishes fresh173.682 observation at baseline position. This is a targeted fix,
+not a general victory. Full216 evaluation exec80463 confirmed live, memory5.35GiB
+under45GiB maximum, nice15. Await development results before fresh validation.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
