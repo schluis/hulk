@@ -77,7 +77,8 @@ regressions and fixes; E81–E113 preserve earlier rejected experiments.
 - **E121 fresh validation running:** frozen sources/binaries/parameters/protocol
   in G/wide-merge-fresh; first6 successful suites from seeds78..87, retain failures,
   unchanged acceptance thresholds. Capture exec1564 confirmed live; seeds78/79/80
-  completed all9 scenarios each;81/82/83 now running. Candidate remains unmodified.
+  completed all9 scenarios each;81/83 also complete;82 excluded for robot fall;
+  next batch84/85/86 running. Candidate remains unmodified.
 - E122 supplemental challenges: extreme>15m/s and airborne velocity remain weak;
   no claim to solve those cases. Preserve raw incidental-flight velocity regression.
 - Working checkout/defaults remain the previously pushed **E43 user-test experiment**;
@@ -3721,6 +3722,15 @@ historical branch commits were not re-reviewed. Optional cap support predates E1
 in the current checkout and is disabled in frozen parameters; do not present it as
 new tuned behavior. Runtime remains frozen. Candidate hashes verified unchanged;
 parent capture1564 live, seeds81/82/83 progressing through fast-shot, RAM~6.3GiB.
+
+E121 capture checkpoint: valid suites78/79/80/81/83 (45 recordings). Seed82 robot
+fell at36.1s during empty-false, with7 families complete; partial/log preserved and
+excluded by the predeclared capture-validity rule, not scores. Parent1564 remains
+live and automatically advanced to84/85/86; first complete suite in seed order will
+provide the sixth, surplus successful captures retained/unscored per protocol.
+Observed child simulators nice15; aggregate memory~7GiB, cap45GiB. Candidate and
+validation script hashes verified unchanged earlier this turn. No scores inspected,
+no restart, no candidate modification or push. Fresh comparison still pending.
 
 ## 5. Evidence map and operational handoff
 
