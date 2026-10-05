@@ -80,7 +80,9 @@ E90 localizes remaining discrepancy to approach49.532s; E91's stale precise-stat
 fusion endpoint does not change that frame and is rejected. Instrument the actual
 merge/selection before further policy changes. E92 identifies the stale-age versus
 observation-gap mismatch; E93 aligns them and fixes the exact frame, while a smaller
-+0.059%audit6a position regression remains. Full E93 paired audit still outstanding.
++0.059%audit6a position regression remains. E94 traces it to the hard auxiliary
+covariance gate switching output to a94.45% stale-history blend; test continuous
+publication weighting before further merge tuning. Full E93 paired audit outstanding.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2808,6 +2810,41 @@ review of E93 remains outstanding; do not reuse E84's audit as proof for changed
 merge behavior. Next inspect audit6a and quantify the remaining error, then freeze
 only a defensible candidate before fresh validation. No fresh67/68 evaluation,
 no adopted code/push. All jobs terminal; goal remains incomplete.
+
+### E94 — Remaining position regression is publication gate discontinuity [DIAGNOSED]
+
+`G/stale-resting-endpoint-aligned/audit6a/` contains paired9-clip exports, position
+window rankings and failure-window.json. Close-position regression concentrates
+in brief-gaps seed50000056,184.8–185.0s:0.162s exposure, SSE0.0343424 baseline
+versus0.0376839 candidate (RMSE≈0.4604→0.4823m in that short interval). At184.818s,
+selected primary age/mode remain0.216s/resting in both, but published last_seen
+changes to183.482s for candidate, while baseline retains184.602s until later.
+This points to auxiliary publication rather than primary selection.
+
+Instrumented E93 `G/publication-switch-trace/` proves the branch transition, with
+exact per-recording score parity receipt and source/binary preserved. At184.800s,
+primary covariance trace3.1888766, auxiliary19.659359, ratio≈6.165>configured6.048:
+auxiliary rejected. At184.818s, traces3.4573545 and19.927834, ratio≈5.764<6.048:
+auxiliary admitted. The blend immediately becomes0.94453126 instead of0. Thus a
+roughly0.36m primary/auxiliary separation produces≈0.34m output change with both
+velocities zero. Auxiliary last_seen183.482s, older than primary184.602s. Candidate
+primary position(0.299012,−0.342024) differs only submillimetres from baseline;
+published candidate(0.157928,−0.032094) is the blended older history.
+
+Source trace matches tracker.rs's binary covariance_supported gate followed by a
+fixed publication_filter_blend. Increasing primary process uncertainty alone can
+therefore abruptly enable a stale auxiliary estimate. This explains the residual
+position regression and is a concrete output-jump mechanism; it does not prove
+all observed jumps share this cause. Do not further tune merge distances to conceal
+this independent publication discontinuity.
+
+Next test a continuous covariance-dependent blend within the existing admissible
+region, preserving the maximum covariance ratio as rejection boundary and literal
+zero behavior. Must compare stationary corrections, close velocity and false-output
+retention against all216 plus E93; E51's prior publication grids remain relevant.
+All diagnostic jobs terminal, all source restored, memory≈4.87GB, no pushes, fresh
+67/68 untouched. Goal not complete; high-speed/airborne and full E93 duplicate audit
+remain outstanding.
 
 ## 5. Evidence map and operational handoff
 
