@@ -59,8 +59,11 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E47 failed; E48 jointly calibrates existing parameters against all216
-inspected clips.
+Next: E48/E50/E51 found no acceptable winner. E52's only full numeric pass is
+effectively unchanged performance, not a meaningful solution. E53 did not yet
+reproduce individual-candidate direction jitter. E54 confirms a global output
+threshold trades wrong-ball time for missing real-ball time. Next: E55 tests
+uncertainty protection conditional on established support.
 Reserved67/68 remain unscored. Working runtime has
 experimental optional cap. At the user’s explicit request to push for local testing,
 the checkout now uses E43 parameters; this is not acceptance or a merge recommendation.
@@ -1414,6 +1417,10 @@ fast/bounded/availability and reversal guards. Early stop only when fully
 feasible and pooled position/velocity each improve>=1%; then manual review and
 fresh validation on untouched67/68. No algorithm additions beyond optional cap.
 Artifacts `G/joint-calibration/`. Default parameters remain unchanged.
+Result: all12 generations finished (1540 non-baseline reports including seed
+configurations); zero full passes. Best minimax evo-6-102 still regresses one
+suite velocity0.2713%, despite pooled position -0.7494%, velocity -0.1906%.
+Rejected; do not restart this completed job.
 
 ### E49 — User-requested simulator checkout and push
 
@@ -1444,6 +1451,119 @@ small remaining regressions. Use the same 216 development clips, unchanged E48
 guards including the approach and reversal diagnostics, and frozen cap-only
 runtime. Reserved seeds67/68 remain untouched. Evidence and exact block mapping:
 `G/block-ablation/protocol.json`. No additional runtime complexity is introduced.
+
+Result: all256 finished; none passes the full guards. Publication-only block128
+is closest: pooled close position -8.89%, velocity -0.079%, wrong output -67.636s,
+correct-ball missing time -14.092s, no additional missing velocity. All23 suite
+position scores improve/nonregress, but some suite velocity scores regress up to
+0.200%, and pooled fast velocity regresses0.0125%. Adding merge changes gives no
+velocity benefit; cap/field changes introduce other regressions. Rejected as a
+winner, but motivates calibrating publication parameters in isolation.
+
+### E51 — Isolated publication-parameter calibration
+
+Run98 combinations of existing publication blend, detection noise, and covariance
+ratio, holding every primary parameter at the original baseline and leaving the
+confidence cap disabled. This specifically tests E50's near-feasible simple
+alternative without changing primary association or adding new filter code.
+Same216 clips and full E48 guards; fresh67/68 remain reserved. Exact grid and
+results: `G/publication-isolation/`. No acceptance based on pooled averages alone.
+Result: all98 finished, zero full passes. Closest grid009 improves pooled
+position9.13% and velocity0.188%, but worst guard remains +0.1245%. Rejected.
+
+### E52 — Candidate persistence: visibility uncertainty versus confidence cap
+
+User questions whether candidates decay and whether cap3.95 is too low. Code
+audit: primary clear misses decay/expire; hidden decay half-life is about20s;
+unknown visibility pauses decay. The auxiliary tracker disables unmatched decay;
+both trackers retain the20s age timeout. Confidence is a support score, not a
+probability, and3.95 is only slightly above confirmed-support threshold3.
+
+Concrete E44 evidence: seed65 approach at48.320s selects a track last observed at
+46.162s, support3.853, with no current validity-decay evidence and no accumulated
+clear misses. Its3-sigma covariance bounds extend about20.18m by19.42m on either
+side. Requiring all corners to be visible can protect increasingly uncertain
+stale candidates by returning Unknown, which pauses decay. This is distinct
+from cap-induced loss of confirmation.
+
+Test56 configurations: baseline/E43 centres, visibility uncertainty scales
+0/0.1/0.25/0.5/1/2/3 and confidence caps None/3.95/8/16. Other parameters remain
+fixed within each centre. Use the216 development clips and unchanged full guards;
+do not assume less conservative visibility is safe around real occlusions.
+Evidence: `G/visibility-cap/protocol.json`; original state in audit10 candidate
+frames-1.jsonl. No new runtime code or changes outside the filter.
+Result: all56 finished. Grid020 (baseline, scale2, no cap) technically passes
+numeric guards but improves position only0.00133% and velocity0.00000355%; this
+does not resolve the observed problems and is not adopted. Smaller uncertainty
+scales/higher caps alone do not produce an acceptable winner.
+
+### E53 — Position/velocity continuity and rapid direction changes
+
+User observes jumping candidates and very rapid velocity direction changes.
+Code audit confirms MovingPredict integrates damped velocity into position and
+applies odometry; measurement correction can change both immediately. E43's
+velocity process-noise variances are6.37x/12.28x baseline, permitting much larger
+velocity changes. This is a plausible mechanism, not yet identification of the
+user's particular jump. Published output can also switch primary/auxiliary
+histories; visual hypothesis indices are not persistent identities.
+
+Diagnostic on audit10's18 recordings: transform outputs into Field, compare
+displacement with trapezoidal integrated output velocity for adjacent<=120ms
+samples, both true ranges<=1m. This includes corrections/switches, not just the
+prediction model. Candidate discrepancy RMS0.02781m versus baseline0.03738m;
+over10cm exposure2.666s versus2.690s; over50cm0.036s versus0.256s. No>90deg
+estimated reversals while both estimated/true speeds>0.5m/s and truth direction
+is steady in either run. Thus this close-range published-output diagnostic does
+not yet reproduce the user's direction-jitter observation; do not claim it is
+fixed or disprove a candidate-level problem. Exact protocol/events and script:
+`G/continuity/`. Expand to individual-hypothesis corrections as needed.
+
+### E54 — One-percept candidates controlling robot motion
+
+User observed the robot walking toward an empty, wrongly selected location for
+three seconds. An isolated birth has support1, yet output threshold is0.5.
+The hard3-support confirmation rule only protects an established competitor;
+it does not prevent a lone unconfirmed hypothesis from becoming published output.
+Combined with Unknown visibility pausing decay, this can permit the reported
+behavior. No exact user replay timestamp is available; distinguish the proven
+code path from a confirmed attribution of that particular event.
+
+At25Hz uninterrupted clear misses, isolated support1 crosses discard0.2 after
+approximately3 near misses or17 farther misses (about80ms/640ms after first miss).
+Inherited support, fresh matches, visibility changes and other removal paths
+alter this. Unknown visibility can defer removal to20s without a new match.
+
+Test existing output thresholds0.5/1.1/2/3, caps None/3.95/8, baseline/E43 centres:
+24 configurations on216 clips. Quantify false/wrong output and acquisition/missing
+time explicitly; a confirmation fix cannot be declared a tuning winner merely
+because it suppresses outputs. Keep established occlusion handling separate from
+tentative clutter. Evidence: `G/publication-confirmation/`.
+
+Result: all24 finished; no full winner. On original baseline, output threshold3
+reduces wrong-track time178.734s but adds17.904s close velocity missing time and
+13.082s correct-close-ball missing time across216 clips; velocity RMSE also
+regresses0.247%. On E43 with cap3.95, threshold3 adds104.988s missing velocity
+versus original baseline, while reducing wrong time196.610s. This is not an
+acceptable standalone fix; narrow cap headroom compounds confirmation loss.
+
+Additional code-audit interaction: competing-track suppression requires leader
+support10 (`competition::MINIMUM_LEADER_VALIDITY`). A cap3.95 keeps support below
+that level under normal one/two-exposure update cadence, disabling that mechanism
+in practice. Raising a cap alone still cannot prevent weak output eligibility or
+Unknown visibility from pausing decay. Treat these as separate policies.
+
+### E55 — Tentative candidates must earn uncertainty-based miss protection
+
+Next experiment, not yet implemented: only established support earns the
+covariance-corner protection in hypothesis visibility. For tentative support<3,
+use the existing center visibility classification, which still respects actual
+robot occlusion and camera geometry. This avoids treating large initial
+uncertainty as grounds to ignore an empty, otherwise visible location. Keep
+existing clear-miss rates/timeouts first to isolate this one change. Test a
+single false birth disappearing versus an actual occluded track being retained;
+then full216-clip baseline/candidate comparisons, including missing/fast recovery.
+No automatic adoption and no further pushes. User's three-second false pursuit
+is a concrete behavioral failure requiring targeted validation.
 
 ## 5. Evidence map and operational handoff
 
