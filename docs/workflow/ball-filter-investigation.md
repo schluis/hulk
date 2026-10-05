@@ -818,6 +818,32 @@ Approach5.4–5.8s similarly retains obsolete motion during observation gaps.
 Artifacts: `G/audit4/diagnosis/fast-regressions.json`; these are paired sample
 errors, not proof of a new association failure. No runtime change inferred yet.
 
+### E23 — Cap accumulated confidence (user suggestion)
+
+**Status:** experimental. Stored validity currently accumulates per matched
+observation without a ceiling. The existing selection cap affects output ranking,
+not stored support, pruning or slot retention. Add an optional literal maximum
+stored confidence, applied before pruning/merging. Omission preserves historical
+behavior; zero means zero support. Test caps3,5,10,20,50,100 on baseline and
+E22 local candidates. Assess missing output and long occlusions, not just counts.
+No default cap chosen or promoted. Artifacts: `G/confidence-cap/`.
+
+21 replays complete (three parameter sets × six caps plus uncapped controls).
+118 tests pass; uncapped scores exactly match all108 original recordings.
+On retained baseline, cap10 improves pooled close position1.505%, velocity0.122%,
+fast velocity unchanged, false-output time -0.986s, wrong-output time -0.500s;
+worst per-group close p/v ratio1.001239. Cap5 cuts false-output3.740s but a group
+regresses17.4%. Cap3 increases pooled close-position RMSE33.3% and close correct
+track missing time14.122s. Thus confidence saturation can bound stale history,
+but low caps damage retention/selection and do not solve fast velocity.
+Preserve experiment branch `experiment/ball-filter-confidence-cap-20261005`;
+restore original runtime/defaults. Revisit only with a candidate that passes
+close-position/velocity guards; do not add unused production complexity.
+
+E22 completed1,040 configurations; none beats baseline under all eleven p/v/fast
+group guards. Several improve all close p/v groups but regress fast velocity in
+one or two. Full results retained for targeted follow-up, not fresh evidence.
+
 ## 5. Evidence map and operational handoff
 
 - `M` = `/home/schluis/hulk/logs/ball-filter-motion-fixes-20261005/`.
