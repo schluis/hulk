@@ -72,7 +72,10 @@ hypothesis-seconds; velocity is EXACTLY unchanged on both fresh suites. Thus str
 fresh velocity improvement is not achieved; no goal winner adopted. Preserve this
 candidate as evidence of generalizing position/duplicate benefit. Continue motion
 recovery work; newly changed candidates require new reserved scenarios. Seeds67/68
-are consumed. No live E101–E103 jobs; runtime restored, no pushes.
+are consumed. E104 diagnoses the largest new reversal failure: detection gap plus
+slow wrong-sign recovery; rejected E66 leaves this unchanged. Verify its pre-update
+change gate before testing a narrower reversal mechanism. No live jobs from these
+experiments; runtime restored, no pushes.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -3086,6 +3089,40 @@ runtime remains unchanged. Seeds67/68 are now CONSUMED validation evidence.
 Next work must target motion recovery, not merely improve publication position.
 Any later adjusted candidate needs newly captured, frozen-before-scoring scenarios.
 All E101–E103 jobs terminal; no source edits, no pushes. Goal remains active.
+
+### E104 — Motion failures in consumed validation and rejected-reconfirmation diagnostic [COMPLETE]
+
+Rank fixed200ms common-correct velocity windows across the18 E103 recordings.
+Largest is seed68 fast-near-shot143.4–143.6s: SSE3.977785, peak squared error37.94,
+truth Field velocity(1.96761,−0.48682) while published Ground velocity
+(−4.25349,−0.44208). Baseline and candidate identical. Other top windows have
+stationary output during renewed fast motion (149.2 and126.0s). These are now
+consumed development scenarios, not new held-out validation.
+Replay rejected E66 frozen binary on this one clip to establish whether its motion
+confirmation even activates usefully here before designing a different adaptation.
+Do not adopt E66: its all-range and audit2b regressions remain documented. Artifacts
+`G/reversal-recovery-followup/`, fixed window ranking under E103. No source changes.
+
+E104 diagnostic E66 replay complete; the target143.3–143.716s published states are
+identical to accepted baseline. After last pre-reversal exposure143.362, three empty
+exposures143.402/.442/.482 precede recovery detection143.522. Velocity remains
+wrong-signed after subsequent fresh matches. At143.578 E66 retained three
+observations (intervals160ms/40ms) have positive displacement dot product,
+step significances38.45/11.39 (>9), consistency3.37 (<9): they satisfy existing
+motion-evidence tests. Their estimated Ground velocity(0.568,−0.610) opposes the
+current estimate(−1.948,−0.495). Velocity-change significance using POST-update
+current covariance is only0.536. This post-update diagnostic is not the exact
+pre-update gate; instrument that gate before claiming its precise trigger value.
+Following windows fail one or both step significance tests as ball slows.
+Evidence `window.json`, `motion-gates.json`; low-priority replay/analysis terminal.
+
+Next hypothesis: an uncertainty-based large-change test may suppress useful recovery
+precisely when the current velocity is uncertain. Test a narrower confirmed-direction
+reversal rule instead of E66's broad reset, with coherent observation evidence and
+uncertainty accounted for explicitly. First verify the pre-update gate. Preserve
+E66's far-range/audit2b failures as mandatory counterexamples; don't assume fixing
+this one reversal establishes a general improvement. No source change yet, no fresh
+validation remaining from67/68, no goal completion claim.
 
 ## 5. Evidence map and operational handoff
 
