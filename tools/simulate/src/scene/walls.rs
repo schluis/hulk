@@ -23,37 +23,41 @@ impl Wall {
     }
 }
 
-fn walls(dimensions: &FieldDimensions) -> [Wall; 4] {
+fn walls(dimensions: &FieldDimensions, height: f64) -> [Wall; 4] {
     let x = f64::from(dimensions.length / 2.0 + dimensions.border_strip_width);
     let y = f64::from(dimensions.width / 2.0 + dimensions.border_strip_width);
     [
         Wall {
-            center: [x + THICKNESS / 2.0, 0.0, HEIGHT / 2.0],
-            half_size: [THICKNESS / 2.0, y + THICKNESS, HEIGHT / 2.0],
+            center: [x + THICKNESS / 2.0, 0.0, height / 2.0],
+            half_size: [THICKNESS / 2.0, y + THICKNESS, height / 2.0],
         },
         Wall {
-            center: [-x - THICKNESS / 2.0, 0.0, HEIGHT / 2.0],
-            half_size: [THICKNESS / 2.0, y + THICKNESS, HEIGHT / 2.0],
+            center: [-x - THICKNESS / 2.0, 0.0, height / 2.0],
+            half_size: [THICKNESS / 2.0, y + THICKNESS, height / 2.0],
         },
         Wall {
-            center: [0.0, y + THICKNESS / 2.0, HEIGHT / 2.0],
-            half_size: [x, THICKNESS / 2.0, HEIGHT / 2.0],
+            center: [0.0, y + THICKNESS / 2.0, height / 2.0],
+            half_size: [x, THICKNESS / 2.0, height / 2.0],
         },
         Wall {
-            center: [0.0, -y - THICKNESS / 2.0, HEIGHT / 2.0],
-            half_size: [x, THICKNESS / 2.0, HEIGHT / 2.0],
+            center: [0.0, -y - THICKNESS / 2.0, height / 2.0],
+            half_size: [x, THICKNESS / 2.0, height / 2.0],
         },
     ]
 }
 
 pub(crate) fn object(dimensions: FieldDimensions) -> MjcfObject {
+    object_with_height(dimensions, HEIGHT)
+}
+
+pub(crate) fn object_with_height(dimensions: FieldDimensions, height: f64) -> MjcfObject {
     MjcfObject::from_factory(
         move || {
             let mut spec = MjSpec::new();
             let body = spec.world_body_mut().add_body();
             body.set_name("field_walls")
                 .map_err(|error| error.to_string())?;
-            for wall in walls(&dimensions) {
+            for wall in walls(&dimensions, height) {
                 body.add_geom()
                     .with_type(MjtGeom::mjGEOM_BOX)
                     .with_pos(wall.center)
@@ -111,7 +115,7 @@ fn spawn(
         unlit: true,
         ..default()
     });
-    for (index, wall) in walls(&dimensions).iter().enumerate() {
+    for (index, wall) in walls(&dimensions, HEIGHT).iter().enumerate() {
         commands
             .spawn((
                 WallVisual(index),
@@ -143,7 +147,7 @@ fn update(
     }
     let dimensions = parameters.parameters.field_dimensions;
     **physics = object(dimensions);
-    let walls = walls(&dimensions);
+    let walls = walls(&dimensions, HEIGHT);
     for (wall, mut transform) in &mut visuals {
         *transform = walls[wall.0].transform();
     }

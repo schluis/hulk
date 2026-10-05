@@ -944,3 +944,35 @@ On a remote server, forward the port with `ssh -L 8765:127.0.0.1:8765 HOST`.
 Rendering is on demand, without a GPU or a continuously growing image queue.
 
 Use `./simulator demo --seed 4243` for a different reproducible realization of all nine scenarios (default seed: 42). Demo never searches parameters.
+
+### Fast and airborne challenge captures
+
+The additional recipes in `scenarios/ball-filter-challenges/` exercise speeds above
+15 m/s and an airborne kick. They are separate from the established nine-scenario
+demo and do not change its baseline dataset. Capture without parameter search:
+
+```sh
+./simulator --capture-ball-tuning logs/airborne-challenge \
+  --capture-ball-scenario tools/simulate/scenarios/ball-filter-challenges/airborne.json \
+  --capture-ball-parameters /path/to/ball-filter.json5
+```
+
+Use `high-speed.json` for the faster planar kick. Each custom recipe capture
+produces three seeded recordings. `ball_impulse` remains a planar impulse in N s;
+optional `ball_vertical_impulse` adds an upward world-frame impulse in N s and
+otherwise defaults to zero. Both are applied for one physics step; gravity and
+contacts determine subsequent motion. Optional `wall_height_metres` controls the
+physical capture enclosure (default 1 m; airborne recipe 3 m). These artificial
+rebounds must be distinguished from natural flight and landing when evaluating
+tracking; the setting applies to recipe captures, not the ordinary scene walls.
+
+Coverage includes `peak_ball_height_metres` (ball-centre height),
+`airborne_ball_seconds` (any ball centre more than 0.1 m above its resting height),
+and `above_15mps_ball_seconds` (any ball's horizontal speed exceeds 15 m/s).
+Recipe coverage minima cause capture to fail if the intended challenge did not
+occur; recordings and diagnostics remain available for inspection.
+
+These coverage checks do not establish tracking quality. The existing velocity
+scorer excludes speeds above 15 m/s and estimates only planar velocity. Inspect
+flight, landing and high-speed tracking separately before interpreting aggregate
+scores; a successful capture is not evidence of airborne filter support.

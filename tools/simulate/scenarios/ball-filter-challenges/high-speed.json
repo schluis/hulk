@@ -1,0 +1,42 @@
+{
+  "family": "high-speed",
+  "ball_position": [
+    3.5,
+    0.6
+  ],
+  "robot_position": [
+    0,
+    0
+  ],
+  "robot_yaw": 0,
+  "perception": {
+    "frame_period": 0.04,
+    "delivery_delay_seconds": 0.05,
+    "delivery_jitter_seconds": 0.015,
+    "center_noise_pixels": 1.0,
+    "false_positive_probability": 0.04,
+    "seed": 42
+  },
+  "steps": [
+    {
+      "until": 3,
+      "name": "observe before challenge kick",
+      "ball_present": true,
+      "ball_impulse": null
+    },
+    {
+      "until": 40,
+      "name": "high-speed kick, flight and recovery",
+      "ball_present": true,
+      "ball_impulse": [
+        -9.0,
+        0.0
+      ],
+      "ball_vertical_impulse": 0.0
+    }
+  ],
+  "minimum_coverage": {
+    "peak_ball_speed_metres_per_second": 15.0,
+    "above_15mps_ball_seconds": 0.05
+  }
+}

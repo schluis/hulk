@@ -1100,7 +1100,10 @@ fn record(
     app.add_plugins((MinimalPlugins, MujocoWorldPlugin));
     app.insert_resource(SimulationMode::Paused);
     app.world_mut()
-        .spawn(crate::scene::walls::object(parameters.field_dimensions));
+        .spawn(crate::scene::walls::object_with_height(
+            parameters.field_dimensions,
+            recipe.map_or(1.0, |recipe| recipe.wall_height_metres),
+        ));
     let robot = app
         .world_mut()
         .spawn((
@@ -1234,6 +1237,9 @@ fn record(
     let mut simultaneous_motion_seconds = 0.0;
     let mut fast_ball_seconds = 0.0;
     let mut peak_ball_speed = 0.0_f64;
+    let mut peak_ball_height = 0.0_f64;
+    let mut airborne_ball_seconds = 0.0;
+    let mut above_15mps_ball_seconds = 0.0;
     let mut previous_robot: Option<nalgebra::Vector3<f32>> = None;
     let mut previous_balls = vec![None::<nalgebra::Vector3<f64>>; ball_count];
     let mut pending_impulses = Vec::new();
@@ -1366,7 +1372,8 @@ fn record(
                 app.update();
                 previous_balls.fill(None);
             }
-            if let Some(impulse) = step.ball_impulse {
+            if step.ball_impulse.is_some() || step.ball_vertical_impulse != 0.0 {
+                let impulse = step.ball_impulse.unwrap_or([0.0; 2]);
                 let world = app.world().resource::<MujocoWorld>();
                 let binding =
                     RobotBinding::new(world.data(), &format!("object_{}_", robot.to_bits()))?;
@@ -1382,6 +1389,7 @@ fn record(
                     pending_impulses.push(BallImpulse {
                         ball: *ball,
                         impulse: [f64::from(impulse.x), f64::from(impulse.y)],
+                        vertical_impulse: step.ball_vertical_impulse * variation.speed,
                         height_above_center: 0.4 * f64::from(radius),
                     });
                 }
@@ -1479,6 +1487,7 @@ fn record(
                     pending_impulses.push(BallImpulse {
                         ball: balls[index],
                         impulse: kick.impulse,
+                        vertical_impulse: 0.0,
                         height_above_center: 0.4 * f64::from(radius),
                     });
                     let event =
@@ -1529,6 +1538,8 @@ fn record(
             let mut ball_velocities = Vec::new();
             let mut positions = Vec::new();
             let mut any_ball_fast = false;
+            let mut any_ball_airborne = false;
+            let mut any_ball_above_15mps = false;
             let mut any_ball_moving = false;
             for (index, &ball) in balls.iter().enumerate() {
                 let (p, q) = first_pose(&world, &SpawnedBalls(vec![ball]))?;
@@ -1552,6 +1563,9 @@ fn record(
                 ball_distance += ball_step;
                 let ball_speed = ball_step / 0.002;
                 peak_ball_speed = peak_ball_speed.max(ball_speed);
+                peak_ball_height = peak_ball_height.max(position.z);
+                any_ball_airborne |= position.z > f64::from(radius) + 0.1;
+                any_ball_above_15mps |= ball_speed > 15.0;
                 any_ball_fast |= ball_speed > 2.0;
                 any_ball_moving |= ball_speed > 0.08;
                 previous_balls[index] = Some(position);
@@ -1559,6 +1573,12 @@ fn record(
             }
             if any_ball_fast {
                 fast_ball_seconds += 0.002;
+            }
+            if any_ball_airborne {
+                airborne_ball_seconds += 0.002;
+            }
+            if any_ball_above_15mps {
+                above_15mps_ball_seconds += 0.002;
             }
             if walking && robot_step / 0.002 > 0.04 && any_ball_moving {
                 simultaneous_motion_seconds += 0.002;
@@ -1680,6 +1700,9 @@ fn record(
         "simultaneous_motion_seconds": simultaneous_motion_seconds,
         "peak_ball_speed_metres_per_second": peak_ball_speed,
         "fast_ball_seconds": fast_ball_seconds,
+        "peak_ball_height_metres": peak_ball_height,
+        "airborne_ball_seconds": airborne_ball_seconds,
+        "above_15mps_ball_seconds": above_15mps_ball_seconds,
         "brief_dropout_bursts_by_frames": io.ball_perception.as_ref().map(|perception| perception.brief_dropout_counts()),
         "approach_status": approach.status(),
         "approach": approach,
@@ -1725,6 +1748,8 @@ fn record(
 #[serde(deny_unknown_fields)]
 struct CaptureRecipe {
     family: String,
+    #[serde(default = "default_capture_wall_height")]
+    wall_height_metres: f64,
     ball_position: [f64; 2],
     #[serde(default)]
     robot_position: [f32; 2],
@@ -1740,6 +1765,10 @@ struct CaptureRecipe {
     steps: Vec<ScenarioStep>,
     #[serde(default)]
     minimum_coverage: std::collections::BTreeMap<String, f64>,
+}
+
+fn default_capture_wall_height() -> f64 {
+    1.0
 }
 
 impl CaptureRecipe {
@@ -1765,6 +1794,8 @@ impl CaptureRecipe {
                 && *b <= EPISODE_SECONDS),
             "invalid occlusion interval"
         );
+        ensure!(self.wall_height_metres.is_finite() && self.wall_height_metres > 0.0,
+            "wall height must be finite and positive");
         let mut previous = 0.0;
         for step in &self.steps {
             ensure!(
@@ -1773,7 +1804,8 @@ impl CaptureRecipe {
             );
             ensure!(
                 step.ball_impulse
-                    .is_none_or(|v| v.iter().all(|x| x.is_finite())),
+                    .is_none_or(|v| v.iter().all(|x| x.is_finite()))
+                    && step.ball_vertical_impulse.is_finite(),
                 "nonfinite ball impulse"
             );
             ensure!(
@@ -1807,6 +1839,9 @@ struct ScenarioStep {
     name: std::borrow::Cow<'static, str>,
     ball_present: bool,
     ball_impulse: Option<[f64; 2]>,
+    /// Upward world-frame impulse in N s; independent of the planar kick.
+    #[serde(default)]
+    ball_vertical_impulse: f64,
     /// Script body motion for isolated perception tests; None uses normal behavior.
     #[serde(default)]
     walking_velocity: Option<[f32; 3]>,
@@ -1819,6 +1854,7 @@ const SCENARIO: [ScenarioStep; 10] = [
         walking_velocity: None,
         ball_present: true,
         ball_impulse: None,
+        ball_vertical_impulse: 0.0,
     },
     ScenarioStep {
         until: 9.0,
@@ -1826,6 +1862,7 @@ const SCENARIO: [ScenarioStep; 10] = [
         walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([-0.11, -0.27]),
+        ball_vertical_impulse: 0.0,
     },
     ScenarioStep {
         until: 10.2,
@@ -1833,6 +1870,7 @@ const SCENARIO: [ScenarioStep; 10] = [
         walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([0.11, 1.53]),
+        ball_vertical_impulse: 0.0,
     },
     ScenarioStep {
         until: 14.0,
@@ -1840,6 +1878,7 @@ const SCENARIO: [ScenarioStep; 10] = [
         walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([-0.20, -1.75]),
+        ball_vertical_impulse: 0.0,
     },
     ScenarioStep {
         until: 18.0,
@@ -1847,6 +1886,7 @@ const SCENARIO: [ScenarioStep; 10] = [
         walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([-0.18, 0.07]),
+        ball_vertical_impulse: 0.0,
     },
     ScenarioStep {
         until: 24.0,
@@ -1854,6 +1894,7 @@ const SCENARIO: [ScenarioStep; 10] = [
         walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([0.35, -0.20]),
+        ball_vertical_impulse: 0.0,
     },
     ScenarioStep {
         until: 28.0,
@@ -1861,6 +1902,7 @@ const SCENARIO: [ScenarioStep; 10] = [
         walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([-0.30, 0.50]),
+        ball_vertical_impulse: 0.0,
     },
     ScenarioStep {
         until: 34.0,
@@ -1868,6 +1910,7 @@ const SCENARIO: [ScenarioStep; 10] = [
         walking_velocity: None,
         ball_present: false,
         ball_impulse: None,
+        ball_vertical_impulse: 0.0,
     },
     ScenarioStep {
         until: 35.2,
@@ -1875,6 +1918,7 @@ const SCENARIO: [ScenarioStep; 10] = [
         walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([0.0, -1.8]),
+        ball_vertical_impulse: 0.0,
     },
     ScenarioStep {
         until: EPISODE_SECONDS,
@@ -1882,6 +1926,7 @@ const SCENARIO: [ScenarioStep; 10] = [
         walking_velocity: None,
         ball_present: true,
         ball_impulse: Some([1.50, 0.90]),
+        ball_vertical_impulse: 0.0,
     },
 ];
 
@@ -1917,6 +1962,7 @@ fn spawn_ball(app: &mut App, parameters: &SimulatorParameters, position: [f64; 3
 struct BallImpulse {
     ball: Entity,
     impulse: [f64; 2],
+    vertical_impulse: f64,
     height_above_center: f64,
 }
 
@@ -1934,7 +1980,7 @@ fn step_with_ball_impulse(world: &mut MujocoWorld, impulse: Option<BallImpulse>)
         let applied = [
             force[0],
             force[1],
-            0.0,
+            impulse.vertical_impulse / dt,
             -impulse.height_above_center * force[1],
             impulse.height_above_center * force[0],
             0.0,
@@ -2174,7 +2220,10 @@ mod tests {
             Duration::from_millis(100)
         );
         assert_eq!(snapshot.typed().field_boundary_margin, 0.5);
-        assert_eq!(snapshot.typed().field_boundary_validity_decay_rate, 2.0);
+        assert_eq!(
+            snapshot.typed().field_boundary_validity_decay_rate,
+            expected.field_boundary_validity_decay_rate
+        );
         assert_eq!(snapshot.typed().maximum_detection_distance, 15.0);
         assert_eq!(
             snapshot.typed().near_visible_missed_detection_timeout,
@@ -2361,6 +2410,7 @@ mod tests {
                 Some(BallImpulse {
                     ball,
                     impulse: direction.map(|v| v * 1.8),
+                    vertical_impulse: 0.0,
                     height_above_center: 0.0,
                 }),
             )
@@ -2391,6 +2441,74 @@ mod tests {
     }
 
     #[test]
+    fn tall_capture_wall_contains_ball_above_default_wall() {
+        let mut parameters: SimulatorParameters = json5::from_str(include_str!("../parameters/simulator.json5")).unwrap();
+        parameters.ball.joint_damping = 0.0;
+        parameters.ball.joint_friction_loss = 0.0;
+        let dimensions = parameters.field_dimensions;
+        let boundary = dimensions.length / 2.0 + dimensions.border_strip_width;
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, MujocoWorldPlugin));
+        app.insert_resource(SimulationMode::Paused);
+        app.world_mut().spawn(crate::scene::walls::object_with_height(dimensions, 3.0));
+        let ball = spawn_ball(&mut app, &parameters, [0.0; 3]);
+        app.update();
+        let mut world = app.world_mut().resource_mut::<MujocoWorld>();
+        world.data_mut().model_opt_mut().gravity.fill(0.0);
+        world.set_object_pose(ball, Transform::from_xyz(boundary - 0.7, 2.0, 0.0)).unwrap();
+        step_with_ball_impulse(&mut world, Some(BallImpulse {
+            ball, impulse: [1.8, 0.0], vertical_impulse: 0.0, height_above_center: 0.0,
+        })).unwrap();
+        for _ in 0..150 {
+            step_with_ball_impulse(&mut world, None).unwrap();
+            let position = first_pose(&world, &SpawnedBalls(vec![ball])).unwrap().0;
+            assert!(position[0] < f64::from(boundary), "airborne ball escaped: {position:?}");
+        }
+        let velocity = crate::scene::ball::first_velocity(&world, &SpawnedBalls(vec![ball])).unwrap();
+        assert!(velocity[0] < -3.2, "ball did not rebound: {velocity:?}");
+    }
+
+    #[test]
+    fn vertical_kick_rises_and_falls_under_gravity() {
+        let mut parameters: SimulatorParameters = json5::from_str(include_str!("../parameters/simulator.json5")).unwrap();
+        parameters.ball.joint_damping = 0.0;
+        parameters.ball.joint_friction_loss = 0.0;
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, MujocoWorldPlugin));
+        app.insert_resource(SimulationMode::Paused);
+        let ball = spawn_ball(&mut app, &parameters, [0.0; 3]);
+        app.update();
+        let mut world = app.world_mut().resource_mut::<MujocoWorld>();
+        world.set_object_pose(ball, Transform::from_xyz(0.0, 1.0, 0.0)).unwrap();
+        step_with_ball_impulse(&mut world, Some(BallImpulse {
+            ball, impulse: [0.0, 0.0], vertical_impulse: 0.9, height_above_center: 0.0,
+        })).unwrap();
+        let mut peak: f64 = 0.0;
+        for _ in 0..300 {
+            step_with_ball_impulse(&mut world, None).unwrap();
+            peak = peak.max(first_pose(&world, &SpawnedBalls(vec![ball])).unwrap().0[2]);
+        }
+        let height = first_pose(&world, &SpawnedBalls(vec![ball])).unwrap().0[2];
+        let velocity = crate::scene::ball::first_velocity(&world, &SpawnedBalls(vec![ball])).unwrap()[2];
+        assert!(peak > 1.15, "vertical impulse must produce flight: {peak}");
+        assert!(height < 1.0 && velocity < 0.0, "gravity must bring ball down: {height}, {velocity}");
+    }
+
+    #[test]
+    fn challenge_recipes_validate_and_legacy_steps_default_to_planar() {
+        for text in [include_str!("../scenarios/ball-filter-challenges/high-speed.json"), include_str!("../scenarios/ball-filter-challenges/airborne.json")] {
+            let recipe: CaptureRecipe = serde_json::from_str(text).unwrap();
+            recipe.validate().unwrap();
+        }
+        let legacy: CaptureRecipe = serde_json::from_str(include_str!("../scenarios/ball-filter/fast-near-shot.json")).unwrap();
+        assert!(legacy.steps.iter().all(|step| step.ball_vertical_impulse == 0.0));
+        assert_eq!(legacy.wall_height_metres, 1.0);
+        let mut invalid = legacy;
+        invalid.steps[0].ball_vertical_impulse = f64::NAN;
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
     fn impulses_add_momentum_and_are_removed_after_one_physics_step() {
         let mut parameters: SimulatorParameters =
             json5::from_str(include_str!("../parameters/simulator.json5")).unwrap();
@@ -2411,6 +2529,7 @@ mod tests {
         let kick = BallImpulse {
             ball,
             impulse: [1.35, 0.0],
+            vertical_impulse: 0.0,
             height_above_center: 0.0,
         };
         let velocity = |world: &MujocoWorld| {
@@ -2438,6 +2557,17 @@ mod tests {
         };
         step_with_ball_impulse(&mut world, Some(reverse)).unwrap();
         assert!(velocity(&world).abs() < 1e-6);
+        let vertical = BallImpulse {
+            impulse: [0.0, 0.0],
+            vertical_impulse: 0.9,
+            ..kick
+        };
+        step_with_ball_impulse(&mut world, Some(vertical)).unwrap();
+        let vertical_speed = crate::scene::ball::first_velocity(&world, &SpawnedBalls(vec![ball])).unwrap()[2];
+        assert!((vertical_speed - 0.9 / f64::from(parameters.ball.mass)).abs() < 1e-6);
+        step_with_ball_impulse(&mut world, None).unwrap();
+        let after = crate::scene::ball::first_velocity(&world, &SpawnedBalls(vec![ball])).unwrap()[2];
+        assert!((after - vertical_speed).abs() < 1e-6);
         let above_center = BallImpulse {
             height_above_center: 0.4 * f64::from(parameters.field_dimensions.ball_radius),
             ..kick

@@ -71,7 +71,7 @@ of wrong output, loses no correct output, and changes no remaining estimate.
 Correctly associated close-velocity error and coverage are unchanged: this is a
 false-output improvement, not a velocity winner. The production objective remains
 v11; supplementary scoring is diagnostic only. No accepted winner. Experimental
-runtimes are archived and prior runtime restored; no evaluation jobs remain running.
+runtimes are archived and prior runtime restored; E74 challenge capture is running.
 Reserved67/68 remain unscored. Working runtime has
 experimental optional cap. At the user’s explicit request to push for local testing,
 the checkout now uses E43 parameters; this is not acceptance or a merge recommendation.
@@ -2189,6 +2189,40 @@ explicit vertical kick input and coverage checks without altering old recipes or
 baseline scores, then measure projection/flight/landing failures before choosing
 more filter changes. This does not replace the original close-accuracy goal or its
 fresh validation requirement. No adopted runtime changes and no fresh seeds used.
+
+### E74 — Explicit airborne and high-speed challenge captures [CAPTURE IN PROGRESS]
+
+Simulator recipe adds optional `ball_vertical_impulse` (upward world-frame N s,
+default0), applied through the existing one-step external-force integration. Existing
+planar recipes remain unchanged. Capture coverage adds peak ball-centre height,
+time >0.1m above resting height, and time with horizontal speed>15m/s. Separate
+`scenarios/ball-filter-challenges/{airborne,high-speed}.json` recipes check actual
+challenge coverage; the old nine-scenario demo and legacy scores are unchanged.
+
+Following the user's wall-height question, recipe `wall_height_metres` is configurable
+(default1m, airborne3m). Physical capture enclosure uses it; ordinary scene/visual
+walls retain1m. Explicitly separate artificial wall rebounds from natural flight
+and landing when assessing performance. This is capture infrastructure, not a
+claim of airborne filter support or a change to the competition filter.
+
+81 simulator tests pass,1 ignored. New tests verify vertical momentum/no persistent
+force, rise/fall under gravity, elevated rebound at2m against a3m wall, recipe
+validation and old planar defaults. Fixed stale capture-layer test to compare
+field-boundary decay to the actual base layer instead of old hardcoded2.0; E43
+checkout default is0.5. Documentation includes the capture command and limitations.
+
+Artifacts: `G/airborne-challenges/`. Build complete; frozen simulator available.
+First capture failed due missing ONNX runtime environment before useful physics;
+failed output/log preserved as `airborne-missing-ort*`, generated core dump removed.
+Retried with established ORT_DYLIB_PATH. Airborne capture currently live (exec77041),
+using original accepted parameter file, new seed offset80000000, no opponents.
+These are challenge-development captures, not untouched final validation. High-speed
+capture must run after airborne because both use router port7448. Observed aggregate
+memory about5GiB, nice15,45GiB cap. Inspect live handle before restarting any job.
+
+Next: verify actual challenge coverage, export original-baseline estimates, and
+measure high-speed/flight/landing accuracy without the legacy15m/s exclusion. Keep
+those supplemental metrics distinct from old scores. Fresh67/68 remain unscored.
 
 ## 5. Evidence map and operational handoff
 
