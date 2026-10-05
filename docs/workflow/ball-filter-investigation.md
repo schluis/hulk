@@ -55,13 +55,12 @@ parameter search completed (E16) on all 54 inspected development clips. The
 parameter-only ablation-0260 candidate failed the second audit’s per-suite
 close-position guard. E18 completed the stationary-noise calibration; E19
 rejected local-0280 on a fresh coasting-position regression. E20 produced
-local-0322, now frozen for E21 validation.
+local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: complete E21 independent validation of local-0322. It passes all nine
-development-group close p/v guards with unchanged availability. Runtime/default
-parameters remain at the original retained baseline until validation succeeds.
+Next: E22 conservative calibration on 108 inspected recordings. Runtime/default
+parameters remain at the original retained baseline until fresh validation succeeds.
 
 
 ### 2.2 Baseline and terminology
@@ -774,6 +773,37 @@ before capture. Seeds 50000053–50000064 in order, four concurrent isolated
 network namespaces; first two complete valid suites by listed order, no
 accuracy-based replacement. Verify baseline live/replay before scoring.
 Unused seed51 remains unscored. No candidate modifications after freeze.
+
+
+#### E21.1 Rejected result and duplicate assessment
+
+All four suites captured successfully. First two seeds53/54 were selected as
+prespecified; seeds55/56 remain unused, alongside audit3 seed51. Strict baseline
+replay passed. Close position 0.461140 → 0.432526 m (-6.21%), velocity
+0.765589 → 0.692426 m/s (-9.56%), but fast velocity 2.287083 → 2.324364
+m/s (+1.63%). Suite1 regresses both position (0.169313 → 0.204365 m) and
+velocity (0.598235 → 0.609586 m/s); bounded position loss +4.96%. Reject.
+Wrong output 123.946 → 131.374 s; false output unchanged79.8 s, missing
+close velocity unchanged2.376 s. Do not promote pooled improvements.
+
+Instrumented replay has exact score/parameter parity. Within1m, time with
+multiple primary hypotheses within0.30m of truth declines37.090 → 35.176 s,
+but zero-near time increases17.074 → 17.824 s. Mean total primary count
+increases6.889 → 7.175. Geometric proximity is not persistent identity and
+excludes the auxiliary tracker. Evidence: `G/audit4/hypothesis-proximity.json`.
+Candidate is preserved unchanged for the user's local inspection; defaults
+unchanged. `G/audit4/decision.json` records rejection.
+
+### E22 — Conservative parameter calibration after four failed audits
+
+**Status:** running. New development set adds only inspected seeds53/54, for
+108 clips in11 separate groups. Independently interpolate moving noise,
+detection noise, damping and matching range between original baseline and E21.
+This tests whether smaller changes preserve gains without the regressions from
+large process-noise increases. 272 configurations including controls; strengthen
+development screen to require fast-velocity non-regression in each group as well
+as close position/velocity and availability. Fresh audit remains required.
+Artifacts: `G/conservative-calibration/`. No runtime changes, agents or pushes.
 
 ## 5. Evidence map and operational handoff
 
