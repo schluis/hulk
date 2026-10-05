@@ -293,3 +293,17 @@ there was no search or held-out validation of these alternatives. The examples
 above are individual failures, not a replacement benchmark comparison. The
 next work should address ranking ties, motion initialization/recovery and stale
 hypothesis retention within the existing filter before calling the tuning done.
+
+### Fast close-ball tuning objective (v11)
+
+`close_ball_position_fast_velocity_v11` adds an independently normalized velocity
+loss for truth within 1 metre moving at least 2 m/s. It uses the same bounded
+300 ms displacement error and missing penalty as the existing velocity term.
+Stationary time cannot dilute this term. Overall close position and velocity RMSE
+remain the only hard search guards; the first 200 ms after near-ball velocity
+jumps are audited separately. Do not compare scalar v10 and v11 losses.
+
+The tuner also searches the shared initial x/y position covariance from 1e-6 to
+1 square metre. Initial velocity covariance remains fixed. Excessive initial
+position uncertainty lets the first moving observation correct position without
+learning enough velocity, so this parameter matters for short acquisitions.

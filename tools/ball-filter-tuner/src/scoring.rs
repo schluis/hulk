@@ -12,6 +12,7 @@ pub const OUT_OF_FIELD_DECAY_METRES: f64 = 0.3;
 pub const CLOSE_RANGE_LOSS_WEIGHT: f64 = 1.0;
 /// Convert velocity error to displacement error over a short interception horizon.
 pub const VELOCITY_HORIZON_SECONDS: f64 = 0.3;
+pub const FAST_CLOSE_SPEED_METRES_PER_SECOND: f32 = 2.0;
 /// Association radius used by the user-approved correct-ball availability guards.
 pub const CORRECT_TRACK_RADIUS_METRES: f64 = 0.5;
 
@@ -30,20 +31,24 @@ pub struct Objective {
     pub motion_reference: &'static str,
     pub velocity_loss: &'static str,
     pub velocity_horizon_seconds: f64,
+    pub fast_close_speed_metres_per_second: f32,
+    pub fast_close_velocity_loss: &'static str,
 }
 
 pub const OBJECTIVE: Objective = Objective {
-    version: "close_ball_position_velocity_v10",
+    version: "close_ball_position_fast_velocity_v11",
     position_loss: "p^2 * d^2 / (p^2 + d^2); d = distance to the single labelled ball",
     missing_loss: "1.25 * p^2",
     false_track_loss: "p^2",
-    normalization: "Only within-1m truth contributes: independently normalized close position loss plus close velocity loss. Far-ball, empty-scene and global accuracy remain diagnostics.",
+    normalization: "Only within-1m truth contributes: independently normalized close position loss plus close velocity loss plus fast-close velocity loss. Far-ball, empty-scene and global accuracy remain diagnostics.",
     reference_weight: "Close-range scoring uses truth in Ground without field-boundary downweighting; outside-field weighting applies only to global diagnostics.",
     out_of_field_decay_metres: OUT_OF_FIELD_DECAY_METRES,
     close_range_loss: "Within 1m of the robot, bounded squared position error with cap p^2 and missing penalty 1.25*p^2. Hard guards protect aggregate close-range position RMSE and velocity-vector RMSE only, with roundoff tolerance. Individual recordings, availability, false-track time, global error and lag are reported without vetoing candidates. Held-out recordings are evaluation only.",
     close_range_weight: CLOSE_RANGE_LOSS_WEIGHT,
     velocity_loss: "Within-1m velocity-vector error is converted to displacement over velocity_horizon_seconds, with cap p^2 and missing penalty 1.25*p^2, independently normalized by close velocity-reference time. Include stationary truth; finite differences in Field over 0 < dt <= 100ms, rejecting non-finite or >15m/s derivatives. Rotate Ground estimates into Field. Missing estimates remain penalized in the objective; close velocity RMSE remains a hard aggregate guard.",
     velocity_horizon_seconds: VELOCITY_HORIZON_SECONDS,
+    fast_close_speed_metres_per_second: FAST_CLOSE_SPEED_METRES_PER_SECOND,
+    fast_close_velocity_loss: "Add an independently normalized copy of close velocity loss for truth speed >=2m/s within 1m. Its truth-only denominator prevents stationary time or missing outputs from hiding shot errors.",
     motion_reference: "Use timestamp-matched simulation/ball_ground_truth_field for motion derivatives when standard simulator labels are selected; otherwise derive Field positions from the selected reference and recorded pose. Ground position/close-range scoring remains unchanged.",
 };
 
@@ -90,6 +95,14 @@ pub struct Score {
     pub close_range_velocity_reference_seconds: f64,
     pub close_range_velocity_missing_seconds: f64,
     pub close_range_velocity_loss: Option<f64>,
+    pub fast_close_range_velocity_loss: Option<f64>,
+    pub fast_close_range_velocity_rmse_metres_per_second: Option<f64>,
+    pub fast_close_range_velocity_reference_seconds: f64,
+    pub fast_close_range_velocity_missing_seconds: f64,
+    #[serde(skip)]
+    fast_close_velocity_squared_error: f64,
+    #[serde(skip)]
+    fast_close_velocity_loss_integral: f64,
     #[serde(skip)]
     velocity_squared_error: f64,
     #[serde(skip)]
@@ -352,6 +365,15 @@ impl Score {
                 self.close_velocity_squared_error += squared * cycle.seconds;
             } else {
                 self.close_range_velocity_missing_seconds += cycle.seconds;
+            }
+        }
+        if close_velocity && speed >= FAST_CLOSE_SPEED_METRES_PER_SECOND {
+            self.fast_close_range_velocity_reference_seconds += cycle.seconds;
+            self.fast_close_velocity_loss_integral += loss * cycle.seconds;
+            if let Some(squared) = velocity_squared {
+                self.fast_close_velocity_squared_error += squared * cycle.seconds;
+            } else {
+                self.fast_close_range_velocity_missing_seconds += cycle.seconds;
             }
         }
         // Exclude stationary numerical jitter and implausible discontinuities.
@@ -629,6 +651,16 @@ impl Score {
                 score.close_velocity_loss_integral / score.close_range_velocity_reference_seconds
             });
         score.loss += score.close_range_velocity_loss.unwrap_or(0.0);
+        score.fast_close_range_velocity_loss =
+            (score.fast_close_range_velocity_reference_seconds > 0.0).then(|| {
+                score.fast_close_velocity_loss_integral
+                    / score.fast_close_range_velocity_reference_seconds
+            });
+        score.loss += score.fast_close_range_velocity_loss.unwrap_or(0.0);
+        let fast_matched = score.fast_close_range_velocity_reference_seconds
+            - score.fast_close_range_velocity_missing_seconds;
+        score.fast_close_range_velocity_rmse_metres_per_second = (fast_matched > 0.0)
+            .then(|| (score.fast_close_velocity_squared_error / fast_matched).sqrt());
         let velocity_matched = score.velocity_reference_seconds - score.velocity_missing_seconds;
         score.velocity_rmse_metres_per_second = (velocity_matched > 0.0)
             .then(|| (score.velocity_squared_error / velocity_matched).sqrt());
@@ -894,6 +926,38 @@ mod tests {
         assert!((stopped.close_range_velocity_reference_seconds - 0.2).abs() < 1e-10);
         assert!(!preserves_baseline_quality(&stopped, &good));
         assert!(quality_violation(&stopped, &good) > 0.0);
+    }
+
+    #[test]
+    fn stationary_time_cannot_dilute_fast_close_velocity_loss() {
+        let mut score = velocity_score(6.0, Some(0.0));
+        let fast_loss = score.fast_close_range_velocity_loss.unwrap();
+        let mut previous = None;
+        for tick in 0..=200 {
+            let cycle = diagnostic_cycle(1000 + tick * 50, 0.5, 0.0);
+            let estimate = BallPosition {
+                position: point![0.5, 0.0],
+                velocity: Vector2::zeros(),
+                last_seen: cycle.time,
+            };
+            score.observe_diagnostics(&cycle, Some(estimate), &mut previous, 2.0);
+            score.observe_cycle(&cycle, Some(estimate), 2.0);
+        }
+        score.finish();
+        assert_eq!(score.fast_close_range_velocity_loss, Some(fast_loss));
+        assert!(score.close_range_velocity_loss.unwrap() < fast_loss / 10.0);
+        assert!(score.loss >= fast_loss);
+        let missing = velocity_score(6.0, None);
+        assert_eq!(missing.fast_close_range_velocity_loss, Some(5.0));
+        assert_eq!(
+            missing.fast_close_range_velocity_rmse_metres_per_second,
+            None
+        );
+        assert!((missing.fast_close_range_velocity_missing_seconds - 0.2).abs() < 1e-10);
+        assert_eq!(
+            velocity_score(0.0, Some(0.0)).fast_close_range_velocity_loss,
+            None
+        );
     }
 
     #[test]
@@ -1282,6 +1346,13 @@ impl From<&Score> for types::ball_filter_tuning::Metrics {
             close_range_velocity_missing_seconds: score.close_range_velocity_missing_seconds,
             velocity_loss: score.velocity_loss,
             close_range_velocity_loss: score.close_range_velocity_loss,
+            fast_close_range_velocity_loss: score.fast_close_range_velocity_loss,
+            fast_close_range_velocity_rmse_metres_per_second: score
+                .fast_close_range_velocity_rmse_metres_per_second,
+            fast_close_range_velocity_reference_seconds: score
+                .fast_close_range_velocity_reference_seconds,
+            fast_close_range_velocity_missing_seconds: score
+                .fast_close_range_velocity_missing_seconds,
             false_track_seconds: score.false_track_seconds,
             missing_transform_seconds: score.missing_transform_seconds,
         }

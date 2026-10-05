@@ -159,6 +159,19 @@ def bridge_report(loss=1.5, validation_loss=2.0):
 
 
 class BridgeTests(unittest.TestCase):
+    def test_fast_close_metrics_survive_bridge_and_old_reports_remain_readable(self):
+        score = bridge_report()["training"]["baseline"]
+        legacy = helper.progress_metrics(score)
+        self.assertIsNone(legacy["fast_close_range_velocity_rmse_metres_per_second"])
+        score.update(fast_close_range_velocity_rmse_metres_per_second=1.2,
+                     fast_close_range_velocity_loss=0.1,
+                     fast_close_range_velocity_reference_seconds=2.0,
+                     fast_close_range_velocity_missing_seconds=0.2)
+        self.assertEqual(helper.progress_metrics(score)["fast_close_range_velocity_rmse_metres_per_second"], 1.2)
+        score["fast_close_range_velocity_loss"] = float("nan")
+        with self.assertRaises(ValueError):
+            helper.progress_metrics(score)
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

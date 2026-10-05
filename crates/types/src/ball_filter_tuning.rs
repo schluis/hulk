@@ -41,6 +41,8 @@ impl OpponentParameters {
 }
 pub const TUNED_PARAMETER_POINTERS: &[&str] = &[
     "/noise/detection_noise",
+    "/noise/initial_covariance/0",
+    "/noise/initial_covariance/1",
     "/noise/process_noise_resting",
     "/noise/process_noise_moving",
     "/maximum_matching_cost",
@@ -91,6 +93,14 @@ pub struct Metrics {
     pub velocity_loss: Option<f64>,
     #[serde(default)]
     pub close_range_velocity_loss: Option<f64>,
+    #[serde(default)]
+    pub fast_close_range_velocity_loss: Option<f64>,
+    #[serde(default)]
+    pub fast_close_range_velocity_rmse_metres_per_second: Option<f64>,
+    #[serde(default)]
+    pub fast_close_range_velocity_reference_seconds: f64,
+    #[serde(default)]
+    pub fast_close_range_velocity_missing_seconds: f64,
     pub false_track_seconds: f64,
     pub missing_transform_seconds: f64,
 }

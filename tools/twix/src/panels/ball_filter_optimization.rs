@@ -654,6 +654,7 @@ struct HistoryScore {
     motion_lag_seconds: Option<f64>,
     velocity_rmse_metres_per_second: Option<f64>,
     close_range_velocity_rmse_metres_per_second: Option<f64>,
+    fast_close_range_velocity_rmse_metres_per_second: Option<f64>,
 }
 
 impl RunHistory {
@@ -980,6 +981,7 @@ fn history_scores(ui: &mut Ui, metrics: &HistoryMetrics) {
             "Close RMSE (m)",
             "Velocity RMSE (m/s)",
             "Close velocity RMSE (m/s)",
+            "Fast close velocity RMSE (m/s)",
             "Missing (s)",
             "Motion lag (s)",
         ] {
@@ -1024,6 +1026,13 @@ fn history_scores(ui: &mut Ui, metrics: &HistoryMetrics) {
                         .and_then(|m| m.close_range_velocity_rmse_metres_per_second),
                     best.as_ref()
                         .and_then(|m| m.close_range_velocity_rmse_metres_per_second),
+                ),
+                (
+                    baseline
+                        .as_ref()
+                        .and_then(|m| m.fast_close_range_velocity_rmse_metres_per_second),
+                    best.as_ref()
+                        .and_then(|m| m.fast_close_range_velocity_rmse_metres_per_second),
                 ),
                 (
                     baseline.as_ref().and_then(|m| m.missing_seconds),
@@ -1373,6 +1382,7 @@ fn scores(ui: &mut Ui, id: &str, baseline: &Metrics, best: &Metrics) {
             ),
             ("Velocity RMSE (m/s)", baseline.velocity_rmse_metres_per_second, best.velocity_rmse_metres_per_second),
             ("Close-range velocity RMSE (m/s)", baseline.close_range_velocity_rmse_metres_per_second, best.close_range_velocity_rmse_metres_per_second),
+            ("Fast (≥2 m/s) close-range velocity RMSE (m/s)", baseline.fast_close_range_velocity_rmse_metres_per_second, best.fast_close_range_velocity_rmse_metres_per_second),
             ("Velocity reference (s)", Some(baseline.velocity_reference_seconds), Some(best.velocity_reference_seconds)),
             ("Velocity unavailable (s)", Some(baseline.velocity_missing_seconds), Some(best.velocity_missing_seconds)),
             (

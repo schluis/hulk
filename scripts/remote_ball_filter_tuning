@@ -445,6 +445,15 @@ METRIC_FIELDS = (
 OPTIONAL_METRICS = {"position_rmse_metres", "close_range_position_rmse_metres", "along_motion_error_metres", "motion_lag_seconds", "velocity_rmse_metres_per_second", "close_range_velocity_rmse_metres_per_second", "velocity_loss", "close_range_velocity_loss"}
 
 
+FAST_CLOSE_METRIC_DEFAULTS = {
+    "fast_close_range_velocity_loss": None,
+    "fast_close_range_velocity_rmse_metres_per_second": None,
+    "fast_close_range_velocity_reference_seconds": 0.0,
+    "fast_close_range_velocity_missing_seconds": 0.0,
+}
+OPTIONAL_METRICS.update(key for key, value in FAST_CLOSE_METRIC_DEFAULTS.items() if value is None)
+
+
 def unsigned(value):
     if type(value) is not int or not 0 <= value < 2**64:
         raise ValueError(f"expected unsigned 64-bit integer, got {value!r}")
@@ -464,6 +473,7 @@ def finite_json(value):
 
 def progress_metrics(score):
     metrics = {key: score[key] for key in METRIC_FIELDS}
+    metrics.update({key: score.get(key, default) for key, default in FAST_CLOSE_METRIC_DEFAULTS.items()})
     for key, value in metrics.items():
         if value is None and key in OPTIONAL_METRICS:
             continue
@@ -603,7 +613,7 @@ def bridge_inspection_command(run_names):
         functions = (checked_name, training_loss, unsigned, finite_json, progress_metrics,
                      parameter_shape, parameters_equal, report_compatibility, controller_alive, read_remote_runs)
         code = "import json, math, re, struct, sys\nfrom pathlib import Path\n"
-        for key in ("TASK_BASE", "DATA_FILES", "METRIC_FIELDS", "OPTIONAL_METRICS"):
+        for key in ("TASK_BASE", "DATA_FILES", "METRIC_FIELDS", "OPTIONAL_METRICS", "FAST_CLOSE_METRIC_DEFAULTS"):
             code += f"{key} = {globals()[key]!r}\n"
         code += "\n".join(inspect.getsource(function) for function in functions)
         code += "\nprint(json.dumps(read_remote_runs(sys.argv[1:]), allow_nan=False))\n"
