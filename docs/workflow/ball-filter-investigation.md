@@ -59,7 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: test the measurement-uncertainty mismatch isolated by E68 before revising abrupt-motion recovery,
+Next: calibrate measurement noise around E70's verified covariance geometry, using
+original-runtime controls; E69/E70 fixed-parameter variants fail close accuracy,
 and extend simulator/evaluation coverage for the user's fast and airborne kicks.
 E67's smooth position-weighted velocity credit is implemented as a diagnostic;
 the publication candidate slightly worsens it. E66's moving reconfirmation fails
@@ -2027,6 +2028,55 @@ accuracy and fast onset as well as far-range stability; no threshold tuning agai
 fresh seeds. A documented pixel uncertainty floor is more physically grounded than
 silently restricting recovery by distance or confidence. Do not infer measured
 real-world pixel noise from the simulator's default.
+
+### E69 — One-pixel measurement uncertainty floor [REJECTED AS STANDALONE]
+
+Test `max((detected_radius * relative_noise)^2, 1 pixel^2)` independently of E66.
+Diagnostic constant only; no new configuration parameter. 118 existing tests pass.
+Original and publication configurations evaluated on all 216 development recordings.
+Frozen binaries, hashes, source/patch and reports: `G/pixel-noise-floor/`.
+Working runtime restored after build; both replay configurations completed.
+
+With original parameters: close position 0.243549712 -> 0.243545289 m (-0.0018%);
+close velocity 0.678003173 -> 0.679038474 m/s (+0.1527%); fast-close velocity
+2.350457712 -> 2.354979581 m/s (+0.1924%). All-range velocity improves
+0.781474412 -> 0.768029458 m/s (-1.7205%), wrong-output time decreases 1.342 s,
+close correct-track and raw velocity missing time unchanged. Worst suite close
+velocity +2.842%, fast-close +3.605% (audit8a). Publication configuration shows
+similar tradeoffs. No promotion: far-range benefit does not satisfy close velocity.
+A calibrated floor may still be useful with physically consistent covariance, but
+this result does not justify claiming success or retuning on fresh seeds.
+
+### E70 — Consistent ball-centre plane for covariance [GEOMETRY VERIFIED; FIXED-PARAMETER CANDIDATE REJECTED]
+
+Mean projection uses ball-centre height, whereas existing covariance projection
+uses the z=0 homography. Test the analytic covariance Jacobian on the same plane
+as the mean, independently of E69 and E66. Implemented locally within ball filter
+for the experiment; no shared projection API changes. Numerical finite differences
+at 0.5, 2 and 7 m verify the covariance at heights 0 and 0.105 m to 0.5% relative
+tolerance, with positive-definite covariance and z=0 parity with the existing API.
+119 tests pass. This proves derivative consistency, not end-to-end improvement.
+
+Frozen artifacts: `G/height-covariance/`. Original/publication configurations on
+216 development recordings; no held-out seeds consumed. Working source restored
+after freezing binaries; replay runs at nice 15 under aggregate45GiB memory cap.
+
+#### E70.1 Replay result and next experiment
+
+Both configurations completed. With original parameters, close position RMSE
+0.243549712 -> 0.245966206 m (+0.992%); close velocity 0.678003173 -> 0.681125861
+m/s (+0.461%); fast-close velocity 2.350457712 -> 2.362341944 m/s (+0.506%).
+All-range velocity improves 0.443%, but wrong-output time grows 0.628 s and close
+correct-track missing grows 0.418 s. Worst-suite close position +49.55% (audit7a).
+Publication control also regresses. Do not adopt under current tuned parameters.
+
+The finite-difference test still establishes a real geometry mismatch; the tuned
+noise parameters may compensate for it. Next, bounded calibration of measurement
+noise and motion-confirmation behavior around physically consistent uncertainty,
+with original-runtime controls, is justified; unconditionally increasing uncertainty
+is not. Keep baseline frozen and compare per-suite failures, not only pooled scores.
+E69/E70 source restored, frozen artifacts preserved, no evaluation jobs live, fresh
+67/68 untouched. No production config or scoring changes.
 
 ## 5. Evidence map and operational handoff
 
