@@ -805,6 +805,19 @@ development screen to require fast-velocity non-regression in each group as well
 as close position/velocity and availability. Fresh audit remains required.
 Artifacts: `G/conservative-calibration/`. No runtime changes, agents or pushes.
 
+Initial272 complete: only identical baseline configurations pass every guard.
+Closest grid0173/0218 improve pooled velocity about6%, but the older development
+suite regresses0.19–0.22%. Run768 seeded local refinements around those two,
+retaining the stricter fast-per-group screen. Baseline matches previous nine
+groups exactly and two new verified groups to1e-10 RMSE. Build passes117 tests.
+
+E21 fast-velocity diagnosis: largest incremental squared error in seed54
+fast-crossing at2.6s: truth field velocity about(1.98,0.38)m/s, baseline reports
+rest, candidate predicts motion roughly opposite, last observation38ms ago.
+Approach5.4–5.8s similarly retains obsolete motion during observation gaps.
+Artifacts: `G/audit4/diagnosis/fast-regressions.json`; these are paired sample
+errors, not proof of a new association failure. No runtime change inferred yet.
+
 ## 5. Evidence map and operational handoff
 
 - `M` = `/home/schluis/hulk/logs/ball-filter-motion-fixes-20261005/`.
