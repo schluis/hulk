@@ -3406,6 +3406,45 @@ separately inspect seed76 false reversal before proposing any evidence guard. E1
 not adopted. All E111/E113 jobs terminal, sources unchanged, no pushes. New candidate
 will require newly held-out data;69/71/73/75/76/77 are now development evidence.
 
+### E114 — Brief-gap stale publication ablation [COMPLETE]
+
+Consumed seed77 brief-gaps(index49) first position divergence>10µm at171.190:
+baseline lastseen171.122, candidate170.722. Worst close-position divergence173.716:
+baseline error0.02243m versus candidate0.74201m; candidate still publishes lastseen
+170.722, baseline173.682. Both velocities zero. This targets stale publication or
+selection, not reversal velocity. `G/slowing-reversal-fresh/failure-diagnosis/`.
+Run accepted runtime with ratio7 (parameter-only) and E93 with original6.048 ratio
+(code-only) on the same clip; compare against full E93+ratio7 and accepted baseline.
+No new code/parameter choice, no new held-out data. Resource runner/nice15/45GiB.
+
+
+E114 parameter/code ablation complete (exec47280 terminal). Parameter-only ratio7
+close-position RMSE0.208659474m versus baseline0.209037108m; code-only with original
+ratio6.048 gives0.215762685m. At173.716 parameter-only reproduces the correct baseline
+output; code-only reproduces the full candidate's stale output exactly. Primary
+selected age2.594s, validity54.231; the fresh near-truth resting hypothesis has
+validity1.154 and cannot displace that established track. Thus the publication
+ratio is not the cause of this failure; the primary association/selection history
+already diverged. Component replays E82/E84/E89 launched on this consumed clip via
+failure-diagnosis/components.py (exec94573). No source changes or new tuning.
+
+
+E114 component replays complete (exec94573 terminal). E82 association-only and E84
+association+reconfirmation produce identical clip scores: close-position0.215446936m,
+velocity0.607533551m/s, wrong1.528s. E89 gives position0.215762279m with the same
+velocity/wrong time. E82 already reproduces the peak stale output exactly; first
+published divergence>1mm versus baseline occurs173.716s. Therefore E82's resting
+log-uncertainty association preference introduces this failure, independent of
+later merging and publication ratio. At that cycle the lower-uncertainty recipient
+has support1.154, below established-track eligibility, while the stale primary has
+support54.231. This is an association/selection mismatch: assigning the real percept
+to an ineligible challenger leaves the published established track stale. Evidence:
+component-comparison.json and first-association-divergence.json. Next experiment
+should test whether logarithmic competition should require confirmed support for
+the preferred challenger, using development suites and explicit false-track guards;
+do not globally relax selection eligibility or claim the proposed fix validated.
+All diagnostic jobs terminal; runtime/defaults unchanged, goal remains incomplete.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
