@@ -59,13 +59,14 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E56 reproduces and isolates the reported direction jitter: excessive
-velocity process noise is causal. Lower noise alone, joint damping calibration
-(E57), and conservative calibration with/without tentative miss handling (E58)
-all fail full development guards. E55 fixes a targeted clear-miss test but has
-large scenario regressions; its runtime has been restored. Next E59 separates
-weak stale publication from internal hypothesis retention, informed by the
-consumer's behavior. No new accepted winner; no evaluation jobs remain running.
+Next: E56 isolates excessive velocity noise as a cause of direction jitter.
+E59/E60/E61 test weak publication separately from internal retention. E61's1s
+clear-miss gate reduces wrong output57.132s without increasing aggregate correct
+close-ball missing time, but old scoring penalizes removed incorrect output.
+E62 audits that scoring conflict before further search: preserve all old reports,
+add correctness-aware velocity/availability diagnostics, and inspect paired
+removed-output frames. No accepted winner. Experimental runtimes are archived
+and prior runtime restored; no evaluation jobs remain running.
 Reserved67/68 remain unscored. Working runtime has
 experimental optional cap. At the user’s explicit request to push for local testing,
 the checkout now uses E43 parameters; this is not acceptance or a merge recommendation.
@@ -1670,6 +1671,96 @@ reacquisition, and existing auxiliary availability tests. Quantify raw output
 missing separately from correct-ball missing; removing a wrong output must not
 be mistaken for losing a previously correct ball. Keep original guard results
 visible and do not declare success from censored RMSE or a narrow unit test.
+
+Result:119 tests pass after explicitly distinguishing localization correction
+from a real new sighting for weak evidence. All216-clip comparisons fail full
+guards. Original parameters reduce wrong time139.302s but add2.886s missing close
+velocity and0.640s missing correctly tracked close ball; bounded close velocity
+loss worsens6.87%. Reject age-only publication expiry and restore runtime/tests.
+Artifacts/patch/binaries/snapshots: `G/tentative-publication/`.
+
+### E60 — Clear-miss publication gate without deleting uncertain tentative history
+
+Unlike E59's blind age gate, require accumulated clear detector exposure at the
+tentative candidate's center. If its uncertainty corners prevent a full clear-miss
+classification but its center is visible and not robot-occluded, accumulate the
+existing negative-evidence clear-miss clock without deleting the uncertain
+history. After120ms, suppress direct weak primary output until an actual matched
+observation resets evidence. Confirmed tracks and physical occlusion keep their
+existing policy. Do not add a new tracker or metadata field. Existing clear-miss
+deletion/decay still applies where uncertainty already permits it; no independent
+auxiliary fallback is introduced. Tests cover clear empty location, robot
+occlusion, confirmation, internal state retention, and fresh reacquisition.
+Then original/E43/publication parameter centres on216 clips with original guards.
+Evidence: `G/tentative-clear-publication/`.
+Result:119 tests pass. Original parameters reduce wrong time109.506s but still
+add0.320s missing correctly tracked close ball and1.160s raw missing close
+velocity; bounded close velocity loss worsens2.76%. Better than age-only gating,
+but not accepted. All three parameter centres fail the unchanged full guards.
+Patch, frozen binaries and before/after sources preserved.
+
+### E61 — Calibrate clear exposure using the existing literal timeout
+
+Replace E60's hard-coded120ms publication threshold with the existing
+`visible_missed_detection_timeout`. It already expresses accumulated clear miss
+exposure; use the same meaning for uncertain tentative output rather than adding
+a second timing knob. Preserve internal uncertain history for positive timeouts.
+Zero means removal on the first known clear point miss, while unknown/occluded
+frames remain non-evidence. Test250/500/1000/2000ms on original/publication/E43
+centres (12 configurations,216 clips); unchanged full guards and explicit wrong,
+raw-missing and correctly-tracked-missing comparisons. Evidence:
+`G/clear-publication-exposure/`. This is calibration, not acceptance of a weakened
+availability criterion.
+Result:120 tests pass, all12 configurations evaluated. Original parameters with
+1000ms/2000ms reduce wrong output57.132s, leave aggregate correct-close missing
+unchanged, and add0.080s raw missing velocity. At500ms wrong time drops81.698s,
+correct-close missing is unchanged, and raw missing rises0.200s. The1s original
+case nevertheless worsens old bounded position loss0.125% and velocity loss0.190%.
+That demonstrates an objective conflict, not proof of a correctly tracked ball
+being lost. Need per-frame comparison to exclude offsetting losses/gains hidden
+by equal aggregate correct-close missing. No adoption yet; runtime restored,
+120-test patch, sources and frozen executables preserved in the experiment root.
+
+### E62 — Correctness-aware velocity and missing-output scoring audit
+
+Code audit found a mismatch with the user's explicit false-pursuit concern.
+The existing v11 position loss deliberately makes **every finite wrong estimate
+cheaper than missing output** (`scoring.rs` comment and rational bounded loss;
+missing penalty is1.25 times the asymptotic cap). Velocity is scored even when
+the position is unrelated to the real ball. Consequently a stationary wrong
+candidate can earn perfect velocity credit while directing the robot elsewhere.
+Do not interpret this score preference as proof that ghost output is useful.
+
+Prospective work, before further selection:
+
+1. Preserve v11 raw RMSE, bounded losses and availability reports unchanged.
+   Baseline remains the original ed1d39b67 implementation/parameters; no new model
+   is silently substituted as the comparison reference.
+2. Add supplementary joint position/velocity diagnostics. Use the already existing
+   correct-track radius0.5m (not the0.3m duplicate-count radius). Velocity receives
+   correct-ball credit only for a spatially associated estimate; wrong and absent
+   estimates both lack a correctly tracked velocity. Keep truth-based denominators
+   and report correctly associated RMSE plus missing coverage to prevent censoring.
+3. Audit the optimizer's position penalty: clearly wrong output must not be
+   preferred to absence merely because its finite error is bounded below the
+   missing penalty. Prespecify and test any v12 objective before optimizing under
+   it; retain side-by-side v11 results. Correct-position noise should retain a
+   smooth loss, and empty-scene false output must still be penalized.
+4. Re-score existing development data first and inspect **paired** E61 removed
+   outputs: was previously correct position/velocity actually lost, or only a
+   wrong candidate withheld? A0 aggregate coverage delta alone cannot prove this.
+5. No completion claim from a changed score. Raw close-position accuracy must
+   still improve/nonregress; true-ball velocity, fast/occlusion recovery, wrong
+   and duplicate tracks, real-ball coverage, all-range stability, and untouched
+   fresh67/68 validation remain required. This addresses a metric mismatch raised
+   by the user's observed failure; it is not permission to hide regressions.
+
+Implementation plan: start with a supplementary streaming diagnostic over compact
+frame exports and counterexample tests (wrong position with numerically perfect
+velocity must not receive correct-ball credit). Then decide/version the search
+objective from that evidence. Current frozen E61 evaluators are available; frozen
+original `M/tie-only/evaluate` can generate baseline compact frames. About52GiB
+disk free at this checkpoint; avoid unnecessary full hypothesis-state exports.
 
 ## 5. Evidence map and operational handoff
 
