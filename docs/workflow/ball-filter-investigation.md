@@ -59,7 +59,7 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E30 reserved independent validation of the minimax parameter candidate. Runtime/default
+Next: E33 independent validation of the loosened-correction candidate. Runtime/default
 parameters remain at the original retained baseline until fresh validation succeeds.
 
 
@@ -962,6 +962,68 @@ requiring an exact all-group pass to minimax selection; it does not change any
 fresh success criterion or claim success on development. No held-out scores have
 been inspected before this decision. No runtime algorithm changes. Exact config,
 hashes,selection,protocol: `G/audit5/`. Defaults remain original pending outcome.
+
+E30 rejected. Both baseline replays verified. Fresh18: close position
+0.158841→0.158387m (-0.286%), velocity0.749706→0.709934m/s (-5.305%),
+fast velocity2.673446→2.578348m/s (-3.557%). Wrong-output53.332→51.748s,
+false79.6s unchanged, close velocity missing1.424s unchanged. Suite2 position
+0.148938→0.154374m (+3.65%,5.44mm) fails the unchanged frozen criterion.
+Stationary family0.094206→0.105496m; restoring baseline output blend and resting
+measurement settings is the next ablation. Seed51/55 are now inspected development;
+seed56 remains untouched. Decision and exact frozen candidate at `G/audit5/`.
+
+### E31 — Simplify the candidate to preserve stationary behavior
+
+**Status:** running. Add the18 rejected validation clips to development (126 total,
+13 groups). Factorially restore baseline detection noise, resting noise,
+publication blend, resting-speed threshold in the E30 candidate (16 ablations
+plus baseline/candidate controls). The original moving/damping/matching changes
+remain to test whether extra changes caused stationary regressions. No source
+algorithm change. Original runtime rebuilt with enlarged batch evaluator;
+require original score parity before interpreting. Artifacts:
+`G/simplification-calibration/`. No fresh scores or default edits yet.
+
+E31 initial18 and motion-component32 ablations complete; no nonbaseline full
+pass. In seed55 stationary at30.304s, candidate selects recent resting hypothesis
+(0.587,0.725), error0.360m, while baseline retains resting estimate error0.028m.
+Observer selected hypothesis has size_plausible=false, age0.078s, covariance
+trace1.1646, confidence6.177; published output equals this uncorrected primary.
+This is a wrong fresh selection/correction failure, not velocity drift. Observer
+8768 and `G/audit5/diagnosis/candidate-frame30.json` preserve evidence.
+
+### E32 — Loosen the existing correction covariance gate
+
+**Status:** running. E26 only tried ratios through12. Test12,24,48,96,1000,1e6
+with blends baseline/0.98/1 on E30 and simplified parameters (36 configs) to
+identify whether useful auxiliary history is rejected relative to a newly
+observed false primary. It is a diagnostic hypothesis, not yet proof: inspect
+paired output at the failing frame, and reject broader close-range regressions.
+No new runtime mechanism. Artifacts: `G/simplification-calibration/correction-gate/`.
+
+E31 baseline parity: first11 groups exact, new2 grouped RMSE within1e-10 of
+verified replay. Original runtime117 tests pass. E30 proximity diagnostics also
+complete: close multiple-near time22.000→20.806s, zero-near15.422→15.048s,
+mean total primary count6.199→6.459; geometric counts exclude auxiliary tracker.
+
+E32 confirms the correction-gate hypothesis: at the failing stationary frame,
+ratio1000/blend0.98 changes error0.35970→0.03408m; published last-seen returns
+to retained history at27.322s. All13 development groups close p/v improve.
+Pooled position -19.32%, velocity -5.89%, fast velocity -2.20%; wrong-output
+-9.022s, false-output +8.184s, close correct-track missing -6.466s, close velocity
+missing unchanged. One group fast velocity +0.064% remains; do not call the
+stricter all-fast development screen a pass. Ratio1e6 yields virtually identical
+loss and slightly more wrong time; freeze1000 at the observed plateau.
+
+### E33 — Sixth frozen independent audit
+
+**Status:** frozen/capturing. Exact candidate `G/audit6/candidate.json5` and hash
+in freeze.json; original retained runtime, parameters only. First suite is reserved
+unscored seed56, second first valid new seed57–64 in fixed order. Capture two
+concurrently in isolated namespaces, preserve unused successful extras. No scoring
+before freeze and no accuracy-based replacements. Fresh rules unchanged: pooled
+close p/v improve, each suite close p/v non-regressing, pooled fast velocity and
+availability non-regressing, bounded close losses improve; inspect scenarios,
+events and wrong/duplicate hypotheses. Defaults remain unchanged until success.
 
 ## 5. Evidence map and operational handoff
 
