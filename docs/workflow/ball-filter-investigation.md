@@ -3493,6 +3493,33 @@ No active jobs or runtime changes. Next focus: supported velocity-recovery error
 on correctly positioned tracks, rather than treating coverage gains or rounding
 tiny regressions away as sufficient improvement. E115 is not an accepted winner.
 
+### E116 — Correct-position velocity recovery diagnosis [COMPLETE]
+
+Ranked fixed200ms windows on consumed54 with both outputs within0.5m of truth,
+range<=1m and truth speed<=15m/s; unchanged field-frame finite-difference velocity.
+Artifact G/confirmed-resting-association/velocity-diagnosis/ranked-windows.json.
+Largest window seed69 fast-near-shot133.0–133.2, integrated velocity SSE13.587062,
+exactly identical baseline/E115. Following window133.2 adds5.240933. This includes
+unobservable initial direction change, but significant error persists through fresh
+observations. At133.132 truth field velocity(2.04,5.85), estimate(1.57,-5.29);
+at133.176 truth(2.04,5.30), estimate(1.58,-4.86); at133.214 truth(2.03,5.16),
+estimate(1.63,-4.27). Thus it is not solely an unseen-contact limitation.
+
+Frozen E109 full-state replay confirms no reversal recovery. At133.214 there are
+three moving-history observations spanning80ms with observed speed5.7904m/s,
+opposite-direction dot product -17.516; previous output speed133.176 is5.1156m/s
+and current updated speed4.5692. The slowing-only rule compares the observed speed
+against the evolving old estimate, already reduced by contradictory measurements,
+so its speed inequality blocks this recovery (prediction further damps velocity).
+At133.266 observed5.9048 versus updated3.919. Full three-observation consistency
+and other guards still need direct gate analysis before asserting a replacement
+would fire. Earlier E108 ungated-speed reversals caused serious position regressions;
+do not simply remove the speed gate again. Potential next experiment: compare
+against pre-reversal history speed instead of the already-cancelled current mean,
+with explicit false-output and old counterexample checks. This remains untested.
+Sources/defaults unchanged; ranking40334, full-state62467 and E10913973 all terminal.
+No fresh data consumed, no pushes or agents. Goal remains incomplete.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
