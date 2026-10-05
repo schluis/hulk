@@ -1054,6 +1054,18 @@ seed57 contested reversal and duplicates before another freeze. Seed58 remains
 unused. All changes are existing parameters; runtime unchanged. Artifacts:
 `G/velocity-response/`. Original baseline remains the reference, not E33.
 
+E34 baseline parity verified: first13 groups exact, new2 verified pooled moments
+within1e-10; separate seed57 contested diagnostic exactly matches its baseline
+per-recording score and is not double-counted. Coarse182 complete. Grid0149
+improves pooled position33.4%, velocity7.14%, fast3.97%, and the targeted reversal
+close velocity14.4%, fast24.7%, but worst group regresses0.368%. Refine768
+configurations around0149/0073, seed2026100536, with small independent noise,
+damping, threshold, matching-distance and blend perturbations. Require reversal
+close/fast non-regression explicitly, not just pooled groups. No fresh data used.
+Paired reversal plot inspected: `G/audit6/diagnosis/reversal.png`; it shows old
+candidate's wrong-direction velocity at28.45s and subsequent lag despite lower
+late position error. No assertion that first200ms recovery has been solved.
+
 ## 5. Evidence map and operational handoff
 
 - `M` = `/home/schluis/hulk/logs/ball-filter-motion-fixes-20261005/`.
