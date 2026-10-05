@@ -59,7 +59,7 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E34 improve velocity response after E33 numeric pass but unresolved reversal lag. Runtime/default
+Next: E35 independent validation of E34 local-0381. Runtime/default
 parameters remain at the original retained baseline until fresh validation succeeds.
 
 
@@ -1065,6 +1065,25 @@ close/fast non-regression explicitly, not just pooled groups. No fresh data used
 Paired reversal plot inspected: `G/audit6/diagnosis/reversal.png`; it shows old
 candidate's wrong-direction velocity at28.45s and subsequent lag despite lower
 late position error. No assertion that first200ms recovery has been solved.
+
+E34 complete:950 configurations (182 controls/grid plus768 refinements). Only
+local0381 beats original baseline while passing every15-group close p/v guard,
+pooled fast/bounded-loss/availability checks **and** the separately scored
+reversal close+fast velocity guard. Pooled p -28.86%, v -7.18%, fast -4.10%;
+worst close p/v ratio0.99989. Target reversal close velocity0.933644→0.858168,
+fast2.735359→2.314772, position0.037595→0.031689. Wrong-output -7.166s,
+false-output +9.122s, close correct-track missing -6.450s; velocity missing
+unchanged. This is development evidence only; no runtime changes or default edits.
+
+### E35 — Seventh frozen independent audit
+
+**Status:** frozen/capturing. `G/audit7/candidate.json5`, exact hash in freeze.json.
+Reserved unscored seed58 plus first valid new seed59–66, fixed order, two parallel
+isolated captures; extras preserved unused. Original fresh numeric rules and
+manual review unchanged. Explicitly inspect reversal/recovery and duplicate
+hypotheses, since the preceding numerical pass did not establish the full goal.
+No scores from these recordings informed selection. All runtime code remains
+original retained extended filter; only existing parameters differ.
 
 ## 5. Evidence map and operational handoff
 
