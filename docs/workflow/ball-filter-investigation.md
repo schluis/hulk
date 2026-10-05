@@ -59,7 +59,7 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E37 independent validation of E36 evo-1-056 with duplicate reduction. Runtime/default
+Next: E38 diagnose and calibrate the sideline position failure; seed63/64 reserved. Runtime/default
 parameters remain at the original retained baseline until fresh validation succeeds.
 
 
@@ -1161,6 +1161,36 @@ complete valid suites selected before candidate scoring; extras unused. Frozen
 capture/evaluator hashes verified. Fresh numeric criteria and manual recovery/
 duplicate assessment unchanged. Runtime/defaults remain original pending outcome;
 no confidence cap or other experimental algorithm change is retained.
+
+E37 rejected. All four captures valid; first61/62 scored,63/64 remain unscored.
+Baseline replay verified. Pooled position0.237569→0.288403m (+21.40%) fails;
+velocity0.671039→0.648825m/s (-3.31%), fast2.464599→2.361903m/s (-4.17%)
+improve in both suites. Sideline family position0.412873→0.815225m dominates
+regression; other position families largely stable or better. Missing velocity
+1.398s unchanged, false77.64s unchanged, wrong104.426→106.560s. First200ms
+velocity3.714401→3.645527m/s (-1.85%).
+
+Duplicate reduction generalized: close multiple-near35.398→1.814s (-94.88%),
+zero-near10.930→9.730s, one-near154.664→189.448s, mean total primary
+5.657→4.990. This is geometric proximity, not permanent identity. Preserve the
+benefit but do not adopt while close-position accuracy regresses.
+
+Sideline diagnosis: seed62 at36.228s, truth Field(5.211,-3.176) is within0.88m
+of robot, slightly outside the9×6m field. Candidate reports a resting track last
+seen9.838s ago, position error3.981m; baseline's2.238s-old track errs1.510m.
+Possible field-prior suppression of the genuine nearby ball must be isolated;
+this is not a new velocity error (both outputs at rest). Evidence:
+`G/audit8/diagnosis/sideline-regressions.json`.
+
+### E38 — Field-boundary confidence near a real off-field ball
+
+**Status:** running. 402 configurations (400 grid +2 controls), existing field
+margin, confidence distance, stored decay rate and publication margin only.
+Keep localization assertion true and all velocity/merge settings frozen at E37.
+180 inspected clips/19groups, original reference unchanged; no scoring, pose,
+physics or runtime changes. Require close p/v, pooled fast/bounded/availability
+and targeted reversal guards; inspect sideline and duplicates. Artifacts:
+`G/boundary-calibration/`. Reserved63/64 remain untouched until next freeze.
 
 ## 5. Evidence map and operational handoff
 
