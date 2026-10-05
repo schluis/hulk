@@ -65,8 +65,10 @@ close/fast metrics and wrong time, but audit8b position still regresses0.501mm R
 E83 traces that regression to inherited support making a newly matched false-size
 resting track eligible to win recency. E84's re-confirmation restriction fixes it and
 improves pooled position/wrong time, but original-suite velocity regresses0.109%.
-Audit that selection-only effect and correctness before fresh validation.
-One-clip near-truth duplicate proxy is unchanged, full duplicate review still open.
+E85 proves original raw-velocity regression rewards a misplaced stationary output;
+common-correct-frame velocity and joint credit improve across216, but near-truth
+duplicate exposure increases28.398 hypothesis-seconds, chiefly recordings144/177.
+Trace those duplicates and isolate selection-only behavior before fresh validation.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2543,6 +2545,47 @@ seeds based only on the pooled gain. Three-observation recovery needs an explici
 positive test and independent selection-only ablation before adoption if this line
 survives replay. Thresholds and fresh-validation requirements unchanged; fresh67/68
 untouched. All jobs terminal; no retained runtime change or push.
+
+### E85 — Correctness and duplicate audit of re-confirmation [COMPLETE]
+
+Paired original-suite exports in `G/resting-reconfirmation/original-audit/` localize
+raw velocity regression to contested238.6–240.2s. At238.734s baseline publishes
+stationary false position0.611m from truth; candidate publishes moving estimate
+0.065m from truth. At239.064s errors are0.761m baseline versus0.146m candidate.
+Thus raw velocity favors zero velocity on a wrong ball location in this window.
+This does not prove every E84 difference is benign: retain raw reports.
+
+Fixed E63 common-correct-frame audit on all9 original clips finds identical velocity
+RMSE0.640577568m/s over108.514s, zero correct-close coverage lost,1.398s gained.
+Fixed E67 smooth joint credit improves0.883812121→0.890130948; fast credit unchanged
+0.533123264. No formula or threshold changed to obtain this result. The original
+raw velocity guard still fails; this evidence explains its meaning rather than
+silently marking it passed. The user explicitly requested position-dependent
+velocity credit, so evaluate the existing diagnostic alongside raw guards.
+
+Full216 paired export in `G/resting-reconfirmation/full-audit/` completed in9-clip
+chunks, retaining hypothesis positions but removing full states after each chunk.
+Replays used the resource runner, nice15, aggregate45GiB; observed~5GiB. All export
+and analysis jobs terminal. Common-velocity and credit formulas were unchanged:
+
+- Common correct close frames2395.788s: velocity RMSE0.625915140→0.625754701m/s
+  (−0.02563%); correct-close coverage gained1.550s, lost0.040s (recording85).
+- Two tiny common-frame suite regressions remain: audit3b+4.29e−8m/s,
+  audit9a+3.09e−6m/s. Preserve these rather than silently round them into passes.
+- Smooth close joint credit0.892923874→0.893315691; fast credit
+  0.546846047→0.547359098. Raw legacy metrics/failing guards remain in E84.
+- Across8634.348s, hypothesis-seconds54014.472→54099.194. Extra hypotheses
+  within0.3m of sole truth693.982→722.380 (+28.398,+4.09%); exposure with
+  multiple near truth624.000→652.398s. All nearby-pair seconds2703.062→2738.952.
+
+`duplicates.py` defines these as spatial proxies, not proof of track identity.
+The duplicate increase is concentrated in recording144 (+17.280 hypothesis-seconds),
+177 (+9.080),22 (+1.200),183 (+0.842),73 (+0.086); ranking saved in
+`duplicate-regressions.json`. Thus improved output does not imply fewer candidates.
+Next inspect144/177 duplicate survival and isolate selection-only behavior before
+promoting added association complexity. Candidate remains development-only; fresh
+67/68 untouched, no adopted code or push. Full-state positive recovery test and
+selection-only ablation remain outstanding, as do fast/airborne challenge failures.
 
 ## 5. Evidence map and operational handoff
 
