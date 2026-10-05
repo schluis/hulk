@@ -3552,6 +3552,12 @@ launched using existing verified baseline frames. Both resource runner/nice15,
 aggregate45GiB cap; observed~5.4GiB before second job. Must inspect old accelerating
 counterexamples and false seed76; this is targeted evidence only, not acceptance.
 
+E117 full216 terminal: position0.239928049m (-1.48703%), velocity0.676367049m/s
+(-0.24132%), fast2.346288336m/s (-0.17739%). All position suites improve; fast
+nonregressing. Worst raw velocity suite now original+0.108775%, so not all guards
+pass; requires paired-frame diagnosis rather than ignoring. Wrong/missing reductions
+remain13.300s/3.668s. consumed54 exec90593 still live; memory4.78GiB at checkpoint.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
