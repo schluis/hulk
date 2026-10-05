@@ -89,6 +89,10 @@ position-conditioned and duplicate audit before fresh validation. E97 completes 
 audit: duplicates improve31%, but joint credit worsens and audit5b has a real
 velocity regression at brief-gaps190.4–190.6s. Trace primary/auxiliary output there
 before changing calibration or consuming fresh validation; no candidate accepted.
+E98 confirms older resting auxiliary suppresses newer moving primary velocity.
+E99 preserves primary velocity for that combination: fixes the target frame but
+worsens pooled velocity and audit6a, rejected. Inspect that counterexample before
+adding any motion-dependent publication rule.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2971,6 +2975,48 @@ Evidence: root `common-velocity.json`, `duplicates.json`, `candidate-credit.json
 `publication_only-credit.json`, `control-audit/`, `incremental-audit/`, and
 `velocity-regression-windows.json`. Fresh67/68 remain unscored. No pushes.
 Acceptance requires full goal, not merely positive pooled scores.
+
+### E98 — Brief-gap auxiliary velocity trace [COMPLETE]
+
+E97 localizes a genuine velocity regression to recording121 at190.4–190.6s.
+Instrument frozen E96 runtime without behavior changes, then verify exact replay
+parity with its exported frames before interpreting primary/auxiliary state.
+Artifacts `G/brief-gap-publication-trace/`, original sources backed up there; restore
+after terminal build. Same grid012 parameters; no new data or parameter search.
+Resource runner, nice15,45GiB aggregate,3 build jobs. No agents or pushes.
+
+E98 exact parity passes all7552 frames and every preserved export field. At190.520s
+primary is Moving, velocity(0.520755,1.245024), covariance trace0.286004, observed
+190.482. Auxiliary is stationary, velocity zero, trace2.357432, observed190.362.
+Ratio8.243 exceeds original6.048 guard but is admitted at1000. Its high blend
+suppresses velocity while correcting position. All instrumentation restored.
+
+### E99 — Preserve newer moving velocity with older resting position correction [REJECTED]
+
+Isolate one mechanism atop E96 grid012: when primary mode is Moving and auxiliary
+mode Resting, with strictly newer primary observation, retain primary velocity;
+position blend and conservative timestamp stay unchanged. No new parameter. Equal
+or newer auxiliary timestamps retain old behavior. This may expose false primary
+velocities, so evaluate all216 and reject if actual velocity/credit regressions
+outweigh recovery. Fresh67/68 remain untouched. Fixture covers older/equal/newer
+auxiliary, asserting position correction remains. Artifacts
+`G/publication-moving-velocity/`, source backups,3-job build/resource runner.
+
+E99 complete:123 tests pass, both binaries built, sources restored byte-for-byte.
+All216 replay results and targeted recording121 complete. The190.520s output now
+retains primary velocity exactly, with identical blended position/timestamp. Overall
+position unchanged from E96 grid0120.223471874m (−8.24384% versus accepted),
+wrong time and correct-close missing unchanged. But close velocity worsens to
+0.678231953m/s (+0.03374% versus accepted; E96 was0.677020136), worst suite
+audit6a+1.08891%. Fast-close velocity improves2.349748850m/s (−0.03016%), but
+worst fast suite still+0.04607%audit9a. Do not adopt: simply preserving newer
+primary velocity exchanges this gap failure for larger errors elsewhere.
+Results `ranked.json`, full `results/candidate.json`, targeted `diagnostic/`.
+No live jobs from E98/E99; no fresh validation consumed, no pushes. Next inspect
+E99 audit6a primary velocities on position-correct frames to determine whether
+motion evidence can distinguish true reacquisition from false moving-primary
+corrections. Preserve the simpler-control comparison; no additional complexity
+accepted based on a single successfully fixed frame.
 
 ## 5. Evidence map and operational handoff
 
