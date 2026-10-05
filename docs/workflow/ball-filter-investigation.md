@@ -74,7 +74,11 @@ candidate as evidence of generalizing position/duplicate benefit. Continue motio
 recovery work; newly changed candidates require new reserved scenarios. Seeds67/68
 are consumed. E104 diagnoses the largest new reversal failure: detection gap plus
 slow wrong-sign recovery; rejected E66 leaves this unchanged. Verify its pre-update
-change gate before testing a narrower reversal mechanism. No live jobs from these
+change gate before testing a narrower reversal mechanism. E105 verifies gate0.704<9;
+E106 narrower reversal improves target velocity5.1% and pooled fast1.19%, but fails
+audit3a position50.6%. Failure involves stale moving track blocking fresh near-truth
+hypothesis below confirmation3. Standalone E106 rejected; investigate selection
+interaction with E93-only control before any new validation. No live jobs from these
 experiments; runtime restored, no pushes.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
@@ -3123,6 +3127,61 @@ uncertainty accounted for explicitly. First verify the pre-update gate. Preserve
 E66's far-range/audit2b failures as mandatory counterexamples; don't assume fixing
 this one reversal establishes a general improvement. No source change yet, no fresh
 validation remaining from67/68, no goal completion claim.
+
+### E105 — Exact pre-update reversal significance [COMPLETE]
+
+Instrument E66 moving-state gate at143.5–143.8s for consumed seed68 fast-near-shot.
+Preserve behavior and check exported-frame parity against E104 frozen E66 replay.
+`G/reversal-preupdate-trace/` preserves source backup/instrumentation/build. No new
+candidate policy until exact gate evidence. Nice15 resource runner,3 build jobs,
+45GiB aggregate; restore source after terminal build. No agents/pushes.
+
+E105 instrumentation parity passes every exported E66 frame. Exact143.562 exposure
+pre-update change significance0.70418864 (<9), old velocity(−2.4147,−0.4045),
+observed(0.5567,−0.6201); old velocity variances12.599/12.570 versus observed
+0.00506/0.01012. High old uncertainty suppresses this E66 reset despite coherent
+opposite-direction observations. Source restored after build; trace preserved.
+
+### E106 — Confident observed direction reversal [REJECTED AS STANDALONE]
+
+On frozen E93 plus ratio7, retain existing three-observation consistency/significance
+checks. For moving tracks only, replace correlated state when observed velocity is
+confidently opposite current velocity: projection old_v·observed_v<0 and its square
+>9*(old_vᵀ observed_velocity_covariance old_v). Unlike E66, old uncertainty is not
+added to this directional-evidence test. No same-direction speed reset, no new
+parameter, no independent-measurement fusion. Moving merge clears short history.
+Four targeted tests include reversal, isolated outlier, uncertain old velocity and
+same-direction acceleration. Full216 replay plus consumed68 reversal and known
+E66 failures required before considering new untouched validation. Archives
+`G/confirmed-reversal/`; source backups, resource runner/nice15/3 build jobs/45GiB.
+No agents/pushes. This is experimental, not an adopted algorithm.
+
+E106 all125 tests pass; binaries/parameters/source hashes preserved, working source
+restored. Consumed68 target clip close velocity1.349180858→1.280314831 (−5.1043%),
+position0.212584840→0.212307733 (−0.13035%), fast/wrong/missing unchanged. The
+143.562 reset now recovers the correct direction. Full216 versus accepted baseline:
+position0.243196481 (−0.14503%), close velocity0.676126703 (−0.27676%), fast
+2.322533999 (−1.18801%), wrong−12.764s, correct-close missing−2.644s. However
+worst suite audit3a position+50.5773%, velocity+6.5853%, fast audit7b+0.18319%.
+Rejected standalone; no fresh validation or adoption. All jobs terminal.
+
+Audit3a export diagnoses recording75 fast-near-shot. First changed frame143.112:
+baseline position(1.721,0.072), velocity(0.345,0.187); candidate(1.595,0.081),
+velocity(−3.799,0.464), truth position(1.612,0.073). Initial reset improves the
+position; do not assume this is a false reset. Later144.640 candidate stale moving
+track error3.356m versus baseline1.924m; both last_seen143.362. Candidate stale
+moving validity114.325 competes with near-truth, size-plausible resting hypothesis
+last_seen144.602 validity2.99404, just below confirmation3; its short history has
+2 observations. Missing truth reassociation/selection after later motion change
+amplifies the initially faster trajectory. Evidence `first-failure-difference.json`,
+`failure-peaks.json`, `audit3a/`, `diagnostic-comparison.json`, full ranked results.
+
+Next separate trajectory recovery from stale-track confirmation competition. Check
+existing selection experiments before changing anything: a valid fresh hypothesis
+should not lose indefinitely to a >1s-old extrapolation merely through the validity3
+eligibility barrier. Any change needs E93-without-reversal control, false-percept
+counterexamples, all216 and consumed67/68, then genuinely new held-out validation.
+No parameter/code adopted, no pushes; goal remains active.
 
 ## 5. Evidence map and operational handoff
 
