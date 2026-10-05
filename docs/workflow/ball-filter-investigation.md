@@ -3630,7 +3630,7 @@ velocity0.672266121, fast2.395125121, wrong320.110s, false235.840s,
 correct-close missing29.054s. Both datasets are development, not fresh proof.
 E120 full216 paired export/diagnostics96479 launched to verify exact coverage/credit.
 
-### E121 — Fresh frozen validation of E120 [RUNNING]
+### E121 — Fresh frozen validation of E120 [METRIC PASS; FINAL AUDIT PENDING]
 
 G/wide-merge-fresh freezes E120 evaluator/parameters, five source hashes, baseline
 capture/runtime identities and validation scripts before capture. Protocol uses
@@ -3739,6 +3739,42 @@ Frozen evaluation48030 launched via resource runner, paired baseline/candidate
 exports plus baseline --verify for every suite; source/parameter/binary hashes
 checked before scoring. Candidate unchanged. Wait for complete comparison and
 per-suite/coverage audit before any acceptance claim; no further captures launched.
+
+E121 evaluation48030 terminal, all six baseline live replay verifications TRUE.
+Frozen metric checks all PASS: pooled position0.173645001→0.169280815m (-2.513%),
+velocity0.706599742→0.703375529m/s (-0.4563%), fast2.500486323→2.489260323
+(-0.4490%). Every fresh suite position improves; raw close velocity improves or is
+unchanged in all6. Common-correct582.756s velocity0.672000663→0.668056755
+(-0.5869%); gained1.156s/lost0.016s. Wrong279.430→277.096s, false238.200 unchanged,
+correct-close missing23.684→22.544s; duplicates128.644→110.408 hypothesis-seconds.
+Joint0.887711263→0.889853165, fast0.514910114→0.520498600. Seed79 fast velocity
+suite increases2.234e-7m/s; retained, not rounded away. All selected54 now consumed;
+surplus86 remains unscored. decision.json records metric pass, not goal completion.
+
+### E124 — Inspect fresh tradeoffs rather than hide behind pooled gains [IN PROGRESS]
+
+individual-audit.json lists all individual clip regressions. Largest close-position
+RMSE increase1.068mm in seed80 fast-crossing; suite position still improves2.54%.
+Seed78 brief-gap raw velocity worsens but common-frame velocity EXACTLY identical,
+gains4ms correct coverage (coverage confound). Lost close coverage16ms in seed85
+fast-shot143.426–143.440: baseline error0.247→0.268m, candidate0.505→0.583m,
+range0.425→0.464m, both same184–198ms age after no fresh percept; net clip position
+RMSE+0.208mm, while suite position/velocity improve. Preserve as real local tradeoff.
+
+Material far-occlusion tradeoff: seed79 long-occlusion258.598–259.320, candidate
+wrong while baseline correct for0.760s at1.605m; peak errors1.431m versus0.045m.
+Net clip wrong+0.314s after other improvements. Seed80 long-occlusion similarly
+has two240ms wrong windows (net+80ms). Replays15978 terminal: E115 no-reversal and
+E120 identical seed79 output/scores; NOT caused by new reversal. First hypothesis
+count divergence247.706 is intended removal of stale radius-inconsistent near-real
+track (baseline2/candidate1). At258.598 baseline separate false supports4.950/1.835;
+candidate combined history support5.775 permits fresh wrong selection, while old
+large-support primary itself is already size-inconsistent. Artifacts failure-diagnosis/
+first-hypothesis-count-divergence.json and coverage-regression-windows.json. This
+is a documented association/merge/history tradeoff outside the1m priority range,
+not proof of uniformly improved occlusion tracking. No thresholds relaxed, no new
+candidate edits or score-based exclusions. All jobs terminal. Final integration and
+explicit requirement audit remain before any completion claim.
 
 ## 5. Evidence map and operational handoff
 
