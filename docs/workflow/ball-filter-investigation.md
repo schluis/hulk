@@ -54,14 +54,14 @@ retention calibration found a publication dependency (E15). A joint primary/auxi
 parameter search completed (E16) on all 54 inspected development clips. The
 parameter-only ablation-0260 candidate failed the second audit’s per-suite
 close-position guard. E18 completed the stationary-noise calibration; E19
-rejected local-0280 on a fresh coasting-position regression. E20 follows.
+rejected local-0280 on a fresh coasting-position regression. E20 produced
+local-0322, now frozen for E21 validation.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: jointly calibrate damping and motion noise against the new hidden-coasting
-failure plus all previous cases (90 inspected development recordings). All three
-frozen audits are preserved, including the gains and failed position guards.
-The retained runtime/default parameters remain unchanged.
+Next: complete E21 independent validation of local-0322. It passes all nine
+development-group close p/v guards with unchanged availability. Runtime/default
+parameters remain at the original retained baseline until validation succeeds.
 
 
 ### 2.2 Baseline and terminology
@@ -753,6 +753,27 @@ losses before freezing. No fresh seed51 data used. Memory cap/nice scheduling
 unchanged. Moving prediction was inspected: it already integrates damped motion
 and continuous process covariance, including cross terms. The large covariance
 seen here comes from configured noise, not a missing elapsed-time integration.
+
+
+#### E20.1 Completed calibration
+
+2,107 initial configurations plus 768 local refinements completed on the same
+90 development clips. Select `local-0322` by minimum pooled v11 bounded loss among
+feasible candidates with at least 0.5% margin in every group's close p/v RMSE.
+Worst ratio 0.992401; pooled position -21.71%, velocity -4.46%, fast velocity -1.57%,
+v11 bounded loss -3.41%. Availability unchanged. Original resting-process noise
+is retained; only existing damping, detection/moving noise and matching distance
+change. No runtime change. Exact selection: `G/audit4/development-selection.json`.
+
+### E21 — Fourth frozen independent audit
+
+**Status:** capturing, 2026-10-05. Freeze `local-0322`, SHA256
+`6b57303480d6a41a2ac34d86da7375e12c96b3ade002a6b9bed4dbb64639ab8d`.
+Artifacts/protocol under `G/audit4/`. Same acceptance criteria as E17/E19, fixed
+before capture. Seeds 50000053–50000064 in order, four concurrent isolated
+network namespaces; first two complete valid suites by listed order, no
+accuracy-based replacement. Verify baseline live/replay before scoring.
+Unused seed51 remains unscored. No candidate modifications after freeze.
 
 ## 5. Evidence map and operational handoff
 
