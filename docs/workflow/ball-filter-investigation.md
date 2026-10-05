@@ -74,16 +74,18 @@ regressions and fixes; E81–E113 preserve earlier rejected experiments.
 - Consumed54 (69/71/73/75/76/77): all frozen metric checks pass after E120; pooled
   position0.233376828→0.229637407m, velocity0.681333155→0.672266121m/s,
   false237.824→235.840s. These are development evidence, not fresh validation.
-- **E121 fresh validation scoring:** frozen sources/binaries/parameters/protocol
-  in G/wide-merge-fresh. Selected seeds78/79/80/81/83/85:54 valid recordings.
-  Seed82 robot fall and84 insufficient reacquisition excluded by predeclared rules;
-  surplus86 retained and unscored. Capture1564 terminal, evaluation48030 running
-  with live-baseline parity verification. Candidate remains unmodified.
+- **E121 fresh validation PASSED:** frozen candidate improved position2.51%,
+  velocity0.46%, common-correct velocity0.59%, duplicate exposure14.18% on54 fresh
+  recordings (78/79/80/81/83/85); every suite position improves. All baseline live
+  parity checks passed. E124 records local tradeoffs, including16ms lost close
+  coverage and worse far-occlusion windows. Surplus86 remains unscored.
 - E122 supplemental challenges: extreme>15m/s and airborne velocity remain weak;
   no claim to solve those cases. Preserve raw incidental-flight velocity regression.
-- Working checkout/defaults remain the previously pushed **E43 user-test experiment**;
-  frozen E120 is not yet installed/adopted. Accepted benchmark remains0ed7a0910.
-  All later changes committed locally are investigation notes; no pushes or agents.
+- **E125 integration in progress:** working source/defaults now contain E120 plus
+  behavior-preserving association-loop cleanup and corrected merge documentation.
+  Rebuilt130 tests pass; exact54 fresh-frame parity passes so far. Full216 score
+  parity also passes; simulator build pending. These source/config edits are not committed
+  yet. Comparison benchmark remains0ed7a0910; no pushes or agents.
 
 Fresh67–77 are consumed; do not call them held out again. E111 failed fresh validation
 and E109 added false output; both remain documented. E120 succeeds on that consumed
@@ -100,6 +102,51 @@ data after fixes, but **goal completion still requires E121 and final delivery a
   scores cannot be pasted into the current comparison as if equivalent.
 - v10 and v11 scalar losses are not comparable. Compare physical metrics on
   identical inputs, or re-score both implementations with one objective.
+
+
+### 2.3 Validated result and local simulator use
+
+Fresh54 comparison against retained tuned0ed7a0910, not main or the game build:
+
+| Metric | Retained baseline | Validated candidate |
+|---|---:|---:|
+| Close position RMSE | 0.173645m | 0.169281m |
+| Close velocity RMSE | 0.706600m/s | 0.703376m/s |
+| Velocity on identical correct-position frames | 0.672001m/s | 0.668057m/s |
+| Fast close velocity RMSE | 2.500486m/s | 2.489260m/s |
+| Wrong-output duration | 279.430s | 277.096s |
+| Correct-close missing duration | 23.684s | 22.544s |
+| Extra hypotheses near sole truth | 128.644 hypothesis-s | 110.408 hypothesis-s |
+| False-output duration | 238.200s | 238.200s |
+
+Every fresh suite improves close-position RMSE; suite close velocity improves or
+is unchanged. Local tradeoffs remain:16ms lost close correct coverage versus1.156s
+gained, a0.760s worse far-occlusion window at1.605m, and individual clip position
+RMSE increases up to1.068mm. These observations limit the result: it is a measured
+suite-level improvement, not uniformly better tracking at every instant. Extreme
+>15m/s and airborne velocity remain poor. See E121–E124 for the complete audit.
+
+Only two parameter values differ from the retained tuned baseline:
+`hypothesis_merge_distance: 0.21` and
+`publication_maximum_covariance_ratio: 7.0`. Other defaults revert from the earlier
+E43 user-test settings to the retained baseline, including no stored confidence cap.
+The code still uses resting and moving models. New reversal recovery replaces the
+correlated moving state only after three consistent observations with the existing
+significance checks, close range, confidently opposite direction, no statistically
+clear speed increase, and no prior size inconsistency. It does not predict unseen
+contacts or estimate vertical motion.
+
+From the repository root, run all nine examples without search:
+
+```sh
+./simulator demo --parameters etc/parameters/base/ball_filter.json5
+```
+
+The demo opens the 3D viewer by default; `--headless` keeps only the image interface.
+Use `--seed 4243` for another realization. See [simulator guide](../../tools/simulate/README.md#scenario-demo-and-image-observer)
+for the image API and Twix Ball-filter optimization panel. Use a new `--output`
+directory if specifying one. Historical logs/binaries are local artifacts and are
+not automatically downloaded with this branch. Integration build/check status is E125.
 
 ## 3. Next work — ordered plan
 
@@ -3775,6 +3822,29 @@ is a documented association/merge/history tradeoff outside the1m priority range,
 not proof of uniformly improved occlusion tracking. No thresholds relaxed, no new
 candidate edits or score-based exclusions. All jobs terminal. Final integration and
 explicit requirement audit remain before any completion claim.
+
+### E125 — Integrate validated candidate and prove cleanup parity [RUNNING]
+
+Installed frozen E120's five source files and exact candidate parameters into the
+preferred simulator checkout, replacing E43 user-test settings. Review suggestions:
+hoisted radius/eligibility/minimum-log-uncertainty computation once per percept;
+kept each assignment-score arithmetic unchanged. Updated merge method docs and
+formatted only five affected Rust files. No algorithm/parameter adjustment based
+on fresh scores. G/validated-integration preserves original checkout backups.
+
+Build23189 complete:130 filter tests pass with installed defaults. Exact fresh
+parity44552 verifies all54 reports AND every compact exported frame against frozen
+E121 candidate;54/54 complete, full216 score parity still running. This checks
+position, velocity, timestamps, hypotheses, selection, truth and input metadata,
+not just aggregate metrics. Simulator build82964 ongoing, nice15/3 compile jobs
+under aggregate45GiB cap. Compiled demo --help smoke check prepared. Source/config
+changes remain uncommitted until integration checks finish; no pushes.
+
+E125 integration parity44552 complete: every exported fresh frame and per-record
+score matches frozen E120 exactly on all54; full216 groups/diagnostics exact too.
+Review cleanup therefore preserves the validated behavior.130 tests pass with
+installed defaults. Only simulator release build/demo CLI smoke82964 remains active;
+aggregate~5.7GiB RAM, disk40GiB free. No new capture or tuning.
 
 ## 5. Evidence map and operational handoff
 

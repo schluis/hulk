@@ -445,10 +445,47 @@ fn advance_all_hypotheses(
             gated_assignment_scores(&match_matrix, filter_parameters.maximum_matching_cost);
         let uncertainty_weight = filter_parameters.association_uncertainty_weight;
         if uncertainty_weight.is_finite() && uncertainty_weight > 0.0 {
-            for (row, hypothesis) in ball_filter.hypotheses.iter().enumerate() {
-                let variance = hypothesis.position_covariance().trace().max(0.0);
-                let penalty = uncertainty_weight.min(1.0) * variance / (1.0 + variance);
-                for column in 0..ball_percepts.len() {
+            for (column, percept) in ball_percepts.iter().enumerate() {
+                // Eligibility and the reference uncertainty depend on the percept,
+                // not on which candidate row is being scored.
+                let confirmed_resting_competition =
+                    radius_consistency(percept, camera_matrix, field_dimensions.ball_radius)
+                        == Some(true)
+                        && ball_filter
+                            .hypotheses
+                            .iter()
+                            .enumerate()
+                            .all(|(other, hypothesis)| {
+                                !match_matrix[(other, column)].is_finite()
+                                    || match_matrix[(other, column)]
+                                        < -filter_parameters.maximum_matching_cost
+                                    || (matches!(hypothesis.mode, BallMode::Resting(_))
+                                        && hypothesis.validity
+                                            >= 3.0_f32
+                                                .max(filter_parameters.validity_output_threshold))
+                            });
+                let minimum = if confirmed_resting_competition {
+                    ball_filter
+                        .hypotheses
+                        .iter()
+                        .enumerate()
+                        .filter(|(other, _)| {
+                            match_matrix[(*other, column)].is_finite()
+                                && match_matrix[(*other, column)]
+                                    >= -filter_parameters.maximum_matching_cost
+                        })
+                        .map(|(_, other)| other.position_covariance().trace().max(0.0).ln_1p())
+                        .fold(f32::INFINITY, f32::min)
+                } else {
+                    f32::INFINITY
+                };
+                for (row, hypothesis) in ball_filter.hypotheses.iter().enumerate() {
+                    let variance = hypothesis.position_covariance().trace().max(0.0);
+                    let penalty = if minimum.is_finite() {
+                        uncertainty_weight.min(1.0) * (variance.ln_1p() - minimum).max(0.0)
+                    } else {
+                        uncertainty_weight.min(1.0) * variance / (1.0 + variance)
+                    };
                     assignment_scores[(row, column)] -= penalty;
                 }
             }
@@ -616,14 +653,43 @@ fn remove_invalid_and_merge_hypotheses(
     };
 
     let should_merge_hypotheses = |left: &BallHypothesis, right: &BallHypothesis| {
+        let fresh_and_stale = |fresh: &BallHypothesis, stale: &BallHypothesis| {
+            matches!(fresh.mode, BallMode::Resting(_))
+                && matches!(stale.mode, BallMode::Resting(_))
+                && fresh.validity >= 3.0_f32.max(filter_parameters.validity_output_threshold)
+                && fresh.last_observation_size_plausible == Some(true)
+                && fresh
+                    .position()
+                    .age_at(time)
+                    .is_some_and(|age| age <= Duration::from_millis(120))
+                && stale
+                    .position()
+                    .age_at(time)
+                    .is_some_and(|age| age >= Duration::from_secs(1))
+        };
+        let physical_limit = if fresh_and_stale(left, right) || fresh_and_stale(right, left) {
+            2.0 * field_dimensions.ball_radius
+        } else if matches!(left.mode, BallMode::Resting(_))
+            && matches!(right.mode, BallMode::Resting(_))
+        {
+            field_dimensions.ball_radius
+        } else {
+            filter_parameters.hypothesis_merge_distance
+        };
         left.can_merge(
             right,
-            filter_parameters.hypothesis_merge_distance,
+            filter_parameters
+                .hypothesis_merge_distance
+                .min(physical_limit),
             filter_parameters.validity_output_threshold,
         )
     };
 
-    ball_filter.remove_hypotheses(is_hypothesis_valid, should_merge_hypotheses);
+    ball_filter.remove_hypotheses(
+        is_hypothesis_valid,
+        should_merge_hypotheses,
+        field_dimensions.ball_radius,
+    );
     ball_filter
         .hypotheses
         .sort_unstable_by(|a, b| b.validity.total_cmp(&a.validity));
@@ -1735,6 +1801,58 @@ mod tests {
         assert_eq!(best.position().position, point![3.0, 0.0]);
         assert_eq!(best.last_seen, Time::from_nanos(580_000_000));
         assert_eq!(filter.hypotheses.len(), 2);
+    }
+
+    #[test]
+    fn diameter_merge_requires_confirmed_recent_resting_and_stale_history() {
+        let dimensions = FieldDimensions {
+            ball_radius: 0.105,
+            ..FieldDimensions::SPL_2025
+        };
+        let time = Time::from_nanos(2_000_000_000);
+        for (same_exposure, weak, moving, distance, expected) in [
+            (false, false, false, 0.21, 1),
+            (true, false, false, 0.21, 2),
+            (false, true, false, 0.21, 2),
+            (false, false, true, 0.21, 2),
+            (false, false, false, 0.0, 2),
+        ] {
+            let make = |x, stamp| {
+                let mut h = BallHypothesis::new(
+                    MultivariateNormalDistribution {
+                        mean: vector![x, 0.0, 0.0, 0.0],
+                        covariance: Matrix4::identity() * 0.01,
+                    },
+                    stamp,
+                );
+                h.mode = BallMode::Resting(MultivariateNormalDistribution {
+                    mean: vector![x, 0.0],
+                    covariance: Matrix2::identity() * 0.01,
+                });
+                h.validity = 4.0;
+                h.last_observation_size_plausible = Some(true);
+                h
+            };
+            let mut fresh = make(1.0, time);
+            if weak {
+                fresh.validity = 1.0;
+            }
+            if moving {
+                fresh.mode = BallMode::Moving(MultivariateNormalDistribution {
+                    mean: vector![1.0, 0.0, 1.0, 0.0],
+                    covariance: Matrix4::identity(),
+                });
+            }
+            let stale = make(1.15, if same_exposure { time } else { Time::zero() });
+            let mut filter = BallFilter {
+                hypotheses: vec![fresh, stale],
+            };
+            let mut parameters = crate::test_parameters();
+            parameters.hypothesis_merge_distance = distance;
+            parameters.hypothesis_timeout = Duration::from_secs(20);
+            remove_invalid_and_merge_hypotheses(&mut filter, time, &parameters, &dimensions);
+            assert_eq!(filter.hypotheses.len(), expected);
+        }
     }
 
     #[test]

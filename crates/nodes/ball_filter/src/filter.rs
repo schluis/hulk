@@ -57,7 +57,22 @@ impl BallFilter {
         confidence_cap: f32,
     ) -> Option<&BallHypothesis> {
         let confirmation_confidence = 3.0_f32.max(validity_threshold);
+        let supported_moving_alternative = self.hypotheses.iter().any(|hypothesis| {
+            matches!(hypothesis.mode, BallMode::Moving(_))
+                && hypothesis.last_observation_size_plausible == Some(true)
+                && hypothesis.validity * confidence_weight(hypothesis) >= confirmation_confidence
+        });
         let candidates = self.hypotheses.iter().filter_map(|hypothesis| {
+            if supported_moving_alternative
+                && matches!(hypothesis.mode, BallMode::Resting(_))
+                && hypothesis.last_observation_size_plausible == Some(false)
+                && !hypothesis
+                    .motion_evidence
+                    .as_ref()
+                    .is_some_and(|e| e.has_three_observations())
+            {
+                return None;
+            }
             let weight = confidence_weight(hypothesis);
             let effective_validity = hypothesis.validity * weight;
             (effective_validity >= validity_threshold).then_some((
@@ -159,13 +174,15 @@ impl BallFilter {
         &mut self,
         is_valid: impl Fn(&BallHypothesis) -> bool,
         merge_criterion: impl Fn(&BallHypothesis, &BallHypothesis) -> bool,
+        endpoint_minimum_distance: f32,
     ) -> Vec<BallHypothesis> {
         let (valid, removed): (Vec<_>, Vec<_>) = self.hypotheses.drain(..).partition(is_valid);
 
         let mut deduplicated: Vec<BallHypothesis> = Vec::new();
         for hypothesis in valid {
             let merged = deduplicated.iter_mut().any(|existing| {
-                merge_criterion(existing, &hypothesis) && existing.merge(&hypothesis)
+                merge_criterion(existing, &hypothesis)
+                    && existing.merge(&hypothesis, endpoint_minimum_distance)
             });
             if !merged {
                 deduplicated.push(hypothesis);
@@ -350,6 +367,59 @@ mod tests {
                 .select_hypothesis(0.5, weight, 0.0, 1_000_000.0)
                 .unwrap()
                 .validity,
+            2.0
+        );
+    }
+
+    #[test]
+    fn old_support_does_not_confirm_a_new_size_inconsistent_resting_observation() {
+        let mut moving = track(1.0, 50.0, 0);
+        moving.last_observation_size_plausible = Some(true);
+        let mut resting = track(2.0, 15.0, 40_000_000);
+        resting.mode = BallMode::Resting(MultivariateNormalDistribution {
+            mean: nalgebra::vector![2.0, 0.0],
+            covariance: Matrix2::identity(),
+        });
+        resting.last_observation_size_plausible = Some(false);
+        for reverse in [false, true] {
+            let mut hypotheses = vec![moving.clone(), resting.clone()];
+            if reverse {
+                hypotheses.reverse();
+            }
+            let filter = BallFilter { hypotheses };
+            assert_eq!(
+                filter
+                    .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0)
+                    .unwrap()
+                    .position()
+                    .position
+                    .x(),
+                1.0
+            );
+        }
+        let filter = BallFilter {
+            hypotheses: vec![resting.clone()],
+        };
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0)
+                .unwrap()
+                .position()
+                .position
+                .x(),
+            2.0
+        );
+        resting.last_observation_size_plausible = Some(true);
+        let filter = BallFilter {
+            hypotheses: vec![moving, resting],
+        };
+        assert_eq!(
+            filter
+                .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0)
+                .unwrap()
+                .position()
+                .position
+                .x(),
             2.0
         );
     }

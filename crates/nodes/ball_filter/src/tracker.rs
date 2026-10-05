@@ -859,7 +859,7 @@ mod tests {
         let mut filter = BallFilter {
             hypotheses: vec![old, singular],
         };
-        filter.remove_hypotheses(|_| true, |_, _| true);
+        filter.remove_hypotheses(|_| true, |_, _| true, 0.0);
         assert_eq!(filter.hypotheses.len(), 2);
         assert_eq!(filter.hypotheses[0].position().position.x(), 1.0);
         assert_eq!(filter.hypotheses[0].validity, 10.0);
