@@ -59,7 +59,7 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E26 recalibrate existing output correction on108 inspected recordings. Runtime/default
+Next: E27 independent-axis noise calibration on108 inspected recordings. Runtime/default
 parameters remain at the original retained baseline until fresh validation succeeds.
 
 
@@ -883,6 +883,19 @@ covariance ratio around original and three E22 centres. No additional tracker,
 new blending rule or runtime change. Same eleven-group guards and missing-time
 checks. This is an explicit revisit of E16, not a new mechanism. Artifacts:
 `G/publication-recalibration/`. Fresh validation still required.
+
+E26 complete:244 configurations, no passing improvement. The output correction
+changes do not fix the remaining per-group fast-velocity regressions. Preserve
+results; do not add changes to publication defaults.
+
+### E27 — Independent-axis measurement and process noise
+
+**Status:** running. E20/E22 tied forward/lateral measurement and motion noise.
+Allow independent axes around three E22 candidates; camera projection and robot
+viewing direction can produce unequal errors. 1,024 seeded samples plus baseline,
+resting noise and publication settings unchanged. All existing parameters; no
+new mechanism. Same eleven-group p/v/fast and availability guards, frozen original
+evaluator,108 development clips. Artifacts: `G/axis-calibration/`.
 
 ## 5. Evidence map and operational handoff
 
