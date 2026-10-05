@@ -49,14 +49,17 @@ demos, and the image observer.
 E06 association tracing is complete. E07 tested a full-span motion-significance
 check with fixed parameters and was rejected on all three replay partitions.
 Runtime code and preferred parameters remain unchanged from `0ed7a0910`.
-Goal mode is active at the user’s request. E08 parameter ablations are running.
+Goal mode is active at the user’s request. E08 failed fresh validation; E10
+retention calibration found a publication dependency (E15). A joint primary/auxiliary
+parameter search is being prepared (E16) on all 54 inspected development clips.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: use the trace to design **uncertainty-aware velocity initialization**, with
-stationary and clutter negative cases; separately trace the lifetime of hypotheses
-born far from truth. Do not loosen association gates or confirmation thresholds
-without a new measured reason. See E06/E07 for why.
+Next: tune primary and auxiliary measurement noise together, damping, process
+noise, existing selection controls, and optional weak-track retention. Weighted
+initialization was tested and rejected (E13); unrestricted auxiliary publication
+failed the clear-view-miss test (E15). Require bounded close losses and availability
+checks as well as conditional RMSE before freezing another fresh-audit candidate.
 
 ### 2.2 Baseline and terminology
 
@@ -334,7 +337,7 @@ lifetime problem with failed matching of consecutive real-ball observations.
 
 ### 4.7 Active goal: beat the current tuned best
 
-#### E08 — Calibrate existing motion/update model [RUNNING, 2026-10-05]
+#### E08 — Calibrate existing motion/update model [REJECTED AFTER FRESH AUDIT]
 
 Frozen baseline: `ed1d39b67` runtime, original preferred parameters, tie-only
 frozen evaluator. Goal: better close velocity with no close-position regression,
@@ -378,6 +381,48 @@ been inspected. Preferred default parameters are still unchanged.
 `fresh-protocol.json` predeclares two complete new nine-scenario suites with
 coverage-only replacements and no accuracy-based seed selection.
 
+Fresh audit completed on seeds 50000043/50000044 (18 recordings), with exact
+baseline live/replay parity. Close position improved 0.23391 → 0.22171 m (5.21%),
+but close velocity improved only 0.61622 → 0.61405 m/s (0.35%) and fast velocity
+2.39468 → 2.38157 m/s (0.55%). Wrong-track time rose 73.688 → 88.034 s;
+false output rose 68.696 → 76.492 s. The second suite regressed both close metrics.
+**Rejected; goal not reached.** Evidence: `fresh-comparison.json`,
+`fresh-breakdown.json`, `audit-decision.json`. No preferred parameters changed.
+The inspected 18 recordings now join development (54 total).
+
+#### E10 — Retention and observability calibration [COMPLETED; NO PROMOTION]
+
+E08's fresh failure shows that noise/damping gains alone can preserve or select
+more clutter. Test existing hypothesis timeout, hidden confidence decay, and
+visibility uncertainty margin with both original and E08 motion parameters.
+No new algorithm or confirmation relaxation. Retained covariance grows while
+hidden; a 3-sigma rectangle often cannot certify a clear camera miss, leaving
+low-confidence clutter governed by weak hidden decay and a 20-second timeout.
+This is a code-supported mechanism, not yet a proven correction.
+
+Acceptance includes close position/velocity and fast-close velocity on each of
+four development partitions, plus false/wrong output and availability diagnostics.
+Do not accept a smaller hypothesis count achieved by losing the real ball.
+Fresh data for the next frozen candidate must use new seeds, separate from E08.
+Evidence: `ball-filter-goal-20261005/retention/`.
+
+64 ablations completed. Blanket shorter timeouts damage close-position accuracy
+by deleting established hidden tracks. Lower visibility margins can reduce false
+output but lose close-ball availability. The modest feasible motion/retention
+combinations still retain E08's wrong-output regression. Do not promote them.
+
+#### E11 — Expire weak, unsupported hypotheses sooner [RUNNING]
+
+E10 shows established and tentative tracks cannot share a shorter timeout safely.
+Test a one-second unseen timeout only while validity is below the existing
+confirmation threshold (max of 3 and output threshold); established tracks retain
+the original timeout. Use a diagnostic constant first; add a clearly named literal
+parameter only if evidence warrants production adoption. This is current support,
+not a claim to store historical confirmation. Check hidden tracks whose confidence
+has decayed as well as single false births. Compare both baseline and E08 motion
+parameters on 54 development recordings; record actual hypothesis counts and
+availability before any new fresh audit.
+
 #### E09 — Preserve the birth observation for motion evidence [NOT ADOPTED]
 
 The existing three-observation motion test starts only when updating a resting
@@ -398,6 +443,120 @@ Preserved branch: `experiment/ball-filter-birth-evidence-20261005`;
 `ball-filter-goal-20261005/birth-evidence/decision.json` contains its commit and
 metrics. Preferred runtime source restored.
 
+
+#### E12 — Recheck physical size gating against new clutter failures [REJECTED]
+
+Revisit the existing maximum_detection_radius_ratio parameter (currently 1e6),
+with limits 2, 3, 5, and 10, using baseline and E08 motion settings. Earlier size
+gates/soft geometry failed different datasets and safeguards; E08's new false
+output regression motivates this bounded recheck, not a claim that it is novel.
+Preserve old rejections. Synthetic false boxes can make size filtering look too
+favorable; require true-ball availability and fast-shot coverage, and disclose
+real-detector transfer uncertainty. No new geometry model. Eight probes completed: ratio 2 cuts false time by about
+44 s but worsens close position on the new audit data by about 77%; ratio 10 has
+no meaningful effect. Intermediate limits do not pass all accuracy partitions.
+This confirms, rather than overturns, the earlier rejection.
+
+#### E13 — Weighted three-observation velocity initialization [NOT ADOPTED]
+
+Fit position and velocity jointly to the existing three timestamped observations,
+weighted by their full measurement covariance. Use fit residuals to reject
+inconsistent motion and velocity covariance to require significant motion.
+Retain interval and direction checks. Unlike E07, this estimates the initial
+state and its full correlated uncertainty jointly; it does not just loosen two
+displacement tests while copying the last position. First probe: squared velocity
+significance 18, residual consistency 9. No extra history or predictor model.
+Compare baseline parameters, E08 parameters, and E08 with weak timeout 2 s.
+Record stationary/outlier behavior and reject aggregate regression.
+
+The initial joint-fit activation rule failed: close velocity regressed 9.5% on
+seed 4243 with motion/weak settings (and 12–18% across partitions with baseline
+parameters). Next ablation restores **all original motion-confirmation checks**
+and changes only the weighted initial state/covariance estimate. This separates
+a better estimator from a relaxed activation decision. First binary and patch
+are preserved in `weighted-init/`; the ablation is in `original-gates/`.
+The original-guard ablation produced only tiny mixed changes (roughly 0.1% on
+baseline velocity), insufficient to justify the added estimator. Restored the
+original motion-evidence algorithm; keep the saved source and binaries as evidence.
+
+#### E14 — Joint parameter search with weak-track retention [RUNNING]
+
+E11's weak-track timeout reduces mean hypotheses from roughly six to about two,
+without broadly expiring supported hidden tracks, but its interaction with motion
+noise needs calibration. Search existing motion/noise/association settings plus
+the optional weak timeout on the 54 inspected recordings. Keep all original
+motion-confirmation checks. Reuse recordings in memory across low-priority worker
+threads rather than reload them for each candidate. Baseline parity is checked
+before search. No fresh validation data are included. Also probe the existing auxiliary detection
+noise and blending fraction, which were not dimensions of the preceding native
+22-parameter search. The auxiliary tracker can dominate the published position
+and velocity when the primary observation is geometrically implausible; tuning
+only primary detection noise does not calibrate those updates. Keep the original
+availability guard. Include no-weak-timeout controls to avoid adopting new code
+if parameter-only changes suffice.
+
+#### E15 — Remove dependency on unrelated primary clutter [REJECTED AS PROPOSED]
+
+Tracing E11's lost close output found an architectural coupling in the existing
+auxiliary publication correction. Fresh-50000043/approach at 11.304 s: selected
+primary is an 8.036-second-old resting hypothesis at Ground (1.44, 2.55), validity
+0.795, with physically implausible last image size. Yet the published estimate
+is near (-0.162, 0.092), from the auxiliary tracker; truth is (-0.606, 0.056).
+Deleting the weak primary removes publication eligibility, hiding that separate
+estimate. This is not loss of the primary's accurate ball trajectory.
+Evidence: `tentative/approach-11.304.json` and its earlier snapshots.
+
+Test independently publishing the **existing** geometry-supported auxiliary
+estimate when no primary is eligible. Require confirmation-level effective
+validity under the primary field prior, plus the existing publication age and
+distance limits. Relative covariance comparison continues to apply when blending
+with a primary. No additional tracker, no change to ordinary primary updates.
+Evaluate alone and with weak expiry; scrutinize absent-ball false output before
+promotion. This deliberately revisits the old baseline-availability constraint
+because it obstructs removing unrelated clutter; it is a behavior change, not a
+claim that the old preservation safeguard was implemented incorrectly.
+
+The existing clear-view-miss test exposes an unacceptable consequence: unrestricted
+fallback republishes old auxiliary history after the primary correctly disappears.
+Do not weaken that test to promote the candidate. Restored the original availability
+guard. A viable future design needs independent negative evidence/freshness, not
+just auxiliary confidence. The lost-output trace also shows that this is not
+simply historical confirmation decaying: the weak primary was a lone unrelated
+birth (validity 1), while the accurate published estimate came from elsewhere.
+Thus adding a historical-confirmation bit would not fix this particular loss.
+
+### E16 — Joint primary/auxiliary calibration on 54 development clips
+
+**Status:** preparing/running, 2026-10-05. The preceding primary-only searches
+left `publication_detection_noise` and blending fixed, despite the auxiliary
+tracker dominating some published estimates. Test these existing controls jointly
+with motion/process noise and optional weak expiry, without a new tracker.
+
+`G/joint/protocol.json` freezes 1,130 configurations (seed 2026100524), including
+baseline/motion controls, an auxiliary-noise grid, selection-cap controls, and
+1,024 random combinations. Four disjoint groups are all development data now.
+Require no group close-position/velocity/fast-velocity regression; inspect bounded
+losses and missing output to reject gains caused by hiding difficult estimates.
+False/wrong output must improve before consuming another independent audit.
+A shared-recording threaded evaluator reduces memory and redundant replay work.
+
+Preflight detected a stale build: source restoration preserved old modification
+times, so Cargo reused the rejected weighted-initialization object code. This was
+caught by baseline parity **before launching the search** (119 tests rather than
+118, and small metric discrepancies). Touch restored runtime sources and rebuild;
+exact baseline parity was subsequently verified across all four groups / 54 clips
+(`G/joint/parity-receipt.json`), with 118 tests passing. Preserve the failed
+preflight output; do not interpret it as a parameter result. Future restorations
+must update modification times and check baseline parity.
+
+The first 1,130 configurations completed. Thirty passed close physical RMSE
+checks, but none improved while also meeting all bounded-loss and false/wrong
+output checks: weak expiry hides additional output in the diagnosed approach
+case. A focused 2,048-configuration local search now holds weak expiry disabled,
+varies primary/auxiliary noise, damping, matching and hidden decay around four
+centres, and keeps selection uncapped. Seed 2026100525, exact protocol and configs
+under `G/joint/refine-*`. Do not promote conditional-error gains caused by loss
+of availability. All results use the parity-verified rebuilt binary.
 
 ## 5. Evidence map and operational handoff
 
