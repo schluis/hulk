@@ -3614,7 +3614,7 @@ permitted wider/stale merges, preserving existing close-merge behavior; do not
 weaken frozen comparisons or mistake an aggregate65nm for maximum output shift.
 Working runtime restored, no pushes or agents; active goal unachieved.
 
-### E120 — Endpoint retention only for wider resting merges [RUNNING]
+### E120 — Endpoint retention only for wider resting merges [FROZEN FOR VALIDATION]
 
 Test E118 with fresh-endpoint override only when resting means are separated by
 at least one physical ball radius. Below that use covariance intersection as in
@@ -3633,6 +3633,34 @@ stationary RMSE0.02014274336360444m exactly equals baseline (regression removed)
 Full216 replay28482 and consumed54 export/diagnostics42984 now running via resource
 runner. E118 full-audit83553 still confirmed live, so do not restart it. New wider
 merge behavior has only targeted verification so far; await all guards/coverage.
+
+E118 exact full216 paired audit83553 complete: common2395.828s velocity
+0.626021676→0.624209643m/s, gained3.668s/lost0; only common-suite regression audit2a
++0.000016792m/s persists. Extra near-truth693.982→479.150 hypothesis-seconds;
+joint0.892923874→0.894368492, fast0.546846047→0.548114686. Do not attribute these
+exact figures to E120 without its own audit.
+
+E120 full21628482 complete: position0.239928048m (-1.48703%), velocity0.676367049
+(-0.24132%), fast2.346288336 (-0.17739%); all position suites improve, raw velocity
+original+0.108775% remains coverage-confounded as E117. Consumed5442984 complete:
+all fixed checks PASS including each-suite position. Pooled position0.229637407,
+velocity0.672266121, fast2.395125121, wrong320.110s, false235.840s,
+correct-close missing29.054s. Both datasets are development, not fresh proof.
+E120 full216 paired export/diagnostics96479 launched to verify exact coverage/credit.
+
+### E121 — Fresh frozen validation of E120 [RUNNING]
+
+G/wide-merge-fresh freezes E120 evaluator/parameters, five source hashes, baseline
+capture/runtime identities and validation scripts before capture. Protocol uses
+first6 complete suites from seeds50000078..87, retaining all coverage/fall failures
+and surplus successes. Seeds78 onward have not previously been inspected. Same
+E111 strict position/pooled velocity/common-correct/joint/duplicate criteria, plus
+explicit nonincreasing pooled false-track time. No threshold relaxed. Preserve raw
+per-suite velocity caveats and inspect every suite. Resource-managed3 captures in
+isolated networks, nice15, aggregate45GiB; parent capture1564 live. No score-based
+selection or candidate edits during validation. Goal remains incomplete until fresh
+metrics, detailed guards, supplemental limitations and final deliverable all checked.
+Sources in checkout restored; no agents or pushes. E120 audit96479 also live.
 
 ## 5. Evidence map and operational handoff
 
