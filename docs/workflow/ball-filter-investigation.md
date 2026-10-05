@@ -59,8 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: audit10 rejected; E45/E46 failed. E47 calibrates spawn support and
-resting transition with bounded confidence to target approach65.
+Next: E47 failed; E48 jointly calibrates existing parameters against all216
+inspected clips.
 Reserved67/68 remain unscored. Working runtime has
 experimental optional cap; default parameters remain original until fresh validation succeeds.
 
@@ -1396,6 +1396,23 @@ retains moving Kalman state through observation gaps, unlike E46 metadata alone.
 All23 group close p/v and existing fast/availability guards remain; inspect
 approach and reversal. Reserved67/68 remain unscored.
 Artifacts `G/motion-confirmation/`.
+
+E47 complete82 configurations: no full pass; best worst-group position+9.09%,
+approach+10.97%. Changing spawn transfer alone had little effect here; do not
+treat that proposed cause as proven. Lower resting thresholds improve pooled
+velocity but introduce other position regressions.
+
+### E48 — Joint minimax parameter calibration with all inspected failures
+
+The single-family scans did not generalize. Jointly calibrate existing noise,
+damping, matching/merge, rest/spawn, boundary and publication parameters; include
+both capped and uncapped original anchors rather than assuming cap is required.
+Fixed seed2026100548, up to12 generations of128;216 inspected recordings.
+Rank by worst close p/v ratio across23 groups and target approach, with pooled
+fast/bounded/availability and reversal guards. Early stop only when fully
+feasible and pooled position/velocity each improve>=1%; then manual review and
+fresh validation on untouched67/68. No algorithm additions beyond optional cap.
+Artifacts `G/joint-calibration/`. Default parameters remain unchanged.
 
 ## 5. Evidence map and operational handoff
 
