@@ -48,21 +48,21 @@ demos, and the image observer.
 
 E06 association tracing is complete. E07 tested a full-span motion-significance
 check with fixed parameters and was rejected on all three replay partitions.
-The retained baseline runtime and parameters are those of `0ed7a0910`. The
-working parameter file currently contains the frozen E17 candidate for testing;
-it is provisional pending independent validation. Runtime code is unchanged.
+The retained baseline runtime and parameters are those of `0ed7a0910`. Runtime code and preferred parameter defaults remain unchanged.
 Goal mode is active at the user’s request. E08 failed fresh validation; E10
 retention calibration found a publication dependency (E15). A joint primary/auxiliary
 parameter search completed (E16) on all 54 inspected development clips. The
-parameter-only ablation-0260 candidate is frozen for a second independent audit.
+parameter-only ablation-0260 candidate failed the second audit’s per-suite
+close-position guard. E18 completed the stationary-noise calibration; E19
+independently validates frozen local-0280.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: finish fresh capture and validation of frozen ablation-0260 (`G/audit2/`).
-No experimental runtime changes remain: weak expiry, weighted initialization,
-and standalone auxiliary publication were all removed. Preserve the global
-false/wrong-output tradeoff when reporting the close-range gains; do not present
-this as a solution to all candidate/clutter failures.
+Next: finish E19 validation using fresh captures. Local-0280 beats the baseline
+on all seven development groups with unchanged availability; do not promote it
+until the frozen independent protocol passes. Runtime/default parameters remain
+at the retained baseline during capture.
+
 
 ### 2.2 Baseline and terminology
 
@@ -628,11 +628,87 @@ frozen baseline binary, independently of the abandoned weak-expiry feature.
 
 Parallel audit capture hit the fixed Zenoh port 7448. Preserved seed-50000046's
 startup failure; retry **the same seed** sequentially, not a coverage/accuracy
-replacement. Seed 50000045 completed all nine scenarios; seed 50000046 is running.
+replacement. Seed 50000045 completed all nine scenarios. Seed 50000046 failed the existing
+robot-fall validity check during fast-near-shot (21.4 s fallen), after three
+completed scenarios; preserved and excluded before candidate scoring. The next
+predeclared seed, 50000047, is now recording.
 `G/audit2/resume_capture.py` resumes capture; `evaluate_fresh.py` waits for two
-complete suites and then verifies/scorers both frozen configurations. Artifacts
+complete suites and then verifies/scores both frozen configurations. Artifacts
 and logs persist under `G/audit2/`. Aggregate RAM remains under 10 GiB here;
 45 GiB cgroup cap continues to apply. No subagents, no pushes.
+
+
+#### E17.2 Independent audit result — rejected, improvement is not uniform
+
+Seeds 50000045 and 50000048 completed all nine scenarios; seeds 46 and 47 were
+excluded by existing fall-validation checks before candidate scoring. All 18
+accepted clips passed strict baseline live/replay verification. Frozen candidate:
+
+| Fresh metric | Baseline | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Close position RMSE (m) | 0.227709 | 0.177237 | -22.17% |
+| Close velocity RMSE (m/s) | 0.621104 | 0.591335 | -4.79% |
+| Fast-close velocity RMSE (m/s) | 1.967700 | 1.931275 | -1.85% |
+| Close velocity missing (s) | 1.968 | 1.968 | unchanged |
+| Close correct-track missing (s) | 6.802 | 7.278 | +0.476 s |
+| Wrong-track time (s) | 67.132 | 71.188 | +6.04% |
+| False-output time (s) | 78.880 | 78.880 | unchanged |
+
+Both suites improve velocity. Suite 1 improves position 0.286639 → 0.191221 m,
+but suite 2 regresses 0.145025 → 0.161785 m (+11.56%, +1.676 cm), violating the
+predeclared guard. The stationary-close family regresses 0.137273 → 0.167123 m.
+Do not change the criterion after seeing these results. Preserve candidate on
+`experiment/ball-filter-velocity-audit2-20261005`; exact commit and decision at
+`G/audit2/decision.json`. Restored original preferred parameter file. These 18
+recordings are now development data, never again an independent heldout.
+
+### E18 — Separate stationary-noise regression from motion improvement
+
+**Status:** preparing, 2026-10-05. E17's optional parameter simplification grouped
+all noise fields together, so it unnecessarily retained a higher resting process
+noise. E16 one-at-time ablation already showed that restoring resting noise kept
+almost all development gains. Recheck resting and detection noise with damping,
+moving noise and matching distance, using all 72 now-inspected clips, with each
+fresh suite separate. Runtime stays the original retained filter; no weak expiry,
+new tracker, or new publication mechanism. Freeze any winner before another audit.
+
+
+#### E18.1 Result and selected candidate
+
+Completed 1,787 grid/random configurations and 1,024 focused refinements on the
+72 development recordings. Baseline parity was checked across all seven groups;
+the original three aggregate reports match exactly and four individual audit
+suites match the frozen evaluator's per-recording moments within aggregation
+roundoff. Protocols, all configs/reports, binary hash and selection script:
+`G/stationary-calibration/`.
+
+Select `local-0280`: minimum pooled v11 bounded loss among candidates satisfying
+close-position/velocity guards in every group, unchanged close velocity
+availability, and at least a 0.5% margin from every group's regression boundary.
+Its worst group ratio is 0.992515. Pooled close position RMSE -22.90%, close
+velocity RMSE -5.15%, fast-close velocity RMSE -3.02%; bounded v11 loss -5.71%.
+This is still parameter-only. Global wrong/false tracking and hypothesis counts
+remain diagnostics/tradeoffs rather than claimed improvements.
+
+### E19 — Third frozen independent audit
+
+**Status:** frozen and capturing, 2026-10-05. Candidate `local-0280`, SHA256
+`3267d22db59e920d7467cbcbe9c55eec83690d6f4cfd515d429f4ae1f8ce50eb`.
+`G/audit3/freeze.json` records candidate, evaluator and simulator identities.
+Same acceptance rules as E17 (`G/audit3/protocol.json`): improve pooled close
+position/velocity and bounded losses, no per-suite close p/v regression, no
+pooled fast-close velocity regression or extra missing velocity output. Inspect
+scenario failures, kick recovery and clutter diagnostics. No post-freeze tuning.
+
+Fresh seeds are 50000049–50000060 in order. Run four captures concurrently using
+**unprivileged user/network namespaces**, loopback enabled, so each uses the
+simulator's unchanged fixed port 7448 without collisions. The frozen capture
+binary and baseline parameters are unchanged. Memory remains in the existing
+45 GiB aggregate cgroup at nice 15. Select the first two successful nine-scenario
+suites in listed seed order; preserve failures and unused successful captures.
+Only runtime/coverage validation may replace a suite, never accuracy. Strictly
+verify baseline live/replay equality before candidate comparison. Root is the
+only agent. Initial four simulations are running under about 8 GiB aggregate RAM.
 
 ## 5. Evidence map and operational handoff
 
