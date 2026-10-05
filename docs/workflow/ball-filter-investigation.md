@@ -77,7 +77,7 @@ regressions and fixes; E81–E113 preserve earlier rejected experiments.
 - **E121 fresh validation running:** frozen sources/binaries/parameters/protocol
   in G/wide-merge-fresh; first6 successful suites from seeds78..87, retain failures,
   unchanged acceptance thresholds. Capture exec1564 confirmed live; seeds78/79/80
-  each completed5/9 scenarios at this checkpoint. Candidate remains unmodified.
+  completed all9 scenarios each;81/82/83 now running. Candidate remains unmodified.
 - E122 supplemental challenges: extreme>15m/s and airborne velocity remain weak;
   no claim to solve those cases. Preserve raw incidental-flight velocity regression.
 - Working checkout/defaults remain the previously pushed **E43 user-test experiment**;
@@ -3667,6 +3667,21 @@ G/wide-merge-endpoint/reversal-recovery.png shows seed69 y-direction recovery
 133.214 versus baseline~133.500 (~0.29s sooner), lower position error afterward,
 but component-speed overshoot remains. Plot is development evidence, not fresh.
 Fresh capture1564 still live; seeds78/79/80 completed5/9 scenarios, no score inspected.
+
+E122 flight common-correct audit36555 complete: E120 and baseline velocity exactly
+6.393323190m/s on0.190s of common position-correct incidental flight, lost/gained0.
+Thus raw flight velocity increase occurs outside correctly positioned outputs;
+preserve both results and limited exposure. Artifacts challenges/flight-audit/.
+E120 only positive common-frame development velocity deltas are recording56
+(seed45 fast-crossing) integrated SSE+0.001908896 on16.148s, no coverage changes,
+and recording17 +2.24e-8 with0.006s gained coverage; full-audit/
+common-velocity-regressions.json preserves exact details.
+
+E121 capture checkpoint: seeds78/79/80 complete9/9,27 fresh clips; all exit0,
+no exclusions. Parent1564 verified live, next batch81/82/83 started per protocol.
+Memory5.96GiB at checkpoint, max45GiB. No candidate score inspected or changes;
+wait for six selected valid suites before frozen evaluation, baseline live verification
+and final acceptance audit. Last authoritative capture results in capture.log/status.json.
 
 ## 5. Evidence map and operational handoff
 
