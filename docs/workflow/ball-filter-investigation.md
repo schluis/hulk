@@ -59,11 +59,13 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E48/E50/E51 found no acceptable winner. E52's only full numeric pass is
-effectively unchanged performance, not a meaningful solution. E53 did not yet
-reproduce individual-candidate direction jitter. E54 confirms a global output
-threshold trades wrong-ball time for missing real-ball time. Next: E55 tests
-uncertainty protection conditional on established support.
+Next: E56 reproduces and isolates the reported direction jitter: excessive
+velocity process noise is causal. Lower noise alone, joint damping calibration
+(E57), and conservative calibration with/without tentative miss handling (E58)
+all fail full development guards. E55 fixes a targeted clear-miss test but has
+large scenario regressions; its runtime has been restored. Next E59 separates
+weak stale publication from internal hypothesis retention, informed by the
+consumer's behavior. No new accepted winner; no evaluation jobs remain running.
 Reserved67/68 remain unscored. Working runtime has
 experimental optional cap. At the user’s explicit request to push for local testing,
 the checkout now uses E43 parameters; this is not acceptance or a merge recommendation.
@@ -1564,6 +1566,110 @@ single false birth disappearing versus an actual occluded track being retained;
 then full216-clip baseline/candidate comparisons, including missing/fast recovery.
 No automatic adoption and no further pushes. User's three-second false pursuit
 is a concrete behavioral failure requiring targeted validation.
+
+Implemented and tested:119 unit tests pass, including tentative broad-covariance
+track removal on clear misses and retention behind a robot. Full216 replay:
+with original parameters, wrong time drops220.664s and correct-close missing
+time drops7.244s, but close velocity missing increases2.714s and audit3a position
+regresses53.28%. With E43, wrong time drops222.226s versus original baseline,
+but audit8b position regresses63.98% and missing velocity rises0.680s. Reject as
+a standalone change. Preserve patch, before/after sources, tests, frozen binaries
+and results in `G/tentative-visibility/`; restore prior runtime. No test weakened:
+the old uncertainty-protection test now explicitly uses established support3;
+new test exercises tentative support1 in clear and physically occluded cases.
+
+### E56 — Reproduce and isolate excessive velocity direction changes
+
+E53 extended beyond1m **does reproduce** the user's concern: across audit10's18
+recordings, candidate has352>90degree output-velocity reversals during steady
+true motion, versus baseline21. Eligible steady-motion exposure155.278s versus
+174.824s; rates are therefore also substantially worse. All reversal samples
+have recently observed primary tracks (age<120ms). Over50cm displacement/velocity
+discrepancy exposure rises4.432s versus3.878s. Close-only metrics hid this failure.
+These are discrete output transitions, not persistent-track identities; do not
+attribute every reversal to the same hypothesis or to process noise without
+ablation. Evidence `G/continuity/audit10-all-ranges.json` and its exact protocol.
+
+Run E43 with only velocity process-noise variances restored to0.1/0.1 from
+1.2277/0.6370. Frozen pre-E55 cap-only evaluator; reuse already-inspected audit10
+recordings and baseline frames. Compare direction reversals, position continuity,
+close/full-range velocity errors and missing outputs. Evidence/protocol:
+`G/velocity-continuity/`. No fresh seeds or production defaults changed.
+
+Result: restoring only velocity noise to0.1/0.1 cuts all-range reversal samples
+from352 to14 (baseline21); eligible steady-motion exposure140.126s. Over50cm
+discrepancy exposure drops to3.002s. Audit10 close position0.127120m versus
+baseline0.127733m and E43 0.135965m; close velocity0.676847m/s versus baseline
+0.677975 and E43 0.668177. Full-range velocity0.918606 remains worse than baseline
+0.887787, but improves E43 0.989390. Plot inspected:
+`G/velocity-continuity/velocity-noise-ablation.png`; it shows large oscillating
+red velocities and much smoother low-noise estimates during a steady trajectory.
+
+On all216 clips, five symmetric variance values0.05/0.1/0.2/0.3/0.5 fail the full
+guards. At0.1, all suite close-position guards pass and pooled p/v improve31.25%/
+3.24%, but some suite velocities regress and targeted reversal velocity worsens
+26.54%. Lower noise alone is not a winner. Initial decimal filenames collided in
+the batch helper's output naming; discard that ambiguous report, preserve it in
+`invalid-name-collision`, and rerun all five under unique `qv-0p1`-style names.
+The independent18-clip causal ablation was unaffected.
+
+### E57 — Calibrate damping jointly with bounded velocity noise
+
+E43's decay0.997069 per2ms gives velocity half-life about0.472s, compared with
+baseline0.999444 (about2.494s). High velocity process noise can compensate for
+over-strong damping while detections arrive, yet produces jitter and poor gap
+prediction. Test that hypothesis rather than treating global high noise as a
+solution to abrupt motion recovery. On E43's remaining parameters, cross
+velocity noise0.1/0.2/0.3/0.5, seven damping values including baseline, and caps
+None/3.95/8:84 configurations. Same216 clips, full existing guards, plus inspect
+all-range velocity/stability before any fresh validation. Exact protocol and
+results in `G/damping-noise/`. No runtime changes or production defaults changed.
+Result: all84 finished, no full passes. Closest grid007 (noise0.1, original
+damping, cap3.95) improves pooled close p13.39%, close v1.19%, full-range v1.95%,
+but worst suite position still regresses5.69% and multiple velocity suites worsen.
+The large E43 changes cannot simply be repaired by one noise/damping substitution.
+
+### E58 — Conservative motion calibration with/without tentative-miss change
+
+Use E51 grid009 as the centre: original stable primary parameters, no confidence
+cap, and only publication blend/noise/covariance settings changed. Cross symmetric
+velocity variances0.1/0.11/0.12/0.15/0.2, position-process-noise scales0.5/0.75/1/1.25,
+and damping0.9993/original/0.9996:60 configurations. Evaluate the identical grid
+under the retained runtime and frozen E55 runtime (120 evaluations total). This
+tests whether the real clutter-removal benefit can be retained after modest
+calibration, rather than adding further algorithms or adopting a jittery model.
+Both compare to original baseline results and unchanged full guards; additionally
+inspect full-range velocity and E56 stability before fresh67/68. Evidence under
+`G/conservative-motion/` and `G/conservative-motion-tentative/`. No new sources,
+production parameter changes, agents or pushes.
+Result: both60-configuration grids completed, no full passes. Retained runtime's
+closest grid007 is the E51 centre unchanged in primary parameters (worst guard
++0.1245%). Every E55-runtime configuration increases missing close velocity;
+the best minimax entries still add at least2.634s. Keep the demonstrated unit
+fix as a rejected/incomplete experiment, not a production change.
+
+### E59 — Freshness of tentative publication, distinct from internal retention
+
+Next, not implemented. Read-only consumer audit explains why retaining weak
+published balls matters: `ball_state_composer::compose_ball_state` forwards the
+filter's Some output, and behavior's `LastBall.age` is refreshed to now whenever
+that ball exists. Its250ms timeout starts only once ball output becomes None;
+that path does not itself expire a weak estimate based on last physical sighting.
+Do not modify behavior or other components: the publication decision belongs in
+the ball filter for this investigation.
+
+Test suppressing a tentative primary's direct output after the existing120ms
+recovery grace without deleting its internal hypothesis. Repeated real matches
+keep it fresh while confirmation accumulates. Confirmed occluded tracks retain
+their current policy. Keep existing auxiliary correction eligible under its
+existing gates so this does not repeat E10/E15's deletion/auxiliary-availability
+coupling; no new auxiliary-only fallback. Apply the freshness check to direct
+primary output and primary fallback when auxiliary correction is unavailable.
+Test single false detection then no observations, confirmed occlusion, fresh
+reacquisition, and existing auxiliary availability tests. Quantify raw output
+missing separately from correct-ball missing; removing a wrong output must not
+be mistaken for losing a previously correct ball. Keep original guard results
+visible and do not declare success from censored RMSE or a narrow unit test.
 
 ## 5. Evidence map and operational handoff
 
