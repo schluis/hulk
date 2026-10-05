@@ -3569,7 +3569,7 @@ lost0. No reversal difference on original suite versus E115. Raw regression rema
 reported, but it is changed coverage rather than worsened common-frame velocity.
 Evidence regression-diagnosis/common-velocity.json; original replays99186 terminal.
 
-### E118 — Size-consistency veto for reversal recovery [RUNNING]
+### E118 — Size-consistency veto for reversal recovery [AUDITING]
 
 E117 false seed76 full-state control/candidate replay88038 terminal. First divergence
 304.416s: moving false hypothesis support131.56 resets velocity(-0.7075,0.1039)→
@@ -3589,6 +3589,30 @@ E118 build terminal,129 tests pass including explicit size-inconsistent no-reset
 All runtime sources restored exactly. Full216/target replay51182 and consumed54
 paired audit12295 confirmed running under resource runner; aggregate~7.02GiB RAM,
 45GiB max, low CPU priority. No fresh data or adopted source changes.
+
+E118 full216 and consumed54 terminal (51182/12295). All true-ball position/velocity
+metrics exactly equal E117, while added false time versus E115 is eliminated on
+all216 groups and consumed54:54 false235.840s (baseline237.824). Common-correct
+velocity0.657107184→0.647491668 remains. Only each-suite position fails on54 (tiny
+seed75 stationary). Full216 paired frame/credit/duplicate audit83553 now running,
+using verified frozen baseline exports and identical diagnostic definitions.
+
+### E119 — Stationary merge endpoint regression [DIAGNOSED]
+
+E118/position-diagnosis four frozen replays33075 complete. Seed75 stationary-close
+baseline/E84 association-only/parameter-only all positionRMSE0.0201427433636m;
+E1180.0201428083858m (increase65.02nm). However this is NOT just float roundoff:
+first output divergence39.760s is0.145037mm; peak0.145105mm at39.796. Before that,
+old selected resting track support489.86 lastseen27.322 and nearby newer track
+support2.792 lastseen38.762. Next observation updates/reconfirms the newer track,
+and both baseline and candidate merge (same remaining8 hypotheses/support), but
+baseline uses covariance intersection while E93-derived candidate keeps the fresh
+endpoint. Therefore the endpoint override modifies a merge the baseline already
+performed; this explains the tiny aggregate regression. Preserve divergence.json
+and exact reports. A next experiment can isolate endpoint retention to newly
+permitted wider/stale merges, preserving existing close-merge behavior; do not
+weaken frozen comparisons or mistake an aggregate65nm for maximum output shift.
+Working runtime restored, no pushes or agents; active goal unachieved.
 
 ## 5. Evidence map and operational handoff
 
