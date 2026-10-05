@@ -85,7 +85,10 @@ covariance gate switching output to a94.45% stale-history blend; test continuous
 publication weighting before further merge tuning. E95 taper fixes the local jump
 but fixed settings fail position; E96 calibration grid012 improves all-suite position
 and pooled velocity, with small per-suite velocity regressions still requiring the
-position-conditioned and duplicate audit before fresh validation.
+position-conditioned and duplicate audit before fresh validation. E97 completes that
+audit: duplicates improve31%, but joint credit worsens and audit5b has a real
+velocity regression at brief-gaps190.4–190.6s. Trace primary/auxiliary output there
+before changing calibration or consuming fresh validation; no candidate accepted.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2908,6 +2911,66 @@ Next prioritize grid012 for fixed common-correct-frame velocity, existing E67 jo
 credit and spatial duplicate audit; compare with E93 and the earlier publication
 control before freezing a fresh-validation candidate. No adopted runtime change,
 source restored, fresh67/68 untouched, no pushes. Goal remains incomplete.
+
+### E97 — Grid012 paired audit and matched publication-only control [COMPLETE]
+
+`G/continuous-publication/calibration/audit-grid012/` freezes216 files and protocol;
+candidate chunked export retains hypothesis positions for E63 common-correct-frame,
+E67 fixed joint credit and spatial duplicate metrics. Baseline frames reuse E85's
+exact accepted-runtime full export. No fresh67/68 data. Resource runner/nice15/45GiB.
+
+Found existing E51 grid007 with the same publication settings: blend0.85,
+maximum covariance ratio1000, detection noise0.2 (same f32 as0.20000000298).
+Its other parameters/runtime remain baseline. Existing216 results provide control:
+
+| Metric | Publication parameters only | Full E96 grid012 |
+|---|---:|---:|
+| Close position RMSE (m) |0.223245931|0.223471874 (+0.10121%)|
+| Close velocity RMSE (m/s) |0.677140456|0.677020136 (−0.01777%)|
+| Fast close velocity RMSE (m/s) |2.350628428|2.349989098 (−0.02720%)|
+| Wrong output (s) |986.664|985.162|
+| Correct-close missing (s) |94.490|94.794|
+
+Thus most position gain comes from two existing publication parameters; do not
+attribute it to the additional runtime changes. The extra velocity gain is small,
+and correct-close missing is slightly worse than this simpler control. A second
+chunked export uses the baseline evaluator with E51 grid007, to compare exact
+correct frames and duplicates. `publication-control.json` preserves summary.
+Both216 exports completed. Paired analyses completed successfully under resource
+runner (exec61773); memory4.6GiB, nice15, aggregate45GiB cap. Source unchanged.
+
+| Fixed diagnostic | Accepted baseline | Full grid012 |
+|---|---:|---:|
+| Common-correct close velocity RMSE (m/s), same2392.720s |0.625819627|0.625630901 (−0.03016%)|
+| Extra near-truth hypothesis-seconds (0.3m spatial proxy) |693.982|479.302 (−30.9345%)|
+| Multiple-near-truth seconds |624.000|447.288|
+| All hypothesis-seconds |54014.472|53517.560|
+| E67 joint position/velocity mean credit |0.892923874|0.892590140 (worse)|
+| E67 fast mean credit |0.546846047|0.547176677 (better)|
+
+Candidate gains15.264s correct-close coverage but loses3.108s elsewhere. Control
+has unchanged hypotheses, common-frame velocity0.625911241→0.625874650, gains
+15.364s and loses2.906s. Comparing full candidate directly to control on identical
+2407.726s: velocity0.625175647→0.625009869 (−0.02652%), correct coverage gains
+0.258s/loses0.560s. Thus algorithm changes add a meaningful duplicate reduction,
+but tiny velocity improvement and slightly worse correct coverage. Spatial proximity
+is not proof of duplicate identity. Do not call candidate accepted: joint credit
+worsens and genuine common-correct velocity regressions remain.
+
+Largest common-correct suite regression is audit5b (indices117–125):
+0.719462398→0.720498556m/s. `velocity_windows.py` localizes its entire positive SSE
+difference to brief-gaps recording121 at190.4–190.6s: SSE1.387486→1.547929.
+At190.520s true Field velocity(0.9986,3.5173); baseline published Ground velocity
+(0.5208,1.2450), last_seen190.482; candidate(0.0813,0.1944), last_seen190.362.
+Both positions remain within0.5m, so this is a real velocity regression, not false
+position credit. The publication-only control has nearly identical suite regression,
+implicating publication calibration rather than resting association changes; exact
+primary/auxiliary trace is the next step before modifying policy.
+
+Evidence: root `common-velocity.json`, `duplicates.json`, `candidate-credit.json`,
+`publication_only-credit.json`, `control-audit/`, `incremental-audit/`, and
+`velocity-regression-windows.json`. Fresh67/68 remain unscored. No pushes.
+Acceptance requires full goal, not merely positive pooled scores.
 
 ## 5. Evidence map and operational handoff
 
