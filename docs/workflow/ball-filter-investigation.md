@@ -59,8 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: calibrate measurement noise around E70's verified covariance geometry, using
-original-runtime controls; E69/E70 fixed-parameter variants fail close accuracy,
+Next: inspect E71 corrected-height grid040's residual velocity regression before
+further refinement; all90 calibration results failed the full screen,
 and extend simulator/evaluation coverage for the user's fast and airborne kicks.
 E67's smooth position-weighted velocity credit is implemented as a diagnostic;
 the publication candidate slightly worsens it. E66's moving reconfirmation fails
@@ -2077,6 +2077,45 @@ with original-runtime controls, is justified; unconditionally increasing uncerta
 is not. Keep baseline frozen and compare per-suite failures, not only pooled scores.
 E69/E70 source restored, frozen artifacts preserved, no evaluation jobs live, fresh
 67/68 untouched. No production config or scoring changes.
+
+### E71 — Controlled noise calibration around corrected covariance [COMPLETE; NO SCREEN SURVIVOR]
+
+45 prespecified configurations per runtime (90 total): relative detection-noise
+scale [0.7,0.8,0.9,1,1.1], moving position-noise scale [0.75,1,1.25], moving
+velocity-noise scale [0.75,1,1.5]. All other original parameters unchanged.
+Evaluate identical grid under original and E70 corrected-height runtimes, each
+on all 216 development clips. The original-runtime arm distinguishes parameter
+benefit from geometry benefit; accepted baseline remains fixed. No E66 reset or
+E69 floor. Frozen runtime hashes and protocol: `G/height-calibration/`.
+
+16 low-priority workers per process, aggregate memory observed about8GiB under45GiB
+cap during loading. Screening requires pooled close p/v improvement, per-suite
+p/v nonregression, fast-close nonregression and no worse wrong/correct-close/raw
+missing coverage; all-range metrics also reported. Any screen survivor still needs
+paired smooth-credit/velocity analysis, failure-window review and fresh frozen
+validation. No new objective adopted; no faster-than15m/s or airborne support claim.
+
+#### E71.1 Result
+
+Both jobs completed all45 configurations,90 results total. No screen survivor;
+original-runtime grid031 reproduces baseline exactly (control parity).
+Corrected-height grid040 is a useful diagnostic compromise: close position
+0.243451123 m (-0.0405%), close velocity 0.675066018 m/s (-0.4332%), fast-close
+2.331299339 m/s (-0.8151%), all-range velocity0.772565852 m/s (-1.1400%).
+Wrong time -0.308 s, close correct missing -0.092 s, raw velocity missing unchanged.
+However worst per-suite close position+0.489% (audit7a), close velocity+1.316%
+(original), all-range velocity+4.455% (audit3b). No promotion or fresh evaluation.
+
+The matching original-runtime grid040 also improves pooled p/v but regresses
+per-suite close velocity up to2.148%; thus geometry modifies the tradeoff, not
+uniformly resolves it. Corrected-height grid036 improves close velocity0.527%
+but worsens pooled position0.137%. Do not select purely by pooled error.
+
+Evidence: `G/height-calibration/{protocol.json,rank.py,ranked.json,original,height}`.
+Next inspect grid040's original-suite velocity regression on identical correctly
+tracked frames and measure smooth joint credit before deciding whether refinement
+is justified. This is diagnosis, not relaxation of the goal's accuracy requirements.
+Runtime/defaults remain unchanged, no jobs live, no fresh seeds consumed.
 
 ## 5. Evidence map and operational handoff
 
