@@ -897,6 +897,17 @@ resting noise and publication settings unchanged. All existing parameters; no
 new mechanism. Same eleven-group p/v/fast and availability guards, frozen original
 evaluator,108 development clips. Artifacts: `G/axis-calibration/`.
 
+E27 initial1,025 configurations complete, no full pass. Best worst-group
+p/v/fast regression about0.15%. Run1,024 local refinements around random0227,
+0345,0455; add fine independent resting-noise and threshold variation, rather
+than E24's coarse steps. Seed2026100534, artifacts include exact centres/ranges.
+
+Next independent audit is prespecified as the previously captured, **unscored**
+reserved suites audit3 seed51 and audit4 seed55. They were not used for selection,
+diagnosis or tuning. Freeze candidate before evaluating them, verify baseline
+live/replay, apply unchanged fresh acceptance rules. Seed56 remains unused.
+Protocol prepared at `G/audit5/protocol.json`; candidate not yet selected.
+
 ## 5. Evidence map and operational handoff
 
 - `M` = `/home/schluis/hulk/logs/ball-filter-motion-fixes-20261005/`.
