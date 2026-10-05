@@ -59,9 +59,9 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: test longer coherent evidence for slow-motion confirmation after E72 showed
-that E71's residual velocity regression is real, with unchanged close coverage,
-and extend simulator/evaluation coverage for the user's fast and airborne kicks.
+Next: extend simulator/evaluation coverage for the user's fast and airborne kicks.
+E73's longer-window motion fallback failed full replay and is archived; do not
+relax activation further without tracing downstream hypothesis effects.
 E67's smooth position-weighted velocity credit is implemented as a diagnostic;
 the publication candidate slightly worsens it. E66's moving reconfirmation fails
 full replay and is archived, with working runtime restored.
@@ -182,9 +182,9 @@ The stable experiment IDs below preserve chronology and evidence. This index gro
 related trials by mechanism; later trials supersede earlier plans, not their results.
 
 - **Tracking and motion**
-  - Association, initialization and reacquisition: E06/E07, E09, E13, E25, E29, E45/E46.
+  - Association, initialization and reacquisition: E06/E07, E09, E13, E25, E29, E45/E46, E64/E66/E68, E72/E73.
   - Resting transitions and trajectory models: E02, E04/E05, E24.
-  - Velocity stability, process noise and damping: E18–E22, E27, E34, E53, E56–E58.
+  - Velocity stability, process noise and damping: E18–E22, E27, E34, E53, E56–E58, E69–E71.
 - **Candidate lifecycle and selection**
   - Ranking, confirmation and confidence caps: E01, E23, E39–E44, E52, E54.
   - Retention, visibility and duplicate merging: E10–E12, E14, E36–E38, E47, E55.
@@ -193,7 +193,8 @@ related trials by mechanism; later trials supersede earlier plans, not their res
   - Parameter calibration and held-out failures: E03, E08, E17–E22, E27/E28,
     E30, E33–E44, E48.
   - User checkout provenance: E49.
-  - Correctness-aware loss and paired coverage audit: E62.
+  - Correctness-aware loss and paired coverage audit: E62/E63, E67/E72.
+  - External reference and airborne requirements: E65.
 - **Archived alternatives**: section 4.5; no active alternative-filter search.
 
 ### 4.1 Selection
@@ -2145,6 +2146,49 @@ Must retain isolated-outlier, odometry and long-gap invariants, compare fixed
 original parameters first, and assess fast onset/false motion before calibration.
 No new algorithm implemented at this checkpoint; high-speed/airborne validation
 extension remains required and is not covered by this slow-motion diagnosis.
+
+### E73 — Five-observation fallback for slower coherent motion [REJECTED]
+
+Keep original three-point confirmation on the latest three observations unchanged.
+Retain up to five observations; when the short-window test fails, require every
+consecutive displacement to point along the net displacement and intermediate
+points2/4 to agree with interpolation on segments1–3/3–5 within squared Mahalanobis9.
+Then run the original significance/velocity-consistency tests on points1/3/5.
+This accumulates temporal displacement without lowering significance thresholds.
+No E66 reset, no covariance correction, no new parameter. Existing time-gap and
+odometry transforms apply to the whole history.
+
+120 tests pass, including a0.7m/s case that confirms on observation5 while remaining
+insignificant on the short window, and false-percept rejection at every position
+in a five-observation stationary sequence. Existing fast/outlier/odometry/gap tests
+remain intact. Tests prove intended mechanics, not end-to-end performance.
+
+Frozen source/patch/binaries/hashes and protocol: `G/longer-motion-evidence/`.
+Two fixed configurations (original and publication) on216 development recordings,
+nice15, aggregate45GiB memory cap. Source restored after freezing. No fresh seeds,
+no high-speed/airborne support claim. Evaluate against matching original-runtime
+controls; inspect wrong/missing/duplicates before any promotion.
+
+#### E73.1 Full replay rejection
+
+Original parameters: close position0.243549712 -> 0.278115923m (+14.193%),
+close velocity0.678003173 -> 0.719463502m/s (+6.115%), fast-close velocity
+2.350457712 -> 2.525985683m/s (+7.468%). Wrong-output time+4.440s and close
+correct-track missing+9.052s; raw missing unchanged. Worst suite close position
++175.897% (audit4a). Publication control also regresses strongly. All-range velocity
+is nearly unchanged, illustrating why its aggregate cannot hide close failures.
+
+Reject despite120 passing tests. Frozen patch/source and results retained; working
+source already restored; both jobs terminal. Do not repeat longer-span promotion
+unchanged. Earlier E07/E13/E25 and now E73 show that easier motion activation alone
+is not a robust solution; the downstream hypothesis/selection effects matter.
+
+Next prioritize explicit fast/airborne scenario coverage requested in E65. Current
+scenario impulse is planar and old scoring excludes speeds above15m/s. Add an
+explicit vertical kick input and coverage checks without altering old recipes or
+baseline scores, then measure projection/flight/landing failures before choosing
+more filter changes. This does not replace the original close-accuracy goal or its
+fresh validation requirement. No adopted runtime changes and no fresh seeds used.
 
 ## 5. Evidence map and operational handoff
 
