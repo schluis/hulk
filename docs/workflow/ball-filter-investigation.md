@@ -63,7 +63,9 @@ Next: E81 identifies delayed reversal as E80's remaining velocity regression.
 E82 restricts changed association to resting-only competition, improving pooled
 close/fast metrics and wrong time, but audit8b position still regresses0.501mm RMSE.
 E83 traces that regression to inherited support making a newly matched false-size
-resting track eligible to win recency; investigate re-confirmation before selection.
+resting track eligible to win recency. E84's re-confirmation restriction fixes it and
+improves pooled position/wrong time, but original-suite velocity regresses0.109%.
+Audit that selection-only effect and correctness before fresh validation.
 One-clip near-truth duplicate proxy is unchanged, full duplicate review still open.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
@@ -2504,6 +2506,43 @@ histories before they displace a supported track, preserving ordinary true-ball
 recovery and existing false-percept counterexamples. Consider existing leadership
 observation evidence before adding state. E82 remains unaccepted; source unchanged,
 fresh67/68 untouched, RAM≈4.85GB after completed jobs, no agents or pushes.
+
+### E84 — Reconfirm size-inconsistent resting challengers [DEVELOPMENT ONLY]
+
+Combine E82 association with a selection restriction: when a supported (effective
+validity≥3) moving track has a size-plausible last observation, a size-inconsistent
+resting challenger must have three observations in its existing MotionEvidence
+window before it is eligible. Do not exclude a lone track, size-plausible resting
+track, or a moving challenger. Existing motion history ignores repeated/too-close
+timestamps and clears after gaps>200ms. LeadershipEvidence cannot be reused here:
+competition.rs populates it only for the current leader, so requiring it of a
+challenger would create a circular eligibility dependency.
+
+`G/resting-reconfirmation/` preserves all three source before/after snapshots,
+config, binaries and hashes. New unit test covers both vector orders, lone-track
+fallback and size-plausible recovery; all119 filter tests pass. Working sources
+restored after build; no schema/state added. Full216 development evaluation and
+motivating brief-gaps full-state replay completed under45GiB/nice15 (observed<10GiB).
+At202.538s it retains the baseline moving estimate, error0.079501m instead of E82's
+0.885m; `diagnostic/motivating-frame.json` records exact values.
+
+| Metric | Baseline | Candidate | Change |
+|---|---:|---:|---:|
+| Close position RMSE (m) |0.243549712|0.242773335|−0.31878%|
+| Close velocity RMSE (m/s) |0.678003173|0.677871787|−0.01938%|
+| Fast close velocity RMSE (m/s) |2.350457712|2.349776931|−0.02896%|
+| All velocity RMSE (m/s) |0.781474412|0.780476858|−0.12765%|
+
+Wrong output−7.154s, correct-close missing−1.508s, raw close velocity missing unchanged.
+Worst close position+0.000301%audit8a; close velocity+0.108775%original; fast close
+no suite regression. Worst all velocity+0.020731%audit7a. This improves the mechanism
+and pooled scores, but original-suite velocity still fails the existing guard.
+Next audit position correctness on that velocity regression and compare against
+E82 to isolate the new selection restriction. Do not claim the goal or spend fresh
+seeds based only on the pooled gain. Three-observation recovery needs an explicit
+positive test and independent selection-only ablation before adoption if this line
+survives replay. Thresholds and fresh-validation requirements unchanged; fresh67/68
+untouched. All jobs terminal; no retained runtime change or push.
 
 ## 5. Evidence map and operational handoff
 
