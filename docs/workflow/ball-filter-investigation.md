@@ -68,7 +68,9 @@ improves pooled position/wrong time, but original-suite velocity regresses0.109%
 E85 proves original raw-velocity regression rewards a misplaced stationary output;
 common-correct-frame velocity and joint credit improve across216, but near-truth
 duplicate exposure increases28.398 hypothesis-seconds, chiefly recordings144/177.
-Trace those duplicates and isolate selection-only behavior before fresh validation.
+E86 finds stale nearby resting histories with zero clear-miss exposure; E87 isolates
+selection-only improvement (position/wrong output, no fast-velocity gain). Investigate
+stale-history retirement without broad merge changes before fresh validation.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2586,6 +2588,59 @@ Next inspect144/177 duplicate survival and isolate selection-only behavior befor
 promoting added association complexity. Candidate remains development-only; fresh
 67/68 untouched, no adopted code or push. Full-state positive recovery test and
 selection-only ablation remain outstanding, as do fast/airborne challenge failures.
+
+### E86 — Dominant duplicate windows [DIAGNOSED]
+
+E85's duplicate-window audit is saved as `full-audit/duplicate-windows.json`.
+Recording144 (stationary-close seed50000058) has two candidate hypotheses near
+truth from12.230 to29.480s, versus one baseline: positions(0.70262,−0.13389) and
+(0.83517,−0.10234)m at onset, separated≈0.136m; truth(0.69703,−0.13486).
+Candidate published position is accurate (≈0.0057m error); baseline publication
+is≈0.074m away. Thus the better output coexists with another nearby history.
+Recording177 (long-occlusion seed50000062),259.512–268.560s: candidate positions
+(1.44489,−0.09330) and(1.59724,−0.10622), separated≈0.153m; truth
+(1.60122,−0.10885), output≈0.0048m error. Baseline has one near-truth hypothesis.
+These separations exceed baseline merge distance0.1m. Do not infer that widening
+merging is safe: E36 already shows wider-merge position regressions. Full-state
+candidate replay completed; `duplicate-states/nearby-histories.json` preserves:
+stationary-close extra resting track last_seen9.482s, support3.802, versus observed
+track last_seen12.202s/support279.514. Long-occlusion extra resting track last_seen
+257.202s/support159.120, versus current259.482s/support4.880. Both stale histories
+have clear-miss duration0 and no last_clear_frame despite their proximity to the
+observed ball. This is consistent with covariance/visibility ambiguity preserving
+history (E52), not a newly growing trail of moving hypotheses. Exact exposure
+classification still needs trace before asserting a new decay rule is safe.
+
+### E87 — Re-confirmation without association changes [COMPLETE ABLATION]
+
+Independent E84 ablation: original association, original parameters, only resting
+size-inconsistent challenger selection restriction and existing motion-history
+query. `G/resting-reconfirmation-only/` freezes source before/after, binaries/config
+and SHA256 protocol. Added history test verifies three observations, reset after
+>200ms gap, repeated timestamp not counting, and re-earning three observations.
+All120 filter tests pass. Working source restored after build. Full216 replay
+completed under45GiB/nice15; fresh67/68 untouched. `comparison.json`:
+
+| Metric | Baseline | Selection only | Change |
+|---|---:|---:|---:|
+| Close position RMSE (m) |0.243549712|0.242858959|−0.28362%|
+| Close velocity RMSE (m/s) |0.678003173|0.678034044|+0.00455%|
+| Fast close velocity RMSE (m/s) |2.350457712|2.350457712|unchanged|
+| All velocity RMSE (m/s) |0.781474412|0.781223533|−0.03210%|
+
+No suite position regression; worst raw close velocity+0.108775%original (E85
+explains its correctness confound). Wrong output−4.340s, correct-close missing
+−1.398s, raw close velocity missing unchanged. This isolates a useful position/
+wrong-selection benefit but is **not a velocity winner**: E84's small fast-velocity
+gain comes from changed association. Full duplicate comparison of this ablation
+not yet run; do not infer exact hypothesis parity because selection influences
+competition decay. No promotion. All jobs terminal, source restored, no pushes.
+
+Next investigate retirement of nearby stale histories left by the improved
+association without blindly widening merge distance, preserving separate observed
+balls and fast-moving transitions. Any such experiment must revisit all216 metrics
+and duplicate exposure, then freeze before fresh validation. Independent high-speed
+and airborne limitations remain.
 
 ## 5. Evidence map and operational handoff
 
