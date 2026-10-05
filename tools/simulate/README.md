@@ -141,7 +141,7 @@ Worker counts normally leave CPU headroom and are bounded by available memory.
 Use `--full-cpu --workers N` to permit all logical CPUs when invoking this
 low-level helper directly; account for workers in existing runs when choosing N.
 The launcher described below checks active workers before adding searches. Memory limits still apply. Fetched best reports are
-selected using training loss and continuity eligibility; holdouts are evaluation
+selected using close-range training loss and accuracy eligibility; holdouts are evaluation
 only. The manifest records source/data hashes for reproducibility.
 
 The **Ball-filter optimization** panel can launch a local search, start a remote
@@ -368,12 +368,11 @@ training/holdout metrics, including missing ground-transform coverage and the co
 of numerically unstable candidates rejected during search. Parameters
 are saved for review, not automatically applied to robot defaults.
 
-The search objective uses bounded position error, with a missing estimate costing
-more than any finite position error. Truth within 1 metre of the robot additionally
-contributes four times its own time-normalized loss, without field-boundary
-downweighting. Long far-ball intervals cannot dilute this close-range component.
-Empty scenes still penalize false tracks,
-so aggregate loss alone can trade tracking continuity for earlier forgetting.
+The current objective, `close_ball_position_velocity_v10`, scores only truth
+within 1 metre of the robot: independently normalized bounded position error plus
+velocity-vector error converted to displacement over 300 ms. Missing close estimates
+cost more than any finite error in either bounded term. Far-ball errors, empty-scene
+false tracks and lag remain reported diagnostics.
 The search therefore fixes hypothesis timeout, legacy per-frame confidence factors,
 output threshold, `visible_missed_detection_timeout` and
 `maximum_obstacle_time_difference`, `field_boundary_validity_decay_rate`, and
@@ -390,15 +389,12 @@ behavior: candidates cannot enable that rate, and the report and UI omit it from
 the searched parameters. Importing an older warm start without rates preserves
 the new capture baseline's rates.
 
-A candidate must also preserve baseline close-range position RMSE, RMS spatial
-motion lag, absolute mean spatial motion lag, total missing time, close-range
-missing time and longest missing interval in **every training recording**, as
-well as in aggregate. Only floating-point roundoff is tolerated. RMS lag prevents
-opposing lead/lag errors from cancelling. Held-out recordings remain
-evaluation-only; these guards do not guarantee held-out accuracy or continuity.
-Reports identify this policy and count lower-loss candidates rejected for
-quality regressions. Objective `single_ball_close_accuracy_v4` scores cannot be
-compared directly with earlier objective versions.
+A candidate must preserve aggregate training close-range position RMSE and
+close-range velocity-vector RMSE, with floating-point roundoff tolerance. Individual
+recordings, global accuracy, availability, false tracks and lag do not veto a candidate.
+Missing close estimates remain penalized in the objective. Held-out recordings remain
+evaluation-only. Reports record the policy and rejected quality candidates; scores
+from v10 and older objectives cannot be compared directly.
 
 The filter distinguishes a ball hidden behind a robot from a ball that should be
 visible but is repeatedly missing from detector results. With the current

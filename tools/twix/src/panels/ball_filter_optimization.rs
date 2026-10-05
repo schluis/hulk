@@ -447,7 +447,7 @@ impl Panel for BallFilterOptimizationPanel {
                     scores(ui, "validation", baseline, best);
                 }
                 ui.label(
-                    "Loss includes position and velocity error, missed balls and false tracks. Lower is better.",
+                    "Loss scores position and velocity within 1 m, including missing estimates. Lower is better.",
                 );
                 if let Ok(mut fixed) = serde_json::to_value(&search.best_parameters) {
                     let mut tuned = serde_json::Map::new();

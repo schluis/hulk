@@ -9,7 +9,7 @@ use types::{ball_position::BallPosition, parameters::BallFilterParameters};
 
 pub const MISSING_PENALTY_MULTIPLIER: f64 = 1.25;
 pub const OUT_OF_FIELD_DECAY_METRES: f64 = 0.3;
-pub const CLOSE_RANGE_LOSS_WEIGHT: f64 = 4.0;
+pub const CLOSE_RANGE_LOSS_WEIGHT: f64 = 1.0;
 /// Convert velocity error to displacement error over a short interception horizon.
 pub const VELOCITY_HORIZON_SECONDS: f64 = 0.3;
 /// Association radius used by the user-approved correct-ball availability guards.
@@ -33,16 +33,16 @@ pub struct Objective {
 }
 
 pub const OBJECTIVE: Objective = Objective {
-    version: "single_ball_position_velocity_v9",
+    version: "close_ball_position_velocity_v10",
     position_loss: "p^2 * d^2 / (p^2 + d^2); d = distance to the single labelled ball",
     missing_loss: "1.25 * p^2",
     false_track_loss: "p^2",
-    normalization: "all-scene weighted spatial mean plus close_range_weight times the separately normalized close-range spatial mean, plus separately normalized velocity terms described below; p = penalty_metres",
-    reference_weight: "exp(-distance_outside_field_metres / out_of_field_decay_metres); distance outside Field rectangle expanded by ball radius; absent or unknown Field pose weight=1",
+    normalization: "Only within-1m truth contributes: independently normalized close position loss plus close velocity loss. Far-ball, empty-scene and global accuracy remain diagnostics.",
+    reference_weight: "Close-range scoring uses truth in Ground without field-boundary downweighting; outside-field weighting applies only to global diagnostics.",
     out_of_field_decay_metres: OUT_OF_FIELD_DECAY_METRES,
-    close_range_loss: "Add a separately time-normalized spatial/missing loss for truth within 1 m in Ground, without field-boundary downweighting. Missing costs more than any finite position error. Per-recording close-range RMSE may increase by at most 0.01 m and RMS/mean absolute spatial lag by at most 0.04 s. Aggregate accuracy and false-track time may not worsen. Correct-ball unavailable time (missing or error greater than 0.5 m), its close-range subset and its longest uninterrupted gap must not worsen per recording or in aggregate; raw missing time remains diagnostic. False-track guards remain strict per recording. Signed mean lag is diagnostic only because opposing errors can cancel.",
+    close_range_loss: "Within 1m of the robot, bounded squared position error with cap p^2 and missing penalty 1.25*p^2. Hard guards protect aggregate close-range position RMSE and velocity-vector RMSE only, with roundoff tolerance. Individual recordings, availability, false-track time, global error and lag are reported without vetoing candidates. Held-out recordings are evaluation only.",
     close_range_weight: CLOSE_RANGE_LOSS_WEIGHT,
-    velocity_loss: "Add separately time-normalized bounded squared velocity-vector error times velocity_horizon_seconds^2, with the same spatial cap p^2 and missing penalty 1.25*p^2; add close_range_weight times its independently normalized within-1m subset. Include stationary truth; use single-ball Field finite differences over 0 < dt <= 100ms and reject non-finite or >15m/s derivatives. Rotate estimated Ground velocity into Field without translation. Raw velocity RMSE and coverage are reported separately. Velocity loss, missing duration and RMSE must not worsen, in aggregate or per recording. This horizon weights velocity error; it is not a simulated future-trajectory error.",
+    velocity_loss: "Within-1m velocity-vector error is converted to displacement over velocity_horizon_seconds, with cap p^2 and missing penalty 1.25*p^2, independently normalized by close velocity-reference time. Include stationary truth; finite differences in Field over 0 < dt <= 100ms, rejecting non-finite or >15m/s derivatives. Rotate Ground estimates into Field. Missing estimates remain penalized in the objective; close velocity RMSE remains a hard aggregate guard.",
     velocity_horizon_seconds: VELOCITY_HORIZON_SECONDS,
     motion_reference: "Use timestamp-matched simulation/ball_ground_truth_field for motion derivatives when standard simulator labels are selected; otherwise derive Field positions from the selected reference and recorded pose. Ground position/close-range scoring remains unchanged.",
 };
@@ -125,195 +125,56 @@ pub struct Score {
 
 /// Eligibility constraint, separate from the spatial objective. Compare against
 /// the immutable baseline on the same training recordings, never held-out data.
-/// Correct-ball unavailable durations include out-of-field frames and initial
-/// acquisition. Removing an already wrong output does not reduce availability.
-pub fn preserves_baseline_continuity(candidate: &Score, baseline: &Score) -> bool {
-    if !baseline.labelled_seconds.is_finite() || baseline.labelled_seconds < 0.0 {
-        return false;
-    }
-    // Time sums can differ by roundoff when different frame subsets have the
-    // same duration. This is about 5.5e-11 seconds for a 240-second dataset, not
-    // an allowed extra missing frame or a tunable behavioral margin.
-    let roundoff = 1024.0 * f64::EPSILON * baseline.labelled_seconds.max(1.0);
+/// Only aggregate accuracy within one metre is a hard acceptance criterion.
+/// Coverage, far-ball accuracy, lag and false tracks remain reported diagnostics.
+pub fn preserves_baseline_quality(candidate: &Score, baseline: &Score) -> bool {
     [
         (
-            candidate.correct_track_missing_seconds,
-            baseline.correct_track_missing_seconds,
-        ),
-        (
-            candidate.close_range_correct_track_missing_seconds,
-            baseline.close_range_correct_track_missing_seconds,
-        ),
-        (
-            candidate.longest_correct_track_gap_seconds,
-            baseline.longest_correct_track_gap_seconds,
-        ),
-    ]
-    .into_iter()
-    .all(|(candidate, baseline)| {
-        candidate.is_finite()
-            && baseline.is_finite()
-            && candidate >= 0.0
-            && baseline >= 0.0
-            && (candidate <= baseline || candidate - baseline <= roundoff)
-    })
-}
-
-/// A cheaper global fit cannot buy worse near-ball accuracy or motion tracking.
-/// Missing diagnostics are only acceptable when the baseline also lacks them.
-pub fn preserves_baseline_quality(candidate: &Score, baseline: &Score) -> bool {
-    preserves_quality_with_margins(candidate, baseline, 0.0, 0.0)
-}
-
-/// User-approved per-clip tolerance; aggregate accuracy remains non-increasing.
-pub fn preserves_recording_quality(candidate: &Score, baseline: &Score) -> bool {
-    preserves_quality_with_margins(candidate, baseline, 0.01, 0.04)
-}
-
-fn preserves_quality_with_margins(
-    candidate: &Score,
-    baseline: &Score,
-    close: f64,
-    lag: f64,
-) -> bool {
-    fn non_increasing(candidate: Option<f64>, baseline: Option<f64>, margin: f64) -> bool {
-        match (candidate, baseline) {
-            (Some(candidate), Some(baseline)) => {
-                candidate.is_finite()
-                    && baseline.is_finite()
-                    && candidate >= 0.0
-                    && baseline >= 0.0
-                    && candidate <= baseline + margin + 1024.0 * f64::EPSILON * baseline.max(1.0)
-            }
-            (None, None) => true,
-            (Some(candidate), None) => candidate.is_finite() && candidate >= 0.0,
-            (None, Some(_)) => false,
-        }
-    }
-    preserves_baseline_continuity(candidate, baseline)
-        && [
-            (
-                candidate.velocity_rmse_metres_per_second,
-                baseline.velocity_rmse_metres_per_second,
-            ),
-            (
-                candidate.close_range_velocity_rmse_metres_per_second,
-                baseline.close_range_velocity_rmse_metres_per_second,
-            ),
-            (candidate.velocity_loss, baseline.velocity_loss),
-            (
-                candidate.close_range_velocity_loss,
-                baseline.close_range_velocity_loss,
-            ),
-            (
-                Some(candidate.velocity_missing_seconds),
-                Some(baseline.velocity_missing_seconds),
-            ),
-            (
-                Some(candidate.close_range_velocity_missing_seconds),
-                Some(baseline.close_range_velocity_missing_seconds),
-            ),
-        ]
-        .into_iter()
-        .all(|(c, b)| non_increasing(c, b, 0.0))
-        && non_increasing(
-            Some(candidate.false_track_seconds),
-            Some(baseline.false_track_seconds),
-            0.0,
-        )
-        && non_increasing(
             candidate.close_range_position_rmse_metres,
             baseline.close_range_position_rmse_metres,
-            close,
-        )
-        && non_increasing(
-            candidate.motion_lag_rms_seconds,
-            baseline.motion_lag_rms_seconds,
-            lag,
-        )
-        && non_increasing(
-            candidate.motion_lag_absolute_seconds,
-            baseline.motion_lag_absolute_seconds,
-            lag,
-        )
-}
-
-/// Continuous distance to feasibility for population exploration, never used as
-/// an alternative acceptance criterion. Exact guards above still select winners.
-pub fn quality_violation(candidate: &Score, baseline: &Score, per_recording: bool) -> f64 {
-    let pairs = [
-        (
-            Some(candidate.correct_track_missing_seconds),
-            Some(baseline.correct_track_missing_seconds),
-        ),
-        (
-            Some(candidate.close_range_correct_track_missing_seconds),
-            Some(baseline.close_range_correct_track_missing_seconds),
-        ),
-        (
-            Some(candidate.false_track_seconds),
-            Some(baseline.false_track_seconds),
-        ),
-        (
-            Some(candidate.longest_correct_track_gap_seconds),
-            Some(baseline.longest_correct_track_gap_seconds),
-        ),
-        (
-            candidate.close_range_position_rmse_metres,
-            baseline.close_range_position_rmse_metres,
-        ),
-        (
-            candidate.motion_lag_rms_seconds,
-            baseline.motion_lag_rms_seconds,
-        ),
-        (
-            candidate.motion_lag_absolute_seconds,
-            baseline.motion_lag_absolute_seconds,
-        ),
-        (
-            candidate.velocity_rmse_metres_per_second,
-            baseline.velocity_rmse_metres_per_second,
         ),
         (
             candidate.close_range_velocity_rmse_metres_per_second,
             baseline.close_range_velocity_rmse_metres_per_second,
         ),
-        (candidate.velocity_loss, baseline.velocity_loss),
+    ]
+    .into_iter()
+    .all(|(candidate, baseline)| match (candidate, baseline) {
+        (Some(c), Some(b)) => {
+            c.is_finite()
+                && b.is_finite()
+                && c >= 0.0
+                && b >= 0.0
+                && c <= b + 1024.0 * f64::EPSILON * b.max(1.0)
+        }
+        (None, None) => true,
+        (Some(c), None) => c.is_finite() && c >= 0.0,
+        (None, Some(_)) => false,
+    })
+}
+
+/// Distance to the two aggregate close-range accuracy constraints for exploration.
+pub fn quality_violation(candidate: &Score, baseline: &Score) -> f64 {
+    [
         (
-            candidate.close_range_velocity_loss,
-            baseline.close_range_velocity_loss,
+            candidate.close_range_position_rmse_metres,
+            baseline.close_range_position_rmse_metres,
         ),
         (
-            Some(candidate.velocity_missing_seconds),
-            Some(baseline.velocity_missing_seconds),
+            candidate.close_range_velocity_rmse_metres_per_second,
+            baseline.close_range_velocity_rmse_metres_per_second,
         ),
-        (
-            Some(candidate.close_range_velocity_missing_seconds),
-            Some(baseline.close_range_velocity_missing_seconds),
-        ),
-    ];
-    pairs
-        .into_iter()
-        .enumerate()
-        .map(
-            |(index, (candidate, baseline))| match (candidate, baseline) {
-                (Some(c), Some(b)) if c.is_finite() && b.is_finite() => {
-                    let margin = if per_recording {
-                        match index {
-                            4 => 0.01,
-                            5 | 6 => 0.04,
-                            _ => 0.0,
-                        }
-                    } else {
-                        0.0
-                    };
-                    ((c - b - margin) / b.max(0.02)).max(0.0)
-                }
-                (None, None) | (Some(_), None) => 0.0,
-                _ => f64::INFINITY,
-            },
-        )
-        .sum()
+    ]
+    .into_iter()
+    .map(|(candidate, baseline)| match (candidate, baseline) {
+        (Some(c), Some(b)) if c.is_finite() && b.is_finite() && c >= 0.0 && b >= 0.0 => {
+            ((c - b) / b.max(0.02)).max(0.0)
+        }
+        (None, None) => 0.0,
+        (Some(c), None) if c.is_finite() && c >= 0.0 => 0.0,
+        _ => f64::INFINITY,
+    })
+    .sum()
 }
 
 fn close_reference(cycle: &Cycle) -> Option<Point2<Ground>> {
@@ -757,18 +618,17 @@ pub fn export_frames(
 impl Score {
     fn finish(&mut self) {
         let score = self;
-        score.loss /= score.weighted_seconds;
+
         score.close_range_loss = (score.close_loss_seconds > 0.0)
             .then(|| score.close_loss_integral / score.close_loss_seconds);
-        score.loss += CLOSE_RANGE_LOSS_WEIGHT * score.close_range_loss.unwrap_or(0.0);
+        score.loss = score.close_range_loss.unwrap_or(0.0);
         score.velocity_loss = (score.velocity_reference_seconds > 0.0)
             .then(|| score.velocity_loss_integral / score.velocity_reference_seconds);
         score.close_range_velocity_loss = (score.close_range_velocity_reference_seconds > 0.0)
             .then(|| {
                 score.close_velocity_loss_integral / score.close_range_velocity_reference_seconds
             });
-        score.loss += score.velocity_loss.unwrap_or(0.0)
-            + CLOSE_RANGE_LOSS_WEIGHT * score.close_range_velocity_loss.unwrap_or(0.0);
+        score.loss += score.close_range_velocity_loss.unwrap_or(0.0);
         let velocity_matched = score.velocity_reference_seconds - score.velocity_missing_seconds;
         score.velocity_rmse_metres_per_second = (velocity_matched > 0.0)
             .then(|| (score.velocity_squared_error / velocity_matched).sqrt());
@@ -812,6 +672,27 @@ mod tests {
     }
 
     #[test]
+    fn only_close_accuracy_guards_reject_candidates() {
+        let mut baseline = accuracy_baseline();
+        baseline.close_range_velocity_rmse_metres_per_second = Some(0.8);
+        let mut candidate = accuracy_baseline();
+        candidate.close_range_velocity_rmse_metres_per_second = Some(0.7);
+        candidate.false_track_seconds = 1000.0;
+        candidate.correct_track_missing_seconds = 1000.0;
+        candidate.close_range_correct_track_missing_seconds = 1000.0;
+        candidate.motion_lag_rms_seconds = Some(100.0);
+        candidate.velocity_rmse_metres_per_second = Some(100.0);
+        assert!(preserves_baseline_quality(&candidate, &baseline));
+        assert_eq!(quality_violation(&candidate, &baseline), 0.0);
+        candidate.close_range_position_rmse_metres = Some(0.43);
+        assert!(!preserves_baseline_quality(&candidate, &baseline));
+        assert!(quality_violation(&candidate, &baseline) > 0.0);
+        candidate.close_range_position_rmse_metres = Some(0.41);
+        candidate.close_range_velocity_rmse_metres_per_second = Some(0.81);
+        assert!(!preserves_baseline_quality(&candidate, &baseline));
+    }
+
+    #[test]
     fn close_availability_counts_wrong_and_missing_outputs_equally() {
         let cycle = diagnostic_cycle(0, 0.5, 0.0);
         let mut score = Score::default();
@@ -831,20 +712,6 @@ mod tests {
         assert_eq!(score.close_range_missing_seconds, cycle.seconds);
     }
 
-    #[test]
-    fn removing_wrong_outputs_is_allowed_but_losing_correct_outputs_is_not() {
-        let baseline = continuity_baseline();
-        let mut candidate = continuity_baseline();
-        candidate.missing_seconds = 100.0;
-        candidate.close_range_missing_seconds = 50.0;
-        candidate.longest_missing_seconds = 40.0;
-        assert!(preserves_baseline_continuity(&candidate, &baseline));
-        assert_eq!(quality_violation(&candidate, &baseline, true), 0.0);
-        candidate.correct_track_missing_seconds += 0.002;
-        assert!(!preserves_baseline_continuity(&candidate, &baseline));
-        assert!(quality_violation(&candidate, &baseline, true) > 0.0);
-    }
-
     fn accuracy_baseline() -> Score {
         Score {
             close_range_position_rmse_metres: Some(0.42),
@@ -853,19 +720,6 @@ mod tests {
             motion_lag_rms_seconds: Some(0.5),
             ..continuity_baseline()
         }
-    }
-
-    #[test]
-    fn cancelling_signed_errors_do_not_block_better_absolute_and_rms_lag() {
-        let mut baseline = accuracy_baseline();
-        baseline.motion_lag_seconds = Some(0.0);
-        let mut candidate = accuracy_baseline();
-        candidate.motion_lag_seconds = Some(0.1);
-        candidate.motion_lag_absolute_seconds = Some(0.1);
-        candidate.motion_lag_rms_seconds = Some(0.2);
-        assert!(preserves_baseline_quality(&candidate, &baseline));
-        candidate.false_track_seconds = baseline.false_track_seconds + 0.04;
-        assert!(!preserves_baseline_quality(&candidate, &baseline));
     }
 
     #[test]
@@ -889,73 +743,15 @@ mod tests {
     }
 
     #[test]
-    fn recording_tolerances_are_bounded_and_do_not_relax_aggregate_or_retention() {
-        let baseline = accuracy_baseline();
-        let mut candidate = accuracy_baseline();
-        candidate.close_range_position_rmse_metres =
-            baseline.close_range_position_rmse_metres.map(|x| x + 0.01);
-        candidate.motion_lag_rms_seconds = baseline.motion_lag_rms_seconds.map(|x| x + 0.04);
-        candidate.motion_lag_absolute_seconds =
-            baseline.motion_lag_absolute_seconds.map(|x| x + 0.04);
-        assert!(preserves_recording_quality(&candidate, &baseline));
-        assert!(!preserves_baseline_quality(&candidate, &baseline));
-        for metric in 0..5 {
-            let mut worse = accuracy_baseline();
-            match metric {
-                0 => {
-                    worse.close_range_position_rmse_metres = baseline
-                        .close_range_position_rmse_metres
-                        .map(|x| x + 0.010001)
-                }
-                1 => {
-                    worse.motion_lag_rms_seconds =
-                        baseline.motion_lag_rms_seconds.map(|x| x + 0.040001)
-                }
-                2 => {
-                    worse.motion_lag_absolute_seconds =
-                        baseline.motion_lag_absolute_seconds.map(|x| x + 0.040001)
-                }
-                3 => worse.correct_track_missing_seconds += 0.002,
-                _ => worse.false_track_seconds += 0.002,
-            }
-            assert!(!preserves_recording_quality(&worse, &baseline));
-            assert!(quality_violation(&worse, &baseline, true) > 0.0);
-        }
-    }
-
-    #[test]
-    fn lower_global_loss_cannot_buy_worse_close_accuracy_or_lag() {
-        let baseline = accuracy_baseline();
-        assert!(preserves_baseline_quality(&baseline, &baseline));
-        for metric in 0..3 {
-            let mut candidate = accuracy_baseline();
-            candidate.loss = 0.0;
-            candidate.correct_track_missing_seconds = 0.0;
-            candidate.false_track_seconds = 0.0;
-            match metric {
-                0 => candidate.close_range_position_rmse_metres = Some(1.10),
-                1 => candidate.motion_lag_absolute_seconds = Some(0.70),
-                2 => candidate.motion_lag_rms_seconds = Some(0.70),
-                _ => unreachable!(),
-            }
-            assert!(!preserves_baseline_quality(&candidate, &baseline));
-        }
-        let mut candidate = accuracy_baseline();
-        candidate.close_range_position_rmse_metres = Some(0.10);
-        candidate.motion_lag_seconds = Some(0.1);
-        candidate.motion_lag_rms_seconds = Some(0.2);
-        assert!(preserves_baseline_quality(&candidate, &baseline));
-    }
-
-    #[test]
     fn missing_or_invalid_accuracy_metrics_cannot_bypass_quality_guards() {
-        let baseline = accuracy_baseline();
+        let mut baseline = accuracy_baseline();
+        baseline.close_range_velocity_rmse_metres_per_second = Some(0.5);
         for invalid in [None, Some(f64::NAN), Some(f64::INFINITY), Some(-0.01)] {
             let mut candidate = accuracy_baseline();
             candidate.close_range_position_rmse_metres = invalid;
             assert!(!preserves_baseline_quality(&candidate, &baseline));
             candidate = accuracy_baseline();
-            candidate.motion_lag_rms_seconds = invalid;
+            candidate.close_range_velocity_rmse_metres_per_second = invalid;
             assert!(!preserves_baseline_quality(&candidate, &baseline));
         }
         // Recordings with no close/moving observations have no comparison to
@@ -991,7 +787,7 @@ mod tests {
         );
         long.finish();
         assert_eq!(short.close_range_loss, long.close_range_loss);
-        assert!(long.loss >= CLOSE_RANGE_LOSS_WEIGHT * short.close_range_loss.unwrap());
+        assert_eq!(long.loss, short.loss);
         let mut missing = Score::default();
         missing.observe_cycle(&close, None, 2.0);
         missing.finish();
@@ -1067,59 +863,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn continuity_accepts_baseline_and_improvements_with_only_roundoff_tolerance() {
-        let baseline = continuity_baseline();
-        assert!(preserves_baseline_continuity(&baseline, &baseline));
-        let mut candidate = continuity_baseline();
-        candidate.correct_track_missing_seconds = 1.0;
-        candidate.longest_correct_track_gap_seconds = 0.5;
-        candidate.close_range_correct_track_missing_seconds = 0.3;
-        assert!(preserves_baseline_continuity(&candidate, &baseline));
-
-        let mut baseline = continuity_baseline();
-        baseline.close_range_correct_track_missing_seconds = 0.3;
-        candidate.close_range_correct_track_missing_seconds = 0.1 + 0.2;
-        assert!(preserves_baseline_continuity(&candidate, &baseline));
-        candidate.close_range_correct_track_missing_seconds = 0.3 + 1e-9;
-        assert!(!preserves_baseline_continuity(&candidate, &baseline));
-    }
-
-    #[test]
-    fn each_continuity_limit_independently_rejects_a_regression() {
-        let baseline = continuity_baseline();
-        for metric in 0..3 {
-            let mut candidate = continuity_baseline();
-            match metric {
-                0 => candidate.correct_track_missing_seconds += 0.002,
-                1 => candidate.close_range_correct_track_missing_seconds += 0.002,
-                2 => candidate.longest_correct_track_gap_seconds += 0.002,
-                _ => unreachable!(),
-            }
-            assert!(!preserves_baseline_continuity(&candidate, &baseline));
-        }
-    }
-
-    #[test]
-    fn false_track_reduction_and_lower_loss_cannot_pay_for_worse_continuity() {
-        let baseline = continuity_baseline();
-        let mut candidate = continuity_baseline();
-        candidate.false_track_seconds = 0.0;
-        candidate.loss = 0.0;
-        candidate.correct_track_missing_seconds += 0.002;
-        assert!(!preserves_baseline_continuity(&candidate, &baseline));
-    }
-
-    #[test]
-    fn nonfinite_or_negative_continuity_metrics_are_ineligible() {
-        let baseline = continuity_baseline();
-        for invalid in [f64::NAN, f64::INFINITY, -0.1] {
-            let mut candidate = continuity_baseline();
-            candidate.longest_correct_track_gap_seconds = invalid;
-            assert!(!preserves_baseline_continuity(&candidate, &baseline));
-        }
-    }
-
     fn velocity_score(speed: f32, reported: Option<f32>) -> Score {
         let mut score = Score::default();
         let mut previous = None;
@@ -1150,8 +893,7 @@ mod tests {
         assert_eq!(stopped.position_rmse_metres, Some(0.0));
         assert!((stopped.close_range_velocity_reference_seconds - 0.2).abs() < 1e-10);
         assert!(!preserves_baseline_quality(&stopped, &good));
-        assert!(!preserves_recording_quality(&stopped, &good));
-        assert!(quality_violation(&stopped, &good, false) > 0.0);
+        assert!(quality_violation(&stopped, &good) > 0.0);
     }
 
     #[test]

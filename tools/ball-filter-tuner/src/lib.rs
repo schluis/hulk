@@ -7,7 +7,7 @@ use color_eyre::{Result, eyre::ensure};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use recording::Recording;
-use scoring::{Score, evaluate, preserves_baseline_quality, preserves_recording_quality, verify};
+use scoring::{Score, evaluate, preserves_baseline_quality, verify};
 use serde::Serialize;
 use std::path::PathBuf;
 use types::{ball_filter_tuning::SearchProgress, parameters::BallFilterParameters};
@@ -71,8 +71,7 @@ pub struct Args {
     /// Ground truth, cameras and odometry remain unchanged. Zero disables this stress test.
     #[arg(long, default_value_t = 0.0)]
     pub field_prior_wobble_metres: f32,
-    /// Reject coordinate-search candidates cheaply on the first N training clips.
-    /// Passing candidates still require all training clips and aggregate guards.
+    /// Compatibility option; ignored because acceptance uses aggregate close-range metrics.
     #[arg(long, default_value_t = 0)]
     pub screening_recordings: usize,
     #[arg(long)]
@@ -345,16 +344,6 @@ pub fn run_with_progress(
         "MCAP replay matches live outputs with capture parameters. Evaluation baseline training loss: {:.6}",
         base_train.loss
     );
-    let baseline_recordings = train
-        .iter()
-        .map(|recording| {
-            evaluate(
-                std::slice::from_ref(recording),
-                &baseline,
-                args.penalty_metres,
-            )
-        })
-        .collect::<Result<Vec<_>>>()?;
     let mut rejected_quality_candidates = 0;
     let mut best = baseline.clone();
     let mut best_values = encode(&best);
@@ -370,21 +359,14 @@ pub fn run_with_progress(
         let score = evaluate_candidate(&train, &initial, args.penalty_metres)?;
         if let Some(score) = score.filter(|score| score.loss.is_finite() && score.loss < best_loss)
         {
-            if preserves_baseline_quality(&score, &base_train)
-                && preserves_each_recording(
-                    &train,
-                    &initial,
-                    &baseline_recordings,
-                    args.penalty_metres,
-                )?
-            {
+            if preserves_baseline_quality(&score, &base_train) {
                 best = initial;
                 best_values = encode(&best);
                 best_loss = score.loss;
                 best_metrics = (&score).into();
             } else {
                 eprintln!(
-                    "Warm start rejected: worsens baseline training continuity, close accuracy or motion lag"
+                    "Warm start rejected: worsens aggregate close-range position or velocity RMSE"
                 );
             }
         }
@@ -457,40 +439,10 @@ pub fn run_with_progress(
             }
         }
         let candidate = decode(&baseline, values);
-        let mut screened = true;
-        if matches!(args.search_method, SearchMethod::Coordinate) {
-            for (recording, base) in train
-                .iter()
-                .zip(&baseline_recordings)
-                .take(args.screening_recordings)
-            {
-                let score = evaluate_candidate(
-                    std::slice::from_ref(recording),
-                    &candidate,
-                    args.penalty_metres,
-                )?;
-                if score.is_none_or(|score| !preserves_recording_quality(&score, base)) {
-                    screened = false;
-                    break;
-                }
-            }
-        }
-        let score = if screened {
-            evaluate_candidate(&train, &candidate, args.penalty_metres)?
-        } else {
-            None
-        };
+        let score = evaluate_candidate(&train, &candidate, args.penalty_metres)?;
         if let Some(score) = score.filter(|score| score.loss.is_finite()) {
             if matches!(args.search_method, SearchMethod::DifferentialEvolution) {
-                let mut violation = scoring::quality_violation(&score, &base_train, false);
-                for (recording, base) in train.iter().zip(&baseline_recordings) {
-                    let one = evaluate(
-                        std::slice::from_ref(recording),
-                        &candidate,
-                        args.penalty_metres,
-                    )?;
-                    violation += scoring::quality_violation(&one, base, true);
-                }
+                let violation = scoring::quality_violation(&score, &base_train);
                 let target = trial % population.len();
                 let old = population[target];
                 if trial < population.len() || (violation, score.loss) < (old.1, old.2) {
@@ -498,14 +450,7 @@ pub fn run_with_progress(
                 }
             }
             if score.loss < best_loss {
-                if !preserves_baseline_quality(&score, &base_train)
-                    || !preserves_each_recording(
-                        &train,
-                        &candidate,
-                        &baseline_recordings,
-                        args.penalty_metres,
-                    )?
-                {
+                if !preserves_baseline_quality(&score, &base_train) {
                     rejected_quality_candidates += 1;
                 } else {
                     best_loss = score.loss;
@@ -522,8 +467,6 @@ pub fn run_with_progress(
                     );
                 }
             }
-        } else if !screened {
-            rejected_quality_candidates += 1;
         } else {
             rejected_candidates += 1;
             eprintln!(
@@ -571,8 +514,8 @@ pub fn run_with_progress(
         trials: args.trials,
         rejected_candidates,
         rejected_quality_candidates,
-        continuity_policy: "Every training recording and the aggregate must not worsen baseline correct-ball unavailable time (missing or error greater than 0.5 m), close-range correct-ball unavailable time, longest correct-ball gap, or false-track time (floating-point roundoff only). Per recording, close-range RMSE may increase at most 0.01 m and RMS/mean absolute spatial lag at most 0.04 s; aggregate accuracy must not worsen. Missing diagnostics cannot replace measured baseline diagnostics. Held-out data is evaluation only.",
-        retention_policy: "Only listed search dimensions may change, including warm starts. Hypothesis timeout, observable-miss timeout, near clear-miss timeout and distance, obstacle source-time tolerance, legacy per-frame confidence factors, good-localization gate, field-boundary margin and validity decay rate, maximum detection distance and output threshold remain at the evaluation baseline. Optional hidden/visible-missed/competing-hypothesis/near-visible-missed confidence rates are searched only when enabled in the baseline (hidden 0..0.3/s; visible-missed 0..4/s; competing 0..2/s; additional near-visible-missed 0..40/s). The optional nearby-spawn validity factor is searched from 0 to 1 only when enabled in the baseline; omitted legacy values keep legacy spawn confidence. Legacy None rates retain their prior behavior; omitted field margin, field decay rate and detection distance retain their zero legacy defaults, and an omitted good_localization retains true.",
+        continuity_policy: "Only aggregate training close-range position RMSE and velocity-vector RMSE must not worsen, with floating-point roundoff tolerance. Close range is truth within 1m of the robot. No per-recording, global accuracy, availability, lag or false-track guard. Missing close estimates retain an objective penalty. Held-out data is evaluation only.",
+        retention_policy: "Only listed search dimensions may change, including warm starts. Hypothesis timeout, observable-miss timeout, near clear-miss timeout and distance, obstacle source-time tolerance, legacy per-frame confidence factors, good-localization gate, field-boundary margin and validity decay rate, maximum detection distance and output threshold remain at the evaluation baseline. Optional hidden/visible-missed/competing-hypothesis/near-visible-missed confidence rates are searched only when enabled in the baseline (hidden 0..0.3/s; visible-missed 0..4/s; competing 0..2/s; additional near-visible-missed 0..40/s). The optional nearby-spawn validity factor is searched from 0 to 1 only when enabled in the baseline; omitted legacy values keep legacy spawn confidence. Legacy None rates retain their prior behavior. Numeric limits use literal semantics.",
         tuned_parameter_pointers: tuned_parameter_pointers(&baseline),
         penalty_metres: args.penalty_metres,
         namespace: &args.namespace,
@@ -631,24 +574,6 @@ pub fn run_with_progress(
         args.output.display()
     );
     Ok(())
-}
-
-// Check each clip so an improvement in an easy scene cannot hide a regression
-// in a contested-ball scene. Only evaluate these additional passes for potential
-// new bests; ordinary candidates use the aggregate pass alone.
-fn preserves_each_recording(
-    recordings: &[Recording],
-    parameters: &BallFilterParameters,
-    baseline_scores: &[Score],
-    penalty: f64,
-) -> Result<bool> {
-    for (recording, baseline) in recordings.iter().zip(baseline_scores) {
-        let score = evaluate(std::slice::from_ref(recording), parameters, penalty)?;
-        if !preserves_recording_quality(&score, baseline) {
-            return Ok(false);
-        }
-    }
-    Ok(true)
 }
 
 /// Each evaluation creates fresh trackers and only borrows the recordings and

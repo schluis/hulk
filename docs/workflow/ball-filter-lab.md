@@ -115,7 +115,7 @@ require their recorded datasets/binaries. To reconstruct an old source checkout,
 use `git worktree add --detach <path> refs/tags/archive/pre-lab-<variant>-20261004`.
 Use the shared lab and experiment branches for new comparisons.
 
-### Velocity-aware scoring
+### Previous velocity-aware scoring (v9)
 
 Objective `single_ball_position_velocity_v9` scores the published velocity vector
 in Field coordinates, in addition to position, availability and false tracks.
@@ -137,7 +137,7 @@ velocity-unavailable time may not worsen, either globally or per recording.
 The horizon weights velocity accuracy; it does not evaluate a future physical
 trajectory or assume a ball will move at constant velocity for 300 ms.
 
-Re-evaluate every baseline under v9 before comparing new candidates. Losses
+For historical v9 comparisons, re-evaluate every baseline under v9. Losses
 from v8 and v9 are not directly comparable. For clean single-ball fast-shot
 checks, also inspect the primary hypotheses: one sustained track is the target,
 while clutter recordings may legitimately require alternative hypotheses.
@@ -218,3 +218,21 @@ Local evidence and reproducible commands are under
 `parity-comparison.json`, `search/protocol.json`, `search/status.json`, and
 `occlusion/summary.json`. Diagnostic source/binaries are preserved there without
 adding instrumentation to the production filter. All jobs are finished.
+
+
+### Current close-range kicking objective (2026-10-05)
+
+At the user's request, `close_ball_position_velocity_v10` optimizes only ball truth
+within 1 metre of the robot. It sums the independently normalized bounded position
+loss and the bounded velocity-vector loss over a 300 ms horizon. Missing estimates
+retain the same penalty in each close term. The only hard acceptance guards are
+aggregate training close-range position RMSE and close-range velocity RMSE; both
+must stay at or below the fixed preferred baseline. Per-recording guards and all
+other metric guards are removed. Individual recordings, far-ball accuracy, lag,
+false tracks and availability remain visible diagnostics. Development recordings
+remain evaluation-only. Numeric parameter semantics stay `literal_limits_v1`.
+
+The scoring and guard change applies to the tuner and simulator companion branch;
+the production filter implementation is unchanged during this search. Commits stay
+local and must not be pushed without another user instruction. Compare v10 runs
+only with baselines re-evaluated under v10.
