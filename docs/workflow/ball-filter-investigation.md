@@ -1433,6 +1433,18 @@ accounting fixtures explicitly disable the cap; the dedicated test covers the ca
 and literal zero. The legacy warm-start test's expected configured boundary decay
 is updated to 0.5. Local diagnostic examples are excluded from this commit.
 
+### E50 — Exhaustive baseline/candidate parameter-block crossover
+
+Prepared while E48 finishes: 256 combinations of eight parameter blocks from
+the original baseline and E43. Blocks are confidence cap, field decay, merging,
+rest threshold, matching distance, noise/covariance, damping, and publication.
+This separates the useful changes from interactions that caused the E44 failures;
+random mutation in E48 currently gravitates toward near-baseline candidates with
+small remaining regressions. Use the same 216 development clips, unchanged E48
+guards including the approach and reversal diagnostics, and frozen cap-only
+runtime. Reserved seeds67/68 remain untouched. Evidence and exact block mapping:
+`G/block-ablation/protocol.json`. No additional runtime complexity is introduced.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
