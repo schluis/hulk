@@ -59,7 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: trace first-observation acquisition on E75's high-speed challenge and audit
+Next: E76 traced the first high-speed acquisition; audit raw percept geometry,
+assignment decisions, and
 flight projection. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2270,6 +2271,40 @@ must be stress-tested with imperfect radius estimates before claiming real-world
 benefit; do not exploit synthetic perfect radius. Next trace high-speed first
 observations and ground-projection rejection during flight before choosing an
 implementation. All capture/export/analysis jobs terminal; no filter change adopted.
+
+### E76 — First fast-kick acquisition trace [DIAGNOSED, NOT FIXED]
+
+Frozen accepted-baseline evaluator and original parameters replayed E75 high-speed
+train-42 with full hypothesis states; job completed successfully. Evidence:
+`G/airborne-challenges/first-kick-trace/{frames-0.jsonl,report.json,summarize.py,first-observations.json}`.
+This inspected challenge remains development data. No production changes.
+
+- At output3.026s, detection timestamp3.002s updates the selected resting track;
+  support62.528, estimated velocity zero. Actual ball has started moving.
+- At output3.068s, timestamp3.042s supplies one ball detection. Another resting
+  hypothesis now has support1.902 and one motion observation at x≈0.730m;
+  selected track remains at x≈1.493m, last_seen3.002s. Hypothesis count remains4.
+  Do not call this a new birth: an existing weak track may have absorbed it.
+- At output3.100s, timestamp3.082s supplies another detection. The other track
+  has support2.666, two motion observations and resting state x≈0.434m. Its latest
+  size-plausibility flag is false. Selected stale track remains x≈1.469m while
+  truth is already x≈−0.558m in current Ground coordinates.
+- Subsequent timestamps3.122/3.162 contain no ball detections. The alternative
+  never obtains a third observation in this acquisition window. The selected
+  track retains support62.528 and zero velocity.
+
+This distinguishes observation availability, association/selection, and motion
+confirmation: the filter receives two post-kick detections but does not publish
+motion before losing observations. It does not yet prove which association gate
+redirected the first percept, or whether the second percept is accurate (its size
+flag is false). The baseline maximum distance is1.601m, reacquisition gate0.1365m;
+inspect actual assignment costs/protection before blaming either threshold.
+The robot had walked to Field x≈2m by kick time, shortening observation opportunity.
+A two-observation velocity alone cannot be trusted here: the paired projected
+positions imply substantially slower motion than truth. Next audit raw detection
+geometry/timestamps and assignment decisions, then test a narrowly justified
+change against E25/E73 false-motion counterexamples and the complete development
+suite. Fresh67/68 untouched; memory≈4.83GB; no agents or pushes.
 
 ## 5. Evidence map and operational handoff
 
