@@ -1247,6 +1247,24 @@ duplicate counts. Do not adopt or mark goal complete yet. These18 recordings
 are now inspected; they cannot be fresh validation for a retuned candidate.
 Artifacts `G/audit9/comparison.json`, report/frame files, freeze and hashes.
 
+E40 manual review: primary close duplicates19.190→7.606s (−60.4%); zero-near
+7.756→8.776s. Initial200ms velocity3.068974→3.024124m/s (−1.46%) with
+no missing output. However seed64 approach has0.52s additional wrong output,
+including3.61m error at true range0.196m. Reject adoption despite numerical pass.
+At51.280s: nearby primary support2.811, newer distant clutter1.0; no confirmed
+track>=3, so ranking cap0 selects newest clutter. State in
+`G/audit9/diagnosis/approach-state`; exact diagnostic replay preserves runtime.
+
+### E41 — Positive selection cap with bounded stored support
+
+Hypothesis: cap0 discards useful relative support when all hypotheses fall below
+confirmation. Test existing ranking caps0/0.5/1/2/3/4/8/1000, stored ceilings
+None/4/5/8, uncertainty0/0.01/0.1 (97 configs including original baseline).
+All other E39 parameters fixed,198 inspected clips and21 groups. No new runtime
+mechanism beyond E39 optional cap. Preserve close/fast/availability guards and
+inspect approach/contested before freezing new candidate. Artifacts
+`G/confidence-selection/`. Need new seeds65+ for fresh validation.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
