@@ -942,3 +942,5 @@ parameters before replaying the requested parameters. Historical files using
 zero-as-disabled limits need the explicit parameter migration described above.
 On a remote server, forward the port with `ssh -L 8765:127.0.0.1:8765 HOST`.
 Rendering is on demand, without a GPU or a continuously growing image queue.
+
+Use `./simulator demo --seed 4243` for a different reproducible realization of all nine scenarios (default seed: 42). Demo never searches parameters.

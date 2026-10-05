@@ -63,6 +63,9 @@ enum Command {
         parameters: Option<PathBuf>,
         #[arg(long, default_value = "127.0.0.1:8765")]
         image_listen: std::net::SocketAddr,
+        /// Random seed shared by the scenario suite.
+        #[arg(long, default_value_t = 42)]
+        seed: u64,
         /// Do not launch the desktop 3D viewer (HTTP images remain available).
         #[arg(long)]
         headless: bool,
@@ -156,6 +159,7 @@ fn main() -> Result<()> {
         output,
         parameters,
         image_listen,
+        seed,
         headless,
         exit_after,
     }) = &args.command
@@ -171,6 +175,7 @@ fn main() -> Result<()> {
                 parameters: parameters.as_deref(),
                 images: &images,
                 viewer: !headless,
+                seed: *seed,
             },
             true,
             1,
@@ -383,6 +388,8 @@ mod cli_tests {
             "demo",
             "--headless",
             "--exit-after",
+            "--seed",
+            "4243",
         ])
         .unwrap();
         assert!(matches!(
@@ -390,6 +397,7 @@ mod cli_tests {
             Some(Command::Demo {
                 headless: true,
                 exit_after: true,
+                seed: 4243,
                 ..
             })
         ));

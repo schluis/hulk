@@ -132,6 +132,7 @@ pub enum TuningSource<'a> {
         parameters: Option<&'a Path>,
         images: &'a ball_filter_tuner::observation::ImageServer,
         viewer: bool,
+        seed: u64,
     },
     Record,
     RecordOnly {
@@ -371,7 +372,7 @@ pub fn run(
     );
     let mut preview = None;
     let result = (|| -> Result<()> {
-        if let TuningSource::Demo { images, .. } = source {
+        if let TuningSource::Demo { images, seed, .. } = source {
             let mut manifest = Vec::new();
             for (index, (family, count, width)) in DEMO_SCENARIOS.iter().enumerate() {
                 ensure!(!shutdown.load(Ordering::Relaxed), "demo stopped");
@@ -399,7 +400,7 @@ pub fn run(
                     parameter_root,
                     location,
                     &path,
-                    42,
+                    seed,
                     1,
                     RosTime::from_nanos(index as i64 * 41_000_000_000),
                     &progress,
@@ -415,7 +416,7 @@ pub fn run(
                 images.add(ball_filter_tuner::observation::Clip::read(
                     &path, &effective, &effective,
                 )?);
-                manifest.push(serde_json::json!({"family":family,"recording":path,"seed":42,"opponents":opponents,"recipe":recipe}));
+                manifest.push(serde_json::json!({"family":family,"recording":path,"seed":seed,"opponents":opponents,"recipe":recipe}));
                 write_checkpoint(
                     &output.join("demo.json"),
                     &serde_json::to_vec_pretty(&serde_json::json!({
