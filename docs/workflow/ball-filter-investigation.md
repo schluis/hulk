@@ -59,8 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: audit9 rejected after approach review; E41/E42 did not generalize.
-E43 tests gentler boundary decay with stored cap. Working runtime has
+Next: audit10 frozen E43 candidate; collect new seeds65+ and inspect fresh
+accuracy/recovery/duplicates before acceptance. Working runtime has
 experimental optional cap; default parameters remain original until fresh validation succeeds.
 
 
@@ -1296,6 +1296,30 @@ ball tracks too. Test stored caps3.5/4/4.5/5/6 crossed with boundary decay
 Original selector restored; only optional stored cap is experimental runtime.
 Require uncapped original score parity, existing guards and targeted approach
 review; fresh validation needed. Artifacts `G/confidence-decay/`.
+
+E43 initial106 complete: original baseline score parity exact,118 tests pass.
+No full pass; best cap4/rate0/distance0.6 misses only audit8b position by0.565%.
+The prior E39 stored field-decay rate was2.0 (checked exact candidate file).
+Refine80 configs around cap3.75–4.15, rate0/0.25/0.5/1, distance0.55–0.85.
+No fresh data scored.
+
+E43 refinement186 total: refine-040 cap3.95, boundary decay0.5 and confidence
+distance0.55 passes all21 close p/v groups, pooled fast/bounded/availability and
+reversal guards. Pooled position−28.25%, velocity−5.66%, fast−3.55%; wrong
+−13.576s, false+13.602s, close correct-missing−16.704s, velocity missing unchanged.
+Prior audit9 approach position0.358202→0.163544m; catastrophic clutter selection
+removed. Remaining additional close wrong time0.04s at error0.5007–0.5074m
+after1.5s gap. Contested extra wrong4.986/3.002s occurs at true ranges>=3.288/
+1.796m respectively, no extra close wrong time; document long-range extrapolation
+tradeoff. These18 clips are development, not new validation.
+
+### E44 — Audit10 frozen cap/decay candidate
+
+Freeze E43 refine-040 and evaluator hashes under `G/audit10/` before new captures.
+Seeds65–76, first two complete nine-scenario suites by ordered coverage success;
+four isolated captures at a time, extras preserved unscored. Same acceptance
+criteria as preceding audits, including manual review. Runtime only adds optional
+stored-confidence cap; production parameter defaults unchanged until acceptance.
 
 ## 5. Evidence map and operational handoff
 
