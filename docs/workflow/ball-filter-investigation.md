@@ -59,7 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: audit10 rejected; E45 isolates merging/reacquisition effects on approach65.
+Next: audit10 rejected; E45/E46 failed. E47 calibrates spawn support and
+resting transition with bounded confidence to target approach65.
 Reserved67/68 remain unscored. Working runtime has
 experimental optional cap; default parameters remain original until fresh validation succeeds.
 
@@ -1348,6 +1349,53 @@ reacquisition0.1365(original)/0.25/0.5:90 plus baseline and prior candidate.
 Retain original runtime with optional cap; no new algorithm. Require existing
 close/fast/availability guards and inspect approach/reversal/duplicates before
 new frozen validation. Reserved67/68 untouched. `G/merge-reacquisition/`.
+
+E45 initial92 configs: no full pass, best worst-group close position remains
++9.29% on audit10a. Expand90 configurations to reacquisition1/1.5/3m because
+observed residual1.10m is outside the original and first grid limits.
+
+Additional diagnosis: candidate last observed true ball at46.162s while moving
+(~0.76m/s) and within0.28m. At48.32s it has transitioned to Resting by prediction
+and lies0.612m away; quiet-ball reacquisition protection may now apply. Its
+current velocity is zero, so `protect_prior` cannot reconstruct pre-gap motion
+by undoing damping. A future targeted fix could preserve last-observed speed
+across prediction-only resting transitions; first test wider existing gates.
+Do not confuse deterministic slowing with observed evidence that the ball rested.
+
+E45 complete182 configs: no full pass. Wider gates1–3m worsen the targeted
+approach position, so do not loosen them globally.
+
+### E46 — Retain speed at the last observation across predicted rest
+
+Hypothesis: `protect_prior` reconstructs observed speed by undoing damping, but
+cannot do so once prediction converts the model to Resting (velocity becomes0).
+Preserve optional speed-at-last-observation metadata on hypothesis updates and
+coherent merges; use it for quiet-ball protection, with old inverse-damping
+fallback for missing metadata. New observations overwrite the metadata; pure
+prediction leaves it unchanged. No new tuning parameter. Test transition to
+predicted rest followed by an actual stationary observation, plus existing tests.
+Compare original parameters and frozen E43 parameters against the unchanged
+original E45 baseline216-clip results; do not redefine baseline with new runtime.
+Sources before/after and artifacts under `G/observed-motion/`. Default parameters
+unchanged, reserved67/68 remain unscored.
+
+E46 rejected for current candidate:119 tests pass. Original parameters close
+metrics essentially unchanged; cap candidate worst-group position1.14519 vs
+1.09291 without metadata; approach position1.16996x baseline. Quiet-guard
+eligibility alone does not fix overall matching. Preserve before/after sources
+and decision under `G/observed-motion/`; restore all5 modified files exactly.
+
+### E47 — Spawn support and predicted-rest transition with a stored cap
+
+Existing nearby-spawn factor transfers up to1.5 confidence from parent to newborn.
+For cap3.95 this can unconfirm the parent, unlike the unbounded baseline.
+Test spawn factors0/0.25/0.5/0.75, resting-speed thresholds0/0.02/0.05/0.075/0.1,
+and merge0.1/0.2/0.25/0.3 (80 plus controls;82 total). Later predicted rest also
+retains moving Kalman state through observation gaps, unlike E46 metadata alone.
+216 inspected clips; original selector/runtime plus optional stored cap only.
+All23 group close p/v and existing fast/availability guards remain; inspect
+approach and reversal. Reserved67/68 remain unscored.
+Artifacts `G/motion-confirmation/`.
 
 ## 5. Evidence map and operational handoff
 
