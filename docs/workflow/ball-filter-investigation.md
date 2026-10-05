@@ -3339,6 +3339,20 @@ predeclared protocol. Seeds69/71 continue; replacement seeds follow original ord
 Do not restart capture or alter frozen candidate. E112 jobs terminal; only E111
 capture remains active, memory~6–7GiB under45GiB cap. No pushes/source changes.
 
+E111 capture checkpoint: suites69 and71 completed all9 scenarios. Seed70 fell;
+seeds72/74 failed minimum reacquisition-opportunity coverage in fast-crossing
+(0<1), NOT falls. Both failures preserved; score-based filtering remains prohibited.
+Seed73 still running under exec10447. First six successful suites will follow the
+original seed order; if original69–78 sequence is insufficient, do not silently
+shrink sample size or score a favorable subset—record the operational shortfall
+before extending capture under the same frozen candidate and coverage rules.
+
+Prepared evaluation scripts pass Python syntax checks. Baseline exports now use
+`--verify` to compare every replay output to recorded live output (position/velocity
+within1e−4 and exact last_seen), so incomplete/incompatible captures cannot quietly
+enter comparison. Script SHA256 recorded in validation-script-hashes.json. No
+candidate scoring has started. Resource slice stays~5–7GiB, max45GiB, nice15.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
