@@ -908,6 +908,14 @@ diagnosis or tuning. Freeze candidate before evaluating them, verify baseline
 live/replay, apply unchanged fresh acceptance rules. Seed56 remains unused.
 Protocol prepared at `G/audit5/protocol.json`; candidate not yet selected.
 
+E27 local refinements complete:2,049 total configs, still no nonbaseline full
+pass. Continue with an explicit minimax search: up to8 generations ×64 samples
+around the best four worst-group p/v/fast ratios, shrinking noise perturbations,
+seed2026100535. Preserve missing/bounded-loss constraints; allow small existing
+publication blend variation. Every generation records its centres and settings.
+Stop early only after all group ratios<0.999, then freeze for reserved validation.
+No new data enters optimization.
+
 ## 5. Evidence map and operational handoff
 
 - `M` = `/home/schluis/hulk/logs/ball-filter-motion-fixes-20261005/`.
