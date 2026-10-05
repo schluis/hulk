@@ -59,8 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: inspect E71 corrected-height grid040's residual velocity regression before
-further refinement; all90 calibration results failed the full screen,
+Next: test longer coherent evidence for slow-motion confirmation after E72 showed
+that E71's residual velocity regression is real, with unchanged close coverage,
 and extend simulator/evaluation coverage for the user's fast and airborne kicks.
 E67's smooth position-weighted velocity credit is implemented as a diagnostic;
 the publication candidate slightly worsens it. E66's moving reconfirmation fails
@@ -2116,6 +2116,35 @@ Next inspect grid040's original-suite velocity regression on identical correctly
 tracked frames and measure smooth joint credit before deciding whether refinement
 is justified. This is diagnosis, not relaxation of the goal's accuracy requirements.
 Runtime/defaults remain unchanged, no jobs live, no fresh seeds consumed.
+
+### E72 — Paired diagnosis of corrected covariance calibration [COMPLETE]
+
+Original nine-clip suite, E71 corrected-height grid040 versus original baseline.
+Artifacts: `G/height-calibration/paired-original/` (frozen protocol, exports,
+paired diagnostics, all-range and close-only error windows, smooth joint credit).
+All jobs terminal; runtime untouched. Previously inspected data, no fresh seeds.
+
+Close correctly associated velocity RMSE 0.640577568 -> 0.649581754 m/s, while
+associated missing time remains exactly4.834 s. No correct close-position frames
+lost or gained. Thus the velocity regression is real, not recovered difficult
+frames changing the evaluated population. Smooth close joint credit decreases
+0.883812121 -> 0.880734074; fast credit0.533123264 -> 0.532906549.
+
+Top close-error windows: sideline365.0–365.2 s, truth speed1.827m/s at0.453m,
+baseline estimated speed0.748m/s versus candidate0.00146m/s. Brief-gaps183.0–183.8s:
+truth slows from0.72 to0.60m/s while candidate velocity is zero; baseline follows
+about0.69 to0.59m/s. Earlier all-range windows also show delayed motion acquisition.
+These observations support a motion-confirmation bottleneck as uncertainty grows;
+they do not justify simply lowering every significance gate.
+
+Next hypothesis: preserve existing three-point fast confirmation, but allow a
+longer coherent observation window to establish slower motion when short intervals
+are individually insignificant. Distinct from rejected E07 (relaxing the same
+three-point span), E25 (two-point confirmation), and E13 (three-point weighted fit).
+Must retain isolated-outlier, odometry and long-gap invariants, compare fixed
+original parameters first, and assess fast onset/false motion before calibration.
+No new algorithm implemented at this checkpoint; high-speed/airborne validation
+extension remains required and is not covered by this slow-motion diagnosis.
 
 ## 5. Evidence map and operational handoff
 
