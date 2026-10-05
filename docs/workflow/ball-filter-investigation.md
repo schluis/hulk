@@ -59,7 +59,7 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: inspect E66's harmful reset windows before revising abrupt-motion recovery,
+Next: test the measurement-uncertainty mismatch isolated by E68 before revising abrupt-motion recovery,
 and extend simulator/evaluation coverage for the user's fast and airborne kicks.
 E67's smooth position-weighted velocity credit is implemented as a diagnostic;
 the publication candidate slightly worsens it. E66's moving reconfirmation fails
@@ -1990,6 +1990,43 @@ correct-track availability. Record the unfavorable result; do not tune the metri
 to reverse it. Formula remains supplementary, not a production objective change.
 Existing <=15m/s evaluation domain retained solely for old-data comparability;
 new high-speed/airborne challenge validation must explicitly cover its envelope.
+
+### E68 — Trace harmful moving reconfirmation [DIAGNOSIS COMPLETE]
+
+Paired nine-clip audit4a exports and analysis: `G/moving-reconfirmation/failure-audit/`.
+Instrumented frozen reset evaluator/source/log: `G/moving-reconfirmation/trace/`.
+120 tests pass for instrumentation builds; production source restored afterward.
+All export, analysis and trace jobs completed. No new runtime retained.
+
+Dominant regression is fast-near-shot at 134.2–134.4 s, true range about 7.16 m:
+mean truth speed 4.14 m/s, baseline estimated speed 3.07 m/s, experimental estimate
+9.29 m/s. Extra integrated squared velocity error in that window alone is 26.207.
+Ground-truth height remains about 0.105 m: this failure is not airborne motion.
+Paired audit loses 0.040 s correct all-range position and gains none; close metrics
+in this suite are effectively unchanged. Do not hide the far-range failure.
+
+Exact reset at detector time 134.162 s has support 43.951; a confirmation-support
+guard would not fix it. Old state velocity (2.076, 1.856) becomes (-11.904, 2.968).
+Three observation positions transformed into the same current robot frame:
+(7.035, -0.047), (6.347, 0.092), (6.083, 0.190), at 40 ms intervals. Their x
+variances are 0.01501, 0.01003, 0.00798 m^2. The existing significance and velocity
+consistency gates accept this apparently coherent backward trajectory. Trace
+appears twice because diagnostic evaluator scores the clip and aggregate separately;
+these are repeated replays, not two runtime resets in one run.
+
+Measurement-model audit: filter pixel variance is `(detected_radius * relative_noise)^2`;
+simulator centre noise is additive Gaussian with fixed pixel standard deviation
+(independent of apparent radius). Thus distant small images can receive too-small
+pixel uncertainty under this model. This is a code-supported mismatch, not yet
+proof that a noise floor fixes the regression. Also audit the projection Jacobian:
+mean uses ball-centre height while `project_noise_to_ground` uses the ground plane.
+
+Next controlled experiment: fixed additive pixel-noise floor, first on baseline
+without reconfirmation, then combined only if justified. Evaluate near-range
+accuracy and fast onset as well as far-range stability; no threshold tuning against
+fresh seeds. A documented pixel uncertainty floor is more physically grounded than
+silently restricting recovery by distance or confidence. Do not infer measured
+real-world pixel noise from the simulator's default.
 
 ## 5. Evidence map and operational handoff
 
