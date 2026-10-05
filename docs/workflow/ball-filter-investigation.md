@@ -59,7 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: audit9 frozen E39 cap4 candidate on reserved63/64. Working runtime has
+Next: audit9 passes numerical guards; review approach outlier, contested wrong
+time, recovery and duplicates before acceptance. Working runtime has
 experimental optional cap; default parameters remain original until fresh validation succeeds.
 
 
@@ -1232,6 +1233,19 @@ wrong−14.488s, false+12.184s, correct-missing−11.614s, velocity-missing unch
 Reversal improvement preserved. Freeze exact candidate/runtime in `G/audit9/`
 before scoring previously reserved63/64. Fresh criteria unchanged; review false
 time and duplicates as well as numerical guards. Default parameters unchanged.
+
+### E40 — Audit9 confidence-cap candidate
+
+Fresh reserved63/64 baseline replay verified; all numerical guards pass.
+Close position0.232324→0.198630m (−14.50%); velocity0.650333→0.639321m/s
+(−1.69%); fast velocity2.265821→2.175009m/s (−4.01%). Both suites close
+position/velocity nonregress; missing velocity2.21s unchanged. Correct-track
+missing9.924→5.274s, but wrong68.704→70.052s and false78.422→79.800s.
+Manual review outstanding: approach position0.277227→0.477615m despite
+less wrong time; contested wrong18.942→26.930s, initial recovery and primary
+duplicate counts. Do not adopt or mark goal complete yet. These18 recordings
+are now inspected; they cannot be fresh validation for a retuned candidate.
+Artifacts `G/audit9/comparison.json`, report/frame files, freeze and hashes.
 
 ## 5. Evidence map and operational handoff
 
