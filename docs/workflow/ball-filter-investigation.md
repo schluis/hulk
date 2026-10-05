@@ -59,8 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: audit9 passes numerical guards; review approach outlier, contested wrong
-time, recovery and duplicates before acceptance. Working runtime has
+Next: audit9 rejected after approach review; E41/E42 did not generalize.
+E43 tests gentler boundary decay with stored cap. Working runtime has
 experimental optional cap; default parameters remain original until fresh validation succeeds.
 
 
@@ -1264,6 +1264,38 @@ All other E39 parameters fixed,198 inspected clips and21 groups. No new runtime
 mechanism beyond E39 optional cap. Preserve close/fast/availability guards and
 inspect approach/contested before freezing new candidate. Artifacts
 `G/confidence-selection/`. Need new seeds65+ for fresh validation.
+
+E41 complete97 configs: positive ranking cap3, uncertainty0.1 reduces approach
+position0.622→0.160m, but regresses audit4b position36.2%; smaller passing
+ranking settings retain the outlier. No adoption. These caps alter confirmed
+competition as well as the failing unconfirmed case.
+
+### E42 — Support-first ties only without a confirmed incumbent
+
+Test a small selector change: on equal ranking score, if no confirmed incumbent,
+compare effective support before recency. Confirmed-track ties retain recency
+first, preserving E01. No new parameter. Regression test mirrors observed
+2.8-support nearby track versus newer1.0 clutter in both vector orders.
+Three configs: original parameters, E39 cap4 candidate, uncapped candidate.
+Compare against original E41 baseline results, not the modified-runtime baseline.
+198 inspected recordings; review approach and all existing guards.
+Artifacts `G/unconfirmed-selection/`. Default config still unchanged.
+
+E42 rejected:119 tests passed and approach RMSE0.622→0.162m, but cap4
+full replay regresses original position4.816x and several other groups.
+Uncapped variant also misses audit8b. Preserve source/patch under
+`G/unconfirmed-selection/`; restore original selector byte-for-byte.
+
+### E43 — Boundary decay with bounded confidence
+
+Cap4 approach confidence drops below3 after about1s, much sooner than8.3s
+from hidden decay alone. Boundary stored decay penalizes actual off-field
+ball tracks too. Test stored caps3.5/4/4.5/5/6 crossed with boundary decay
+0/0.05/0.1/0.2/0.25/0.35/0.5 and confidence distance0.6/0.8/1.2.
+106 configurations including original baseline,198 inspected recordings.
+Original selector restored; only optional stored cap is experimental runtime.
+Require uncapped original score parity, existing guards and targeted approach
+review; fresh validation needed. Artifacts `G/confidence-decay/`.
 
 ## 5. Evidence map and operational handoff
 
