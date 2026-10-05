@@ -155,6 +155,7 @@ mod tests {
 
     fn parameters() -> BallFilterParameters {
         let mut parameters = crate::test_parameters();
+        parameters.selection_confidence_cap = 1_000_000.0; // Test the field prior with uncapped ranking.
         parameters.field_boundary_confidence_decay_distance = 0.3;
         parameters.field_boundary_margin = 0.0;
         parameters.field_boundary_validity_decay_rate = 0.0;

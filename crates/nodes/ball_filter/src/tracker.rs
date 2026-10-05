@@ -310,6 +310,7 @@ mod tests {
         let mut parameters = crate::test_parameters();
         parameters.maximum_camera_matrix_age = Duration::from_millis(20);
         parameters.visible_missed_detection_timeout = Duration::from_millis(160);
+        parameters.visibility_uncertainty_scale = 0.0; // Individual cases opt into covariance margins.
         // Each scenario enables the additional policies it exercises.
         parameters.near_visible_missed_detection_timeout = Duration::from_secs(1_000_000);
         parameters.near_visible_missed_detection_distance = 0.0;
@@ -1893,6 +1894,8 @@ mod tests {
         parameters.hidden_validity_exponential_decay_factor = 1.0;
         parameters.visible_validity_exponential_decay_factor = 1.0;
         parameters.velocity_decay_factor = 1.0; // Constant-speed reference, without friction.
+        parameters.resting_velocity_threshold = 0.0;
+        parameters.selection_confidence_cap = 1_000_000.0;
         parameters.log_likelihood_of_zero_velocity_threshold = 0.5;
         parameters.maximum_matching_cost = 10.0;
         parameters.validity_output_threshold = 0.5;
