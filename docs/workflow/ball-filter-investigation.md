@@ -59,10 +59,10 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E77 isolates diffuse-track association and likely false second percept;
-E78's relative logarithmic penalty fixes the first match but regresses full replay.
-Inspect audit3a's regression before selecting a more specific association change;
-airborne projection remains an independent open issue. Explicit >15m/s/airborne captures expose large baseline errors;
+Next: E79 traced E78's worst regression to likely false-percept capture. E80's
+size-qualified preference removes the large regression but still fails original-suite
+velocity guards and high-speed velocity acquisition. Inspect those remaining failures
+and primary/auxiliary output interaction; airborne projection is independently open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
 E67's smooth position-weighted velocity credit is implemented as a diagnostic;
@@ -2365,6 +2365,54 @@ gain. No fresh67/68 evaluation. All jobs terminal, filter source restored. Next
 inspect the audit3a regressions alongside the first-kick counterexample before
 choosing a more selective association or motion-evidence rule; unsaturated
 uncertainty preference alone is insufficient. Preserve single-outlier protection.
+
+### E79 — Logarithmic association regression is outlier capture [DIAGNOSED]
+
+Paired audit3a exports locate E78's worst close-position regression in fast-near-shot
+seed50000049,143.6–144.6s. Evidence `G/association-log-penalty/failure-audit/`
+includes compact paired frames, position-window rankings and detailed failure window;
+`trace/` freezes instrumented candidate source/binary/assignment log. Source restored.
+
+At143.642s, after280ms without a matched observation, a percept projects to
+(0.57835,−0.61464)m with radius exactly8px (consistent with synthetic false positives).
+The established moving track predicts(−0.08721,0.34990)m, covariance trace≈4.267.
+E78 gives that track score−0.64371 versus−2.03999 for the diffuse competitor, thus
+redirecting this likely outlier into the established history. At output143.664s,
+truth is(0.20708,0.31488)m, baseline output(−0.08859,0.40169), E78 output
+(0.50977,−0.67252). Subsequent missing detections let corrupted prediction persist.
+In close window144.2–144.4s, baseline position SSE0.376772m²s versus1.276504m²s,
+equivalent RMSE1.37254m versus2.52636m over0.2s. Both are wrong; candidate is worse.
+This explains why E77's beneficial preference cannot be applied indiscriminately.
+
+### E80 — Size-qualified logarithmic association [NOT ACCEPTED]
+
+Use E78's relative log uncertainty preference only when existing radius_consistency
+returns Some(true); retain baseline bounded penalty for false/unknown size geometry.
+This does not hard-code synthetic8px, change perception, or reject airborne enlarged
+images: the existing check rejects only substantially undersized apparent balls.
+Still requires eventual radius-noise stress; synthetic true-ball radius is ideal.
+Original parameters unchanged, all118 filter tests pass. `G/association-size-log/`
+contains source before/after, binary/config SHA256 protocol, build log and evaluator.
+Working source restored immediately after build. Full216 development evaluation
+completed under45GiB/nice15; held-out67/68 untouched. Results (`comparison.json`):
+
+| Metric | Baseline | Candidate | Change |
+|---|---:|---:|---:|
+| Close position RMSE (m) |0.243549712|0.243414374|−0.05557%|
+| Close velocity RMSE (m/s) |0.678003173|0.677706196|−0.04380%|
+| Fast close velocity RMSE (m/s) |2.350457712|2.349078535|−0.05868%|
+| All velocity RMSE (m/s) |0.781474412|0.782775693|+0.16652%|
+
+Wrong output−3.060s, correct-close missing−0.198s, raw close velocity missing0change.
+Worst close position+0.2665%audit9a; close velocity+1.2244%original, fast+1.7893%
+original; all velocity+6.1522%audit6a. Does not satisfy existing suite guards.
+Challenge first match improves but zero velocity remains, and at3.100s output
+reverts toward stale publication history despite the size-qualified association.
+`challenge/first-observations.json` records this; do not count first-match recovery
+as end-to-end high-speed tracking. All jobs terminal, no adopted runtime change.
+Next inspect original-suite velocity regression and candidate primary versus
+auxiliary output after the suspicious second percept; do not weaken acceptance
+criteria or fresh-test this configuration merely because pooled gains are positive.
 
 ## 5. Evidence map and operational handoff
 
