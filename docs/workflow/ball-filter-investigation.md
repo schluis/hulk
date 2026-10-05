@@ -360,7 +360,18 @@ three partitions. Pooled close position 0.29143 → 0.22018 m; close velocity
 0.68842 → 0.65429 m/s; fast-close velocity 2.28775 → 2.23075 m/s. False-track and
 velocity-unavailable durations are unchanged; wrong-output time varies and must
 be reported. These are development results only, not goal completion.
-A further 192 local perturbations are running before candidate freeze.
+All 192 local perturbations completed. Frozen winner: **refine-106**, selected
+by summed close/fast-close velocity ratios among candidates that improve all
+three accuracy metrics in every development partition. Across 36 recordings:
+close position 0.29143 → 0.21530 m (−26.1%); close velocity 0.68842 → 0.63838 m/s
+(−7.27%); fast-close velocity 2.28775 → 2.20538 m/s (−3.60%).
+
+Diagnostic limitations: global velocity RMSE worsens 2.48%; first-200-ms velocity
+RMSE improves only 3.11421 → 3.09140 m/s, with position almost unchanged
+(0.29572 → 0.29595 m). Mean total hypotheses rises 6.547 → 6.670 (maximum 15),
+so this is not evidence of fewer candidates. This count includes clutter.
+Fresh validation is running with the frozen candidate and protocol; no success
+claim until that completes. Preferred default parameters are still unchanged.
 `fresh-protocol.json` predeclares two complete new nine-scenario suites with
 coverage-only replacements and no accuracy-based seed selection.
 
