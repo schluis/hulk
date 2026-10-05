@@ -46,8 +46,15 @@ Resting/moving transition experiments were rejected. Tooling now includes v11
 fast-close velocity loss, initial-position-covariance tuning, seeded no-search
 demos, and the image observer.
 
-The next task is **diagnosis of detection-to-hypothesis assignments**, not another
-large blind parameter search. No experiment is currently running.
+E06 association tracing is complete. E07 tested a full-span motion-significance
+check with fixed parameters and was rejected on all three replay partitions.
+Runtime code and preferred parameters remain unchanged from `0ed7a0910`.
+No search, capture, or evaluation job remains running.
+
+Next: use the trace to design **uncertainty-aware velocity initialization**, with
+stationary and clutter negative cases; separately trace the lifetime of hypotheses
+born far from truth. Do not loosen association gates or confirmation thresholds
+without a new measured reason. See E06/E07 for why.
 
 ### 2.2 Baseline and terminology
 
@@ -62,7 +69,7 @@ large blind parameter search. No experiment is currently running.
 
 ## 3. Next work — ordered plan
 
-### 3.1 A: Establish an association trace [NEXT]
+### 3.1 A: Establish an association trace [INITIAL TWO-CLIP AUDIT COMPLETE]
 
 **Question:** For each returning/fast-ball detection, why did the existing real-ball
 hypothesis fail to receive it?
@@ -82,7 +89,7 @@ hypothesis fail to receive it?
 first incorrect decision identified. Separate measured causes from hypotheses.
 **Exit:** select the smallest correction supported by those traces.
 
-### 3.2 B: Improve velocity acquisition [PLANNED; depends on A]
+### 3.2 B: Improve velocity acquisition [NEXT; informed by E06/E07]
 
 #### B1: Two-observation velocity initialization [UNTESTED]
 
@@ -233,6 +240,95 @@ rejections depended on their particular variants, objectives, and safeguards;
 consult the original report before making a stronger claim or repeating work.
 Reopen an archived approach only with a new trace-supported reason and a minimal
 comparison against the current normal filter.
+
+### 4.6 Association and evidence diagnostics
+
+#### E06 — Detection-to-track assignment trace [COMPLETE, 2026-10-05]
+
+Baseline `bf0e9df22`, unchanged preferred parameters. Replayed original
+fast-near-shot and contested recordings with temporary instrumentation of
+predicted states, measurement covariance, gate outcomes, assignment, and updates.
+The two compact frame exports are **byte-identical** to the frozen uninstrumented
+baseline. Instrumentation was removed after freezing its executable and patch.
+No runtime logging or new dependency remains in the preferred branch.
+
+Findings (times relative to the recording's first output cycle):
+
+- **Fast-near-shot, second shot:** ball-supporting detections at 10.002 and
+  10.042 s match the recent resting hypothesis; the next input at 10.082 s
+  already sees it moving. No repeated ball birth in this window. A new detection
+  at 10.202 s is about 4.97 m from the nearby truth sample, while the supporting
+  detection still matches the moving hypothesis. It is unsafe to call every
+  additional hypothesis a duplicate of the ball.
+- **Contested:** returning detection at 12.522 s spawns one new hypothesis.
+  The two closest retained predictions are 1.41/1.58 m away and were last seen
+  11.64/7.96 s earlier; both fail reacquisition distance. These are stale
+  predictions, not evidence that widening the gate would restore the true track.
+  Subsequent detections match the fresh track. It becomes resting before its
+  second observation, and internal moving mode resumes at 12.962 s, 440 ms after
+  birth. Published/selected moving mode appears at 12.998 s.
+- Three-observation motion confirmation first rejects velocity inconsistency,
+  then repeatedly rejects one insufficiently significant short displacement.
+  For example, the input at 12.682 s has displacement significances 11.83 and
+  3.08 against a required 9, while velocity inconsistency is only 2.74 against
+  its maximum 9. This is delayed motion recovery despite successful association.
+- The statistical association distance uses prediction covariance `P`, excluding
+  measurement covariance `R`. Recomputing with `P+R` changes **zero** pair
+  admissions in these two traces after the existing distance gates. This remains
+  a modeling question, but is not the demonstrated cause of these failures.
+
+Birth diagnostic (not truth identity classification): fast-near-shot has 27
+births, only one within 0.3 m of the nearby cycle's truth; contested has 17 births,
+three within 0.3 m. This includes initial acquisition. Truth is sampled at the
+next output cycle, not interpolated to detector time, and percept projection
+has error. Consequently “outside 0.3 m” is a supporting diagnostic, **not proof
+of a false detection**. Broad claims about real-world duplicate frequency are
+not warranted from these two synthetic clips.
+
+Row indices are local to an exposure and change when hypotheses are sorted or
+removed. The trace associates an assigned row with its before/after state and
+last-observation time; it does not introduce permanent track identity metrics.
+Spawns are measured from unassigned percepts, not changes in vector length.
+
+Evidence root `A` =
+`/home/schluis/hulk/logs/ball-filter-association-20261005/`:
+`baseline.json`, `instrumentation.patch`, `trace-evaluate`, `trace.log`,
+`trace-parity.json`, `analyze.py`, `pairs.json`, `motion.py`,
+`motion-reasons.json`, and `replay/`. Original capture-version parity was verified
+previously; this new parity check establishes instrumentation equivalence only.
+
+#### E07 — Full-span motion significance [REJECTED, 2026-10-05]
+
+**Hypothesis:** test significance over the full three-observation displacement
+instead of requiring each short displacement to exceed three sigma. Retain three
+observations, direction agreement, velocity consistency, time-gap handling, and
+correlated initial covariance. No parameter search or new parameters.
+
+The occluded-kick example improves selected-mode activation from 12.998 to
+12.696 s (302 ms earlier), but aggregate accuracy worsens:
+
+| Replay partition | Close position, before → candidate (m) | Close velocity, before → candidate (m/s) |
+| --- | ---: | ---: |
+| Original seed 42, nine clips | 0.18484 → 0.20317 | 0.65101 → 0.75155 |
+| Training seeds 42/43, 18 clips | 0.37891 → 0.43835 | 0.75328 → 0.89849 |
+| Development seed 4243, nine clips | 0.15759 → 0.23286 | 0.58672 → 0.71360 |
+
+Fast-close velocity also worsens in all partitions. These are identical-input,
+fixed-parameter comparisons against the retained tie fix. All data were already
+inspected; no fresh held-out audit was consumed. Passing 118 unit tests establishes
+code invariants, not quality. Rejected before promotion, despite the better
+individual example. Do not retry this relaxation unchanged.
+
+Preserved local branch: `experiment/ball-filter-span-motion-20261005`, commit
+`609a6acef4dc4247c9cec600ac18c5ca816ae7e3`. Evidence: `A/decision.json`,
+`A/span-experiment.patch`, `A/span-evaluate`, `A/span-{original,training,validation}/`,
+`A/build-candidate.log`, and `A/evaluate_candidate.py`.
+
+**Next question:** can a calibrated initial velocity and its uncertainty improve
+accuracy, rather than merely activating moving mode earlier? Separately determine
+whether long-lived off-truth births remain visible because of uncertainty,
+occlusion, retention rules, or real subsequent support. Do not conflate that
+lifetime problem with failed matching of consecutive real-ball observations.
 
 ## 5. Evidence map and operational handoff
 
