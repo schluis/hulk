@@ -78,7 +78,11 @@ change gate before testing a narrower reversal mechanism. E105 verifies gate0.70
 E106 narrower reversal improves target velocity5.1% and pooled fast1.19%, but fails
 audit3a position50.6%. Failure involves stale moving track blocking fresh near-truth
 hypothesis below confirmation3. Standalone E106 rejected; investigate selection
-interaction with E93-only control before any new validation. No live jobs from these
+interaction with E93-only control before any new validation. E107 finds73% of extra
+error has no near-truth hypothesis, limiting selection fixes. E108 close-only reversal
+improves velocity0.82%/fast1.11% but still fails audit9a position23.1%; rejected.
+Consider non-accelerating reversal evidence, not another fitted distance cutoff.
+No live jobs from these
 experiments; runtime restored, no pushes.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
@@ -3182,6 +3186,62 @@ should not lose indefinitely to a >1s-old extrapolation merely through the valid
 eligibility barrier. Any change needs E93-without-reversal control, false-percept
 counterexamples, all216 and consumed67/68, then genuinely new held-out validation.
 No parameter/code adopted, no pushes; goal remains active.
+
+### E107 — Selection opportunity versus unavailable observations [COMPLETE]
+
+E106 recording75 paired timeline partitions extra close-position SSE by available
+near-truth hypotheses (<=0.5m):2.4313/3.3102 positive SSE (~73.4%) occurs with NO
+near-truth hypothesis;0.8486 with fresh plausible near-truth candidate;0.0303 stale.
+Thus relaxing confirmation cannot resolve most error. Do not implement the selection
+proposal on this evidence alone. `G/confirmed-reversal/selection-opportunity.json`.
+The first143.112 reset accurately acquires an incoming ball at1.61m. After a near-robot
+trajectory change, exposures143.402–143.602 are empty, followed by one detection and
+more empty frames. Faster accurate pre-gap velocity then extrapolates farther wrong.
+This is related to E19/E20 unobserved-slowing tradeoff, not a new proof of collision.
+
+Existing filter consumes camera, odometry, field pose and obstacles, not foot
+kinematics/contact. Capture includes motor states/ground transform, but no direct
+contact truth or robot_kinematics topic. A physical foot-contact model would require
+additional synchronized input/replay evidence; do not infer collision merely from
+proximity or inject simulator truth into the runtime filter.
+
+### E108 — Restrict confirmed reversal to close observations [REJECTED AS STANDALONE]
+
+Test bounded E106: only apply correlated reversal replacement if latest associated
+observation is within1m Ground distance; otherwise normal Kalman update. The1m
+boundary is the user-prioritized close region, explicitly an experimental fixed
+bound, not a newly tuned hidden parameter. Motivation: E106's first damaging change
+begins outside close range and E66 far regressions already warn against general reset;
+E104's useful recovery is close. This may still fail and must not be treated as a
+collision model. Preserve full216 and E106 counterpart comparisons, plus consumed68
+target. Added far-observation no-reset test; all prior guards retained. Artifacts
+`G/close-confirmed-reversal/`. Source backups, nice15/3 build jobs/45GiB; no agents
+or pushes. No fresh data used; no acceptance before independent validation.
+
+E108126 tests pass, binaries frozen, all source restored. Full216: close position
+0.240264035 (−1.34908%), velocity0.672425562 (−0.82265%), fast2.324314368
+(−1.11227%) with no fast-suite regression. But audit9a position+23.0952%, velocity
++2.12261%: not accepted. Wrong−15.158s, correct-close missing−3.294s pooled.
+Consumed67/68: position0.100912240→0.099784616 (−1.11743%), velocity0.594295578→
+0.588733534 (−0.93591%), fast unchanged (floating summation≈5e−14). Common-correct
+velocity0.579067914→0.573302408, gains0.082s/lost0, duplicate exposure77.286→76.5,
+joint credit0.910056647→0.911052953. Those are development results, not fresh.
+
+Audit9a9-clip export isolates fast-near-shot183: position0.186646148→0.280255460
+(+50.1534% versus E103 same-code-without-reversal). First reset143.138 from slow
+velocity(0.506,0.003) to incoming(−3.875,0.101), truth0.913m, improves immediate
+position. At143.960 both tracks last_seen143.282; candidate extrapolation error
+1.443m versus0.293m. Same unobserved-slowing tradeoff persists inside1m; do not
+keep tightening the distance bound to fit this clip. Evidence `audit9a-failure.json`.
+
+Next hypothesis distinguish a passive direction reversal from acceleration out of
+slow motion: require observed speed not exceed pre-update speed when applying
+special replacement, leaving accelerating acquisition to normal updates. This is a
+parameter-free energy constraint suitable for a passive bounce hypothesis, not
+proof of contact and not a fix for strong accelerating kicks. The useful E105
+case slows from2.448 to0.833m/s; bad E108 first reset accelerates0.506→3.877m/s.
+Test both the successful recovery and full failures; no acceptance from these two
+examples alone. All E107/E108 jobs terminal; no new held-out data, no pushes.
 
 ## 5. Evidence map and operational handoff
 
