@@ -3662,6 +3662,22 @@ selection or candidate edits during validation. Goal remains incomplete until fr
 metrics, detailed guards, supplemental limitations and final deliverable all checked.
 Sources in checkout restored; no agents or pushes. E120 audit96479 also live.
 
+### E122 — Frozen E120 extreme/airborne supplemental audit [COMPLETE]
+
+Six existing challenge clips replayed without speed censoring, frozenE120 evaluator
+and parameters; exec31162 terminal. Artifacts G/wide-merge-endpoint/challenges/
+comparison.json. These are previously consumed supplemental data, not fresh proof.
+High-speed close metrics exactly baseline: position0.187128m, velocity2.497080m/s;
+close>15m/s exposure0.294s position1.512050m, velocity19.964309m/s, wrong0.268s.
+Thus no extreme-speed recovery improvement shown. Airborne close position
+0.293599→0.288911m; velocity0.781578 unchanged. Close-flight0.964s position0.466627,
+velocity3.157159 both unchanged. In high-speed incidental flight, raw velocity
+worsens+1.166855m/s while position improves0.387132m, matching the previously
+identified E112 wrong-position credit concern; preserve raw regression rather than
+claiming universal nonregression. Overall high-speed velocity+0.009749m/s. No3D
+tracking claim. Fresh capture1564 and exact full216 audit96479 remain live; candidate
+unchanged, first capture batch78/79/80 progressing through fast-crossing, RAM~6GiB.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
