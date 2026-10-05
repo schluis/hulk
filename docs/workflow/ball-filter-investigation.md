@@ -3445,7 +3445,7 @@ the preferred challenger, using development suites and explicit false-track guar
 do not globally relax selection eligibility or claim the proposed fix validated.
 All diagnostic jobs terminal; runtime/defaults unchanged, goal remains incomplete.
 
-### E115 — Confirmed resting association competition [RUNNING]
+### E115 — Confirmed resting association competition [INCOMPLETE CANDIDATE]
 
 E114 shows log-uncertainty association can send the true observation to an ineligible
 challenger while publishing the stale established track. Test E93+ratio7 with the
@@ -3479,6 +3479,19 @@ in confirmed-resting-association; consumed54 scripts use unchanged common-correc
 joint-credit, duplicate definitions and existing verified baseline frames. These
 are already-consumed development records, not new validation. No source changes,
 no pushes, no agents; active goal not achieved.
+
+E115 consumed54 audit complete, exec2221 terminal. Baseline→candidate pooled close
+position0.233376828→0.229737147m; velocity0.681333155→0.681458983m/s (still worse);
+fast2.430878395→2.430579359. Seed77 suite position now -0.040325% (previously+0.68757%);
+seed75 retains a tiny+0.000002653% position regression. Wrong322.864→320.230s,
+false237.824→235.840s, correct-close missing29.850→29.174s. Common-correct587.620s
+velocity0.657107184→0.657101993, lost0.040s/gained0.716s. Extra-near-truth exposure
+263.432→116.078 hypothesis-seconds. Each-suite position and pooled raw velocity
+checks still FAIL; goal unachieved. Joint/fast credit, common-correct velocity,
+wrong/missing and duplicate guards pass. Consumed54/comparison.json preserves all.
+No active jobs or runtime changes. Next focus: supported velocity-recovery errors
+on correctly positioned tracks, rather than treating coverage gains or rounding
+tiny regressions away as sufficient improvement. E115 is not an accepted winner.
 
 ## 5. Evidence map and operational handoff
 
