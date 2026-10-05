@@ -78,7 +78,9 @@ pooled velocity gains, but development position regresses0.124%; inspect before
 fresh validation. Broad0.21m merge control regresses one suite8.64% and is rejected.
 E90 localizes remaining discrepancy to approach49.532s; E91's stale precise-state
 fusion endpoint does not change that frame and is rejected. Instrument the actual
-merge/selection before further policy changes.
+merge/selection before further policy changes. E92 identifies the stale-age versus
+observation-gap mismatch; E93 aligns them and fixes the exact frame, while a smaller
++0.059%audit6a position regression remains. Full E93 paired audit still outstanding.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2766,6 +2768,46 @@ Full-state diagnostic saved at `diagnostic/frames-0.jsonl`. Next instrument the
 actual49.532s merge/selection (including auxiliary output) and test whether the
 ordinary resting limit0.105m versus baseline0.1m is involved, before another change.
 All jobs terminal, memory returned≈4.86GB, no pushes. Goal remains incomplete.
+
+### E92 — Merge trace proves an age-reference mismatch [DIAGNOSED]
+
+`G/merge-shift-trace/` freezes instrumented E89 runtime, exact one-recording score
+parity receipt and trace. At49.532s primary filter (blend0.94453126, not auxiliary)
+merges resting states using0.21m limit. Fresh state last_seen49.482s, support136.819,
+mean(0.2007875,0.0220691), covariance diagonal≈0.373. Old state last_seen48.522s,
+support1.9153, mean(0.0911950,0.0736878), covariance diagonal≈7.5323, false size flag.
+Their separation≈0.121m exceeds baseline0.1m but meets the conditional diameter gate.
+Equal-weight intersection produces E90's shifted output.
+
+E89 tests ages against current time: old1.010s, fresh0.050s, so merging is allowed.
+E91 compares observation timestamps: separation0.960s, so its≥1s endpoint condition
+is false. This explains exactly why E91 could not fix this frame. Ordinary0.105m
+limit and publication switching are ruled out for this event. Repeated trace block
+is per-recording/aggregate evaluation, not two physical merges. Sources restored.
+
+### E93 — Align fusion age reference with merge eligibility [DEVELOPMENT ONLY]
+
+E91 endpoint threshold is now880ms = stale minimum1s minus fresh maximum120ms.
+This follows the existing eligible interval rather than tuning to49.532s. Other
+precision, support, size, covariance agreement/history checks unchanged. Added960ms
+positive case in both-order unit test; all121 tests pass. `G/stale-resting-endpoint-aligned/`
+preserves source/config/binary SHA256 protocol and build log. Full216 replay and
+one-clip diagnostic completed,45GiB cap/nice15 (observed~9.12GB). Working sources
+restored after build. E91's original failed variant stays archived.
+
+At49.532s the estimate now equals baseline exactly:(0.200787514,0.022069115),
+zero velocity, last_seen49.482s. This controlled change supports E92's diagnosis.
+`diagnostic/motivating-frame.json` saves the frame. Full results:
+close position0.242459171m (−0.44777%), close velocity0.677871787m/s (−0.01938%),
+fast close2.349776931m/s (−0.02896%), all velocity0.780471671m/s (−0.12831%).
+Wrong output−7.970s, correct-close missing−2.068s, raw close velocity missing unchanged.
+Worst position regression now+0.05898%audit6a; original raw velocity+0.108775%
+remains the E85 correctness confound. No fast-close suite regression. This resolves
+the traced development failure but not all guards. Full paired duplicate/coverage
+review of E93 remains outstanding; do not reuse E84's audit as proof for changed
+merge behavior. Next inspect audit6a and quantify the remaining error, then freeze
+only a defensible candidate before fresh validation. No fresh67/68 evaluation,
+no adopted code/push. All jobs terminal; goal remains incomplete.
 
 ## 5. Evidence map and operational handoff
 
