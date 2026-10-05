@@ -59,14 +59,15 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E56 isolates excessive velocity noise as a cause of direction jitter.
-E59/E60/E61 test weak publication separately from internal retention. E61's1s
-clear-miss gate reduces wrong output57.132s without increasing aggregate correct
-close-ball missing time, but old scoring penalizes removed incorrect output.
-E62 audits that scoring conflict before further search: preserve all old reports,
-add correctness-aware velocity/availability diagnostics, and inspect paired
-removed-output frames. No accepted winner. Experimental runtimes are archived
-and prior runtime restored; no evaluation jobs remain running.
+Next: combine stable velocity calibration with evidence-based tentative publication,
+starting with correctness-aware comparisons of E51/E61 before further search.
+E56 isolates excessive velocity noise as a cause of direction jitter. E62's paired
+216-recording audit confirms E61's one-second clear-miss gate removes 57.132 seconds
+of wrong output, loses no correct output, and changes no remaining estimate.
+Correctly associated close-velocity error and coverage are unchanged: this is a
+false-output improvement, not a velocity winner. The production objective remains
+v11; supplementary scoring is diagnostic only. No accepted winner. Experimental
+runtimes are archived and prior runtime restored; no evaluation jobs remain running.
 Reserved67/68 remain unscored. Working runtime has
 experimental optional cap. At the user’s explicit request to push for local testing,
 the checkout now uses E43 parameters; this is not acceptance or a merge recommendation.
@@ -165,6 +166,26 @@ not automatically change interception. Behavior changes are outside this step.
   evidence of matching the original live output.
 
 ## 4. Experiment tree — preserve outcomes
+
+### Mechanism index — read this before reopening an idea
+
+The stable experiment IDs below preserve chronology and evidence. This index groups
+related trials by mechanism; later trials supersede earlier plans, not their results.
+
+- **Tracking and motion**
+  - Association, initialization and reacquisition: E06/E07, E09, E13, E25, E29, E45/E46.
+  - Resting transitions and trajectory models: E02, E04/E05, E24.
+  - Velocity stability, process noise and damping: E18–E22, E27, E34, E53, E56–E58.
+- **Candidate lifecycle and selection**
+  - Ranking, confirmation and confidence caps: E01, E23, E39–E44, E52, E54.
+  - Retention, visibility and duplicate merging: E10–E12, E14, E36–E38, E47, E55.
+  - Publication versus internal retention: E15/E16, E26, E31/E32, E50/E51, E59–E61.
+- **Evaluation and decision making**
+  - Parameter calibration and held-out failures: E03, E08, E17–E22, E27/E28,
+    E30, E33–E44, E48.
+  - User checkout provenance: E49.
+  - Correctness-aware loss and paired coverage audit: E62.
+- **Archived alternatives**: section 4.5; no active alternative-filter search.
 
 ### 4.1 Selection
 
@@ -422,7 +443,7 @@ by deleting established hidden tracks. Lower visibility margins can reduce false
 output but lose close-ball availability. The modest feasible motion/retention
 combinations still retain E08's wrong-output regression. Do not promote them.
 
-#### E11 — Expire weak, unsupported hypotheses sooner [RUNNING]
+#### E11 — Expire weak, unsupported hypotheses sooner [COMPLETED; NOT ADOPTED]
 
 E10 shows established and tentative tracks cannot share a shorter timeout safely.
 Test a one-second unseen timeout only while validity is below the existing
@@ -490,7 +511,7 @@ The original-guard ablation produced only tiny mixed changes (roughly 0.1% on
 baseline velocity), insufficient to justify the added estimator. Restored the
 original motion-evidence algorithm; keep the saved source and binaries as evidence.
 
-#### E14 — Joint parameter search with weak-track retention [RUNNING]
+#### E14 — Joint parameter search with weak-track retention [COMPLETED; FOLLOW-UP E16/E17]
 
 E11's weak-track timeout reduces mean hypotheses from roughly six to about two,
 without broadly expiring supported hidden tracks, but its interaction with motion
@@ -1761,6 +1782,28 @@ velocity must not receive correct-ball credit). Then decide/version the search
 objective from that evidence. Current frozen E61 evaluators are available; frozen
 original `M/tie-only/evaluate` can generate baseline compact frames. About52GiB
 disk free at this checkpoint; avoid unnecessary full hypothesis-state exports.
+
+#### E62.1 Completed paired audit — 216 development recordings
+
+Evidence: `G/correctness-audit/{protocol.json,analyze.py,joint-comparison.json}`;
+compact baseline/candidate frame exports and unchanged v11 reports accompany it.
+Four counterexample tests passed, and streamed raw metrics reconcile with the
+Rust reports within 1e-4. The candidate is E61 with original parameters and a
+one-second timeout; its comparator is the original accepted baseline, not E43.
+
+- Removed output: **57.132 seconds, all spatially incorrect** at the existing
+  0.5 m correct-track radius; zero correctly tracked output lost or gained.
+- All remaining published estimates unchanged; hypothesis counts unchanged.
+- Correctly associated close-velocity RMSE **0.626021676 m/s**, identical for both;
+  associated close-velocity missing time **103.618 seconds**, also unchanged.
+- Therefore the improvement is suppression of wrong publication, not improved
+  velocity or aggregate cancellation of correct-output losses and gains.
+
+Decision: retain the mechanism as a promising experiment, not an accepted runtime
+change. Production scoring and branch parameters remain unchanged. Next compare
+publication-only E51 and its combination with E61 using paired correctness and
+velocity diagnostics; freeze any revised objective before further optimization.
+Fresh seeds 67/68 remain untouched. No goal-completion claim.
 
 ## 5. Evidence map and operational handoff
 
