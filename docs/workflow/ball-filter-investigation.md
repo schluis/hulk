@@ -84,9 +84,12 @@ improves velocity0.82%/fast1.11% but still fails audit9a position23.1%; rejected
 E109 non-accelerating reversal removes those large regressions: all216 position
 −1.514%, velocity−0.179%, fast−0.111%, every suite position/fast passes. Full paired
 audit E110 confirms correct velocity−0.2145%, duplicate−30.93%, joint credit gains.
-E111 frozen six-suite validation is now capturing new seeds69 onward. Candidate
-not adopted; no completion claim.
-E111 capture is the pending job; runtime restored, no pushes.
+E111 six-suite fresh validation FAILS: pooled raw velocity+0.0185%, position
+regresses0.00115%seed75 and0.68757%seed77. Other pooled/correctness guards improve.
+No adoption; E113 shows reversal has no true-ball score benefit on these54 clips
+and adds1.984s false output versus E93. Position failures also occur without it;
+inspect seed77 brief-gaps divergence and seed76 false reset separately.
+All validation/control jobs terminal; runtime restored, no pushes.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -3288,7 +3291,7 @@ credit0.894368756 and fast0.547624565 improve versus baseline0.892923874/
 `reversal-recovery.png` visually confirms earlier direction recovery with improved
 position after return of observations, not a claim to predict unseen contact.
 
-### E111 — Frozen slowing-reversal fresh validation [RUNNING]
+### E111 — Frozen slowing-reversal fresh validation [FAILED FROZEN ACCEPTANCE]
 
 Freeze E109 candidate/runtime/source/parameter SHA before any new capture/scoring:
 `G/slowing-reversal-fresh/{freeze,protocol,candidate-source-hashes}.json`.
@@ -3361,6 +3364,47 @@ suite69 independently passed `--verify` across all recorded baseline cycles;
 verification only; candidate remains unscored/unchanged. All six selected suites
 will also pass baseline verification as part of prepared final comparison. No extra
 capture, evaluation restart or candidate modification. Goal remains unproven.
+
+E111 all six successful suites69/71/73/75/76/77 (54 clips) evaluated; baseline live
+verification passes every suite. Captures70/72/74 excluded for predeclared validity
+failures,78 not captured. Frozen results: pooled position0.233376828→0.229816894m
+(−1.5254%); raw close velocity0.681333155→0.681458983m/s (+0.01847%); fast
+2.430878395→2.430579359m/s (−0.01230%). Position suite75+0.0011546%,77+0.68757%.
+Thus each-suite position and pooled raw-velocity criteria FAIL; no winner adopted.
+Common-correct587.54s velocity0.657150737→0.657145545 (tiny improvement); lost0.120s,
+gained0.756s correct coverage. Wrong322.864→320.196s, false237.824s unchanged,
+correct-close missing29.850→29.214s. Joint/fast credit and duplicate guards pass.
+All numbers, per-suite differences and checks in `comparison.json`; no post-hoc
+weakening of criteria. These54 recordings are now CONSUMED development evidence.
+Working runtime unchanged; validation/capture jobs terminal, goal still incomplete.
+
+### E113 — Isolate fresh failures from reversal recovery [COMPLETE]
+
+Replay frozen E93+ratio7 without the E109 reversal on all consumed54 clips, with
+exact parameters otherwise equal. Compare frames/per-record scores against E111
+candidate to separate publication/merge/selection failures from reversal changes.
+Artifacts `G/slowing-reversal-fresh/e93-control/`; same compact export, resource
+runner/nice15/45GiB. Preserve failed validation; any later candidate needs new data.
+
+E113 full54 control replay complete. Every per-record score is identical with and
+without E109 reversal EXCEPT seed76 empty-false(index43): false-track seconds
+37.856→39.840 (+1.984s). Therefore no true-ball score benefit from E109 is shown
+on these54 fresh clips; do not justify its complexity from the earlier targeted
+improvement alone. Against accepted baseline false time happens to be unchanged,
+which hides this regression relative to the simpler E93 control. Preserve ablation.
+
+E111 position failures isolate seed75 stationary-close0.020142743→0.020142808m,
+brief-gaps0.099377664→0.099388201m, and seed77 brief-gaps0.209037108→0.215396842m
+(+3.0424% for that clip). All are present without reversal; diagnose matching/
+merging/publication separately. Exact records in position-failures.json. Fresh
+near-truth duplicate exposure263.432→116.136 hypothesis-seconds; mean joint credit
+0.881848844→0.882277782, fast0.547407201→0.547572552. Benefits remain documented
+but cannot override failed frozen criteria. `decision.json` records rejection.
+
+Next: inspect baseline/E93 first divergent close-position window for seed77 brief-gaps;
+separately inspect seed76 false reversal before proposing any evidence guard. E109
+not adopted. All E111/E113 jobs terminal, sources unchanged, no pushes. New candidate
+will require newly held-out data;69/71/73/75/76/77 are now development evidence.
 
 ## 5. Evidence map and operational handoff
 
