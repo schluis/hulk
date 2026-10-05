@@ -3614,6 +3614,26 @@ permitted wider/stale merges, preserving existing close-merge behavior; do not
 weaken frozen comparisons or mistake an aggregate65nm for maximum output shift.
 Working runtime restored, no pushes or agents; active goal unachieved.
 
+### E120 — Endpoint retention only for wider resting merges [RUNNING]
+
+Test E118 with fresh-endpoint override only when resting means are separated by
+at least one physical ball radius. Below that use covariance intersection as in
+ordinary close merges. This uses E89's physical boundary between ordinary resting
+merges (one radius) and qualified stale merges (two radii), not a fitted error cutoff
+or hardcoded historical0.1m setting. Propagate endpoint_minimum_distance through
+remove_hypotheses/merge; production passes field ball radius. Existing stale-wide
+fixture validates both orders; new close-stale fixture asserts covariance blending.
+All130 tests pass so far; build14047 still running, G/wide-merge-endpoint. Five files
+backed up (including tracker test signature), restore exactly after terminal build.
+Planned: seed75 stationary regression then full216; candidate not frozen for fresh
+validation. E118 full216 audit83553 still live (198/216 exported), disk43GiB free.
+
+E120 build terminal,130 tests pass; all five source files restored exactly. Target
+stationary RMSE0.02014274336360444m exactly equals baseline (regression removed).
+Full216 replay28482 and consumed54 export/diagnostics42984 now running via resource
+runner. E118 full-audit83553 still confirmed live, so do not restart it. New wider
+merge behavior has only targeted verification so far; await all guards/coverage.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
