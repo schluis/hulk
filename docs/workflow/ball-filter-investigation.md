@@ -54,14 +54,14 @@ retention calibration found a publication dependency (E15). A joint primary/auxi
 parameter search completed (E16) on all 54 inspected development clips. The
 parameter-only ablation-0260 candidate failed the second audit’s per-suite
 close-position guard. E18 completed the stationary-noise calibration; E19
-independently validates frozen local-0280.
+rejected local-0280 on a fresh coasting-position regression. E20 follows.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: finish E19 validation using fresh captures. Local-0280 beats the baseline
-on all seven development groups with unchanged availability; do not promote it
-until the frozen independent protocol passes. Runtime/default parameters remain
-at the retained baseline during capture.
+Next: jointly calibrate damping and motion noise against the new hidden-coasting
+failure plus all previous cases (90 inspected development recordings). All three
+frozen audits are preserved, including the gains and failed position guards.
+The retained runtime/default parameters remain unchanged.
 
 
 ### 2.2 Baseline and terminology
@@ -709,6 +709,50 @@ suites in listed seed order; preserve failures and unused successful captures.
 Only runtime/coverage validation may replace a suite, never accuracy. Strictly
 verify baseline live/replay equality before candidate comparison. Root is the
 only agent. Initial four simulations are running under about 8 GiB aggregate RAM.
+
+
+#### E19.1 Independent result — rejected on coasting position
+
+Seeds 50000049 and 50000050 are the first two complete suites by frozen seed
+order. Seed 51 also completed but remains **unused/unscored**; seed 52 failed
+fast-crossing reacquisition coverage (0 < 1). Both scored suites passed strict
+baseline live/replay verification. Pooled close position RMSE 0.134035 → 0.139413 m
+(+4.01%), velocity 0.709789 → 0.688203 m/s (-3.04%), fast velocity 2.481866 →
+2.394730 m/s (-3.51%). Missing velocity time unchanged at 2.506 s. Bounded position
+loss rises 0.378%; total v11 loss improves 4.86%. Suite 1 position regresses
+0.171929 → 0.182354 m, violating the frozen rule. Reject despite the consistent
+velocity gain; defaults remain unchanged. Preserved branch:
+`experiment/ball-filter-velocity-audit3-20261005`, exact commit in decision JSON.
+
+Diagnosis: seed49 fast-near-shot around 21.2 s, both filters retain the same
+moving, size-plausible observed primary, last seen about 0.84 s ago. Published
+output equals that primary (not auxiliary correction). Candidate has moved farther
+past a ball that slowed during the gap: errors about 1.53 vs 1.21 m at the worst
+close-range sample. There is no current detector observation to associate, and
+both have eight hypotheses. Thus auxiliary publication changes or indiscriminate
+merging do not target this failure. Evidence: `G/audit3/diagnosis/`; observer
+8767 serves this candidate/clip with baseline capture parity checked.
+
+### E20 — Motion-noise/damping tradeoff during unobserved slowing
+
+**Status:** running, 2026-10-05. Keep the existing filter; calibrate a broader
+range of damping jointly with moving noise, measurement noise and matching range
+on 90 inspected recordings, with each old audit suite separate. Preserve the
+velocity gains while reducing excess integrated position during unseen slowing.
+Do not claim this predicts unobserved collisions perfectly; do not add obstacle
+physics or another tracker without evidence. Seed51 remains untouched as unused
+validation material. Freeze before another independent audit.
+
+
+E20 protocol: `G/coasting-calibration/` contains 2,107 frozen grid/random
+configurations (seed 2026100530), nine disjoint development groups, baseline
+parity receipt, source and frozen evaluator. The grid preserves baseline resting
+noise while varying existing moving/detection noise, damping and matching range.
+Require close p/v guards on every group, unchanged availability, improved bounded
+losses before freezing. No fresh seed51 data used. Memory cap/nice scheduling
+unchanged. Moving prediction was inspected: it already integrates damped motion
+and continuous process covariance, including cross terms. The large covariance
+seen here comes from configured noise, not a missing elapsed-time integration.
 
 ## 5. Evidence map and operational handoff
 
