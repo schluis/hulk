@@ -210,7 +210,7 @@ def tuner_command(root, manifest, worker, round_number, initial):
 
 def training_loss(report):
     if report.get("replay_matches_live") is not True or not isinstance(report.get("continuity_policy"), str) or not report["continuity_policy"]:
-        raise ValueError("report lacks exact replay verification or training continuity policy")
+        raise ValueError("report lacks exact replay verification or training quality policy")
     loss = report["training"]["optimized"]["loss"]
     if not math.isfinite(loss):
         raise ValueError("nonfinite training loss")
@@ -427,7 +427,7 @@ for path in [root/'status.json', root/'best.json', *sorted(root.glob('worker-*.j
     if reports:
         best = min(reports, key=lambda path: training_loss(json.loads(path.read_text())))
         atomic_json(output / "selected.json", {"report": str(best.relative_to(output)),
-                                              "selection": "minimum training loss among continuity-guarded verified reports; holdout never used"})
+                                              "selection": "minimum training loss among verified reports satisfying their recorded quality policy; holdout never used"})
         print(f"Selected report: {best}")
     print(f"Fetched: {output}")
 
