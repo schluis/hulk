@@ -59,9 +59,11 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: diagnose the largest remaining baseline velocity-error windows by motion
-and observation age. E63 confirms publication tuning adds only 0.022% common-frame
-velocity improvement, with slight per-suite regressions; it is not a winner.
+Next: inspect E66's harmful reset windows before revising abrupt-motion recovery,
+and extend simulator/evaluation coverage for the user's fast and airborne kicks.
+E67's smooth position-weighted velocity credit is implemented as a diagnostic;
+the publication candidate slightly worsens it. E66's moving reconfirmation fails
+full replay and is archived, with working runtime restored.
 E56 isolates excessive velocity noise as a cause of direction jitter. E62's paired
 216-recording audit confirms E61's one-second clear-miss gate removes 57.132 seconds
 of wrong output, loses no correct output, and changes no remaining estimate.
@@ -1922,6 +1924,72 @@ original baseline metrics and fresh 67/68 validation; new challenge scenarios
 must be versioned separately. Assess whether available image centre/radius and
 camera pose support height/range inference before choosing added state/dynamics.
 Do not claim airborne support from changes to 2D process noise alone.
+
+### E66 — Reconfirm changed velocity in an existing moving hypothesis [REJECTED]
+
+Motivated by E64's measured reversal lag. Reuse existing three-observation motion
+consistency/significance checks while moving; transform their history through
+odometry. If that trajectory's velocity differs from the current estimate by
+squared Mahalanobis distance >9 using the sum of velocity covariances, replace the
+state with its correlated position/velocity initialization. This is a heuristic
+change detector, not a claim that the overlapping estimates are independent.
+Replace rather than fuse to avoid double-counting the same observations.
+
+No new parameters. Moving-track merges conservatively clear the short history.
+120 tests pass, including new moving-reversal and isolated-outlier tests. Frozen
+binaries, hashes, before/after source and patch: `G/moving-reconfirmation/`.
+Production working source restored after building; evaluation uses frozen binaries.
+Two configurations (original and publication-only) completed on all 216 development clips
+at nice 15 under the existing memory cap. No airborne/faster-than-15m/s claim.
+Evaluate against the original accepted baseline, not the pushed E43 parameters.
+
+#### E66.1 Full development result — do not adopt
+
+Fixed original parameters versus original accepted baseline:
+
+| Metric | Baseline | Reconfirmation | Change |
+| --- | ---: | ---: | ---: |
+| Close position RMSE (m) | 0.243549712 | 0.243576927 | +0.0112% |
+| Close velocity RMSE (m/s) | 0.678003173 | 0.678105884 | +0.0151% |
+| Fast-close velocity RMSE (m/s) | 2.350457712 | 2.349902364 | -0.0236% |
+| All-range velocity RMSE (m/s) | 0.781474412 | 0.798654136 | +2.1984% |
+
+Wrong-output time increases 0.924 s; close correct-track missing increases 0.094 s;
+raw close-velocity missing is unchanged. Worst per-suite close p/v regressions are
+0.983%/1.012% (audit2b), and all-range velocity regresses 17.077% in audit4a.
+Ten suites change. Publication configuration shows the same type of deltas versus
+its matching E51 control. Unit tests establish the mechanism and outlier invariant,
+not performance on real replay inputs. Both evaluator jobs terminal; source already
+restored. Evidence: `G/moving-reconfirmation/{results,differences.json}`.
+
+Reopening condition: inspect the actual reset windows to distinguish bad observation
+triples from a mismatched statistical gate before changing thresholds. Do not repeat
+this broad three-observation replacement unchanged. High-speed/airborne scenario
+coverage and smooth diagnostic integration remain outstanding; no fresh seeds used.
+
+### E67 — Smooth joint position/velocity credit [DIAGNOSTIC COMPLETE]
+
+User requested velocity credit proportional to positional correctness. Prespecified
+supplementary diagnostic in `G/joint-credit/score.py`:
+
+`credit = max(0, 1 - position_error_squared / 0.5^2)^2
+          / (1 + 0.3^2 * velocity_error_squared / 0.5^2)`
+
+The 0.5 m support radius is the existing correct-track radius; 0.3 s is the
+existing velocity-displacement horizon. Position weight falls smoothly to zero
+with zero derivative at the boundary. Missing/nonfinite output earns zero credit;
+truth-based denominators prevent dropping hard frames from improving the mean.
+This is a bounded credit, not an error multiplied by a weight (which could reward
+wrong positions). False-output penalties and raw position/velocity/coverage stay
+separate. Four monotonicity/missing/counterexample tests pass.
+
+On 216 clips, baseline mean close credit is 0.892923874; E51+E61 is 0.892763726.
+Fast-close credit is 0.546846047 versus 0.546666624. Thus this publication candidate
+is slightly worse on the new diagnostic, despite improved positional RMSE and
+correct-track availability. Record the unfavorable result; do not tune the metric
+to reverse it. Formula remains supplementary, not a production objective change.
+Existing <=15m/s evaluation domain retained solely for old-data comparability;
+new high-speed/airborne challenge validation must explicitly cover its envelope.
 
 ## 5. Evidence map and operational handoff
 
