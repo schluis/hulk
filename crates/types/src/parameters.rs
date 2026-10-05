@@ -236,8 +236,7 @@ pub struct BallFilterParameters {
     pub maximum_number_of_hypotheses: usize,
     pub ball_confidence_threshold: f32,
     pub log_likelihood_of_zero_velocity_threshold: f32,
-    /// Switch to rest when mean speed plus three times the square root of
-    /// velocity covariance trace is strictly below this threshold in m/s.
+    /// Switch a moving hypothesis to rest strictly below this speed in m/s.
     /// Zero never triggers this rule; likelihood-based resting remains separate.
     pub resting_velocity_threshold: f32,
     pub hypothesis_merge_distance: f32,
