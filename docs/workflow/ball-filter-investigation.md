@@ -81,9 +81,12 @@ hypothesis below confirmation3. Standalone E106 rejected; investigate selection
 interaction with E93-only control before any new validation. E107 finds73% of extra
 error has no near-truth hypothesis, limiting selection fixes. E108 close-only reversal
 improves velocity0.82%/fast1.11% but still fails audit9a position23.1%; rejected.
-Consider non-accelerating reversal evidence, not another fitted distance cutoff.
-No live jobs from these
-experiments; runtime restored, no pushes.
+E109 non-accelerating reversal removes those large regressions: all216 position
+−1.514%, velocity−0.179%, fast−0.111%, every suite position/fast passes. Full paired
+audit E110 confirms correct velocity−0.2145%, duplicate−30.93%, joint credit gains.
+E111 frozen six-suite validation is now capturing new seeds69 onward. Candidate
+not adopted; no completion claim.
+E111 capture is the pending job; runtime restored, no pushes.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -3242,6 +3245,66 @@ proof of contact and not a fix for strong accelerating kicks. The useful E105
 case slows from2.448 to0.833m/s; bad E108 first reset accelerates0.506→3.877m/s.
 Test both the successful recovery and full failures; no acceptance from these two
 examples alone. All E107/E108 jobs terminal; no new held-out data, no pushes.
+
+### E109 — Non-accelerating close reversal [DEVELOPMENT PASSES POSITION/FAST; AUDIT PENDING]
+
+Bound E108 correlated replacement further: observed speed must not exceed current
+pre-update speed. This tests passive slowing reversals and leaves accelerating
+acquisition to normal Kalman updates; not a physical contact detector or solution
+to all strong kicks. Existing1m bound and coherent/significant opposite-observation
+checks unchanged. Added accelerating-opposite no-reset fixture; recovery fixtures
+explicitly test3→2m/s slowing instead of ambiguous equal-speed floating boundary.
+Artifacts `G/slowing-confirmed-reversal/`. Full216 and consumed67/68, including
+E106/E108 regressions, before another frozen untouched validation. Source backups,
+resource runner/nice15/3 build jobs/45GiB; no agents or pushes.
+
+E109127 tests pass; frozen binary/source hashes preserved, working source restored.
+Full216 position0.239863187 (−1.51366%), close velocity0.676786888 (−0.17939%),
+fast2.347851081 (−0.11090%); every suite position improves and fast nonregresses.
+Worst raw close velocity remains+0.13248%audit6b, same E102 coverage confound;
+raw guards not all passed, don't relabel. Wrong−14.790s and correct-close missing
+−3.734s unchanged from E103. The E106/E108 large regressions are removed.
+Consumed67/68 results identical to E108: pooled position−1.11743%, velocity−0.93591%,
+fast unchanged, common-correct velocity0.579067914→0.573302408, gained0.082s/lost0,
+duplicates77.286→76.5, joint credit0.911052953. These are development results.
+
+### E110 — Full paired slowing-reversal audit [COMPLETE]
+
+Export216 frames with hypothesis positions and apply unchanged E63 common-correct,
+E67 joint credit, and0.3m duplicate proxies against accepted baseline. Preserve all
+suite regressions and coverage transitions. `G/slowing-confirmed-reversal/audit/`
+contains manifest/protocol and export-then-analysis orchestration. Before freezing
+new validation, require this to preserve E102's correctness/duplicate improvements
+and show genuine velocity improvement, not just wrong-position credit changes.
+No new held-out captures yet, source restored, no pushes, nice15/45GiB limit.
+
+E110 all216 exported and audit completed. Common-correct velocity0.625915140→
+0.624572557m/s (−0.21450%); gained3.776s/lost0.040s correct close coverage.
+Three tiny suite regressions unchanged from E102 (max0.000016792m/s). Joint
+credit0.894368756 and fast0.547624565 improve versus baseline0.892923874/
+0.546846047. Duplicate exposure693.982→479.302 (−30.9345%), multiple-near-truth
+624→447.288s; total hypotheses54014.472→53636.324s. All-range position
+1.297913124→1.295601818m, velocity0.781474412→0.780015590m/s. Targeted
+`reversal-recovery.png` visually confirms earlier direction recovery with improved
+position after return of observations, not a claim to predict unseen contact.
+
+### E111 — Frozen slowing-reversal fresh validation [RUNNING]
+
+Freeze E109 candidate/runtime/source/parameter SHA before any new capture/scoring:
+`G/slowing-reversal-fresh/{freeze,protocol,candidate-source-hashes}.json`.
+Predeclare first SIX successful nine-scenario captures from seed sequence69–78,
+accepted only by existing simulator coverage/completion checks, never score-based
+selection. Preserve failed captures and unused surplus. Three isolated-network
+capture workers with unchanged frozen baseline simulator/parameters, nice15 and
+resource-runner45GiB aggregate cap; no runtime truth inputs. Evaluate every selected
+suite, no stopping after favorable scores. Criteria: each fresh-suite close position
+nonregresses and pooled improves; pooled close/common-correct velocity improves,
+fast nonregresses; wrong/missing/joint/duplicates guards, inspect individual failures.
+Record legacy raw-suite development failures honestly with paired evidence.
+No candidate adjustment during validation; consumed67/68 excluded. Goal unproven.
+Capture orchestration exec10447 verified live; first seed69 stationary-close underway,
+aggregate memory~5.5GiB. Poll same handle and inspect capture logs/status before
+restarting. Evaluation has not started; finish capture and apply frozen criteria.
 
 ## 5. Evidence map and operational handoff
 
