@@ -3306,6 +3306,39 @@ Capture orchestration exec10447 verified live; first seed69 stationary-close und
 aggregate memory~5.5GiB. Poll same handle and inspect capture logs/status before
 restarting. Evaluation has not started; finish capture and apply frozen criteria.
 
+### E112 — Frozen candidate on existing >15m/s and airborne challenges [COMPLETE; LIMITATIONS REMAIN]
+
+While E111 captures new suites, evaluate unchanged E109 on E75's already-inspected
+six challenge clips using the same no-speed-cap supplemental analyzer. These are
+NOT fresh validation, despite historical filenames containing `validation`.
+Compare original E75 baseline flight/landing/fast metrics to identify limitations
+or regressions hidden by the ordinary <=15m/s objective. No candidate adjustment.
+Artifacts `G/slowing-confirmed-reversal/challenges/`; resource runner/nice15/45GiB.
+
+E112 completed both candidate and E93-without-reversal control. Published outputs
+are exactly identical to E93 on all six clips, so these changes do not demonstrate
+reversal recovery on the extreme challenges. High-speed close>15m/s exposure0.294s:
+position1.51205→1.20743m, velocity19.96431m/s unchanged, wrong0.268s unchanged.
+Airborne close-flight0.964s: position0.466627m/velocity3.157159m/s unchanged;
+landing500ms position2.85224m/velocity2.91955m/s unchanged. These remain serious
+limitations; no claim of reliable >15m/s or 3D airborne tracking.
+
+High-speed scenario's incidental flight0.360s raw velocity6.23259→7.39945m/s while
+position0.940664→0.553532m. This is inherited E93 behavior, not the new reversal.
+Paired flight common-correct0.190s velocity exactly6.393323m/s both; gained/lost
+correct0. Thus raw worsening occurs on already-wrong-position outputs; retain it,
+do not silently mark all challenge metrics nonregressing. Evidence comparison.json,
+reversal-ablation.json (zero differing published frames), flight-common-correct.json.
+
+E111 operational update: prepared `evaluate.py`, compact frame export,54-recording
+common-correct/duplicate/joint analysis and `summarize.py`; evaluation requires six
+completed captures and verifies frozen binary/parameter hashes before scoring.
+Capture exec10447 remains live. Seed70 terminated because robot fell at20.5s in
+fast-near-shot; preserved failed capture, permitted coverage-based exclusion under
+predeclared protocol. Seeds69/71 continue; replacement seeds follow original order.
+Do not restart capture or alter frozen candidate. E112 jobs terminal; only E111
+capture remains active, memory~6–7GiB under45GiB cap. No pushes/source changes.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
