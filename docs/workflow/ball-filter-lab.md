@@ -1,5 +1,9 @@
 # Ball-filter development branches
 
+For current priorities, open questions, and the hierarchical experiment register,
+start with the [living investigation plan](ball-filter-investigation.md). This
+file retains the detailed branch and validation history.
+
 `dev/ball-filter-lab` is the shared development environment: the consolidated
 ball-filter baseline, Twix optimization panel, MCAP replay/scoring/tuning,
 monitor, simulator, launcher scripts, and supporting robot nodes.
