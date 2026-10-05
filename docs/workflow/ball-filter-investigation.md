@@ -3466,6 +3466,20 @@ publishes fresh173.682 observation at baseline position. This is a targeted fix,
 not a general victory. Full216 evaluation exec80463 confirmed live, memory5.35GiB
 under45GiB maximum, nice15. Await development results before fresh validation.
 
+E115 full216 development replay complete (exec80463 terminal). Pooled position
+0.239932783m (-1.48509%), velocity0.677952031m/s (-0.007543%), fast2.350454134m/s
+(-0.0001523%). Every position suite improves (worst audit2a -0.003988%); fast suites
+nonregressing. Raw close velocity still audit6b+0.132482%, so no all-raw-guard pass.
+Wrong duration decreases13.300s; correct-close missing decreases3.668s. Compared
+with E93+ratio7, the conservative all-confirmed condition sacrifices much of the
+small velocity gain. Preserve this tradeoff; do not declare success from fixing
+one clip. Full paired54 consumed recordings export/diagnostics launched as exec2221
+under resource runner (18/54 exported at checkpoint). Frozen evaluator and params
+in confirmed-resting-association; consumed54 scripts use unchanged common-correct,
+joint-credit, duplicate definitions and existing verified baseline frames. These
+are already-consumed development records, not new validation. No source changes,
+no pushes, no agents; active goal not achieved.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
