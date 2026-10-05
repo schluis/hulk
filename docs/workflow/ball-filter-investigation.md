@@ -3353,6 +3353,15 @@ within1e−4 and exact last_seen), so incomplete/incompatible captures cannot qu
 enter comparison. Script SHA256 recorded in validation-script-hashes.json. No
 candidate scoring has started. Resource slice stays~5–7GiB, max45GiB, nice15.
 
+E111 next checkpoint: successful suites69/71/73 (27 recordings); failed70/72/74
+preserved for predeclared capture-validity reasons. Seeds75/76/77 now running in
+original sequence, exec10447 confirmed live. Aggregate memory~5.5GiB. First completed
+suite69 independently passed `--verify` across all recorded baseline cycles;
+`baseline-parity/report.json` records live_replay_verified=true. This is infrastructure
+verification only; candidate remains unscored/unchanged. All six selected suites
+will also pass baseline verification as part of prepared final comparison. No extra
+capture, evaluation restart or candidate modification. Goal remains unproven.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
