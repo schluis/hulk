@@ -82,7 +82,10 @@ merge/selection before further policy changes. E92 identifies the stale-age vers
 observation-gap mismatch; E93 aligns them and fixes the exact frame, while a smaller
 +0.059%audit6a position regression remains. E94 traces it to the hard auxiliary
 covariance gate switching output to a94.45% stale-history blend; test continuous
-publication weighting before further merge tuning. Full E93 paired audit outstanding.
+publication weighting before further merge tuning. E95 taper fixes the local jump
+but fixed settings fail position; E96 calibration grid012 improves all-suite position
+and pooled velocity, with small per-suite velocity regressions still requiring the
+position-conditioned and duplicate audit before fresh validation.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2845,6 +2848,66 @@ retention against all216 plus E93; E51's prior publication grids remain relevant
 All diagnostic jobs terminal, all source restored, memory≈4.87GB, no pushes, fresh
 67/68 untouched. Goal not complete; high-speed/airborne and full E93 duplicate audit
 remain outstanding.
+
+### E95 — Continuous publication covariance blend [FIXED CONFIGURATION REJECTED]
+
+E93 plus a covariance weight inside the existing auxiliary admission boundary.
+Let P=primary covariance trace, A=auxiliary trace, C=maximum_ratio*P and
+F=min(P,C/2). Weight1 for A≤F; weight(C−A)/(C−F) for F<A≤C; outside C the original
+gate rejects the auxiliary. Existing publication_filter_blend multiplies the weight.
+Zero resulting blend returns primary with its own timestamp. Both-zero covariance,
+zero maximum ratio, nonfinite inputs and infinite cutoff handled explicitly. No
+new parameter. This targets E94's covariance discontinuity only; age/distance and
+size-based admission still have their original switches.
+
+`G/continuous-publication/` preserves sources, failed/passing build logs, frozen
+binaries/config and SHA256 protocol. Added continuity/monotonicity/zero/NaN tests.
+Initial run failed an old assertion equating precise-auxiliary output with a much
+less precise auxiliary under a finite1e6 cutoff. Under a taper those outputs differ
+slightly by design. Replaced that assertion with the explicit configured-blend
+expectation for the precise auxiliary; original reject/retain/zero-limit assertions
+remain. All122 tests pass. Source restored after build. Full216 replay plus E94
+one-clip diagnostic completed under45GiB/nice15, no new parameters or fresh seeds.
+Ground-coordinate output displacement184.800→184.818s falls0.339906→0.018651m;
+this includes ordinary odometry over18ms, not a pure world-frame discontinuity metric.
+`diagnostic/switch.json` preserves both traces. Mechanism works locally but fixed
+configuration fails full replay: close position0.252103653m (+3.51220%), worst
+suite development+18.67648%; close velocity0.677837464m/s (−0.02444%), fast
+2.349709965m/s (−0.03181%), wrong+32.978s, correct-close missing+7.364s. Raw close
+velocity missing unchanged. Reject configuration; do not promote smoother output
+at the expense of accuracy. Test existing-parameter calibration before discarding
+continuous weighting itself.
+
+### E96 — Calibrate existing parameters for continuous weighting [COMPLETE, UNACCEPTED]
+
+Frozen E95 runtime,15 configurations combining maximum covariance ratios8/12/20/50/
+1000 and publication blend0.85/original0.94453126/1.0. All other E95 parameters
+unchanged. Protocol and scripts in `G/continuous-publication/calibration/`. Purpose:
+continuous taper changes useful correction strength, so test the existing controls
+rather than adding a transition-width parameter. Full216 inspected development
+recordings only; scoring unchanged, no fresh67/68 data. One shared replay process,
+15 workers, resource runner/nice15/45GiB. All15 runs terminal, ranked.json preserved;
+zero configurations satisfy every original raw position/velocity/fast suite guard.
+
+Two informative candidates (ratio1000):
+
+| Config | Blend | Close p RMSE | Close v RMSE | Fast v RMSE | Wrong delta |
+|---|---:|---:|---:|---:|---:|
+|grid-012|0.85|0.223471874 (−8.24384%)|0.677020136 (−0.14499%)|2.349989098 (−0.01994%)|−59.980s|
+|grid-013|0.94453126|0.222029026 (−8.83626%)|0.677278211 (−0.10693%)|2.350053019 (−0.01722%)|−65.520s|
+
+Both improve position in every suite. Grid012 worst close velocity+0.12318%audit5b,
+fast+0.17916%audit5b; correct-close missing−12.130s. Grid013 worst close velocity
++0.16467%audit6b, fast+0.20622%audit5b; correct-close missing−13.594s. E51/E63's
+publication-only gains and correctness confounds are relevant controls; do not
+attribute all gains to the new taper or association/merge changes. Ratio1000 also
+makes taper very weak over most ordinary ratios, so reduced diagnostic jump under
+the original ratio does not establish jump reduction for these calibrated configs.
+
+Next prioritize grid012 for fixed common-correct-frame velocity, existing E67 joint
+credit and spatial duplicate audit; compare with E93 and the earlier publication
+control before freezing a fresh-validation candidate. No adopted runtime change,
+source restored, fresh67/68 untouched, no pushes. Goal remains incomplete.
 
 ## 5. Evidence map and operational handoff
 
