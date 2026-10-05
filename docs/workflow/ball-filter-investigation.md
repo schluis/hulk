@@ -59,8 +59,8 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: audit10 frozen E43 candidate; collect new seeds65+ and inspect fresh
-accuracy/recovery/duplicates before acceptance. Working runtime has
+Next: audit10 rejected; E45 isolates merging/reacquisition effects on approach65.
+Reserved67/68 remain unscored. Working runtime has
 experimental optional cap; default parameters remain original until fresh validation succeeds.
 
 
@@ -1320,6 +1320,34 @@ Seeds65–76, first two complete nine-scenario suites by ordered coverage succes
 four isolated captures at a time, extras preserved unscored. Same acceptance
 criteria as preceding audits, including manual review. Runtime only adds optional
 stored-confidence cap; production parameter defaults unchanged until acceptance.
+
+E44 audit10 rejected: all4 captures succeeded, first65/66 scored;67/68 reserved
+unscored. Baseline replay verified. Close position0.127733→0.135965m (+6.45%),
+velocity0.677975→0.668177m/s (−1.45%), fast2.414109→2.345040 (−2.86%).
+Suite65 close p/v regress. Wrong68.150→70.720s, false79.12 unchanged, close
+correct-missing5.294→5.334s, velocity-missing2.526 unchanged.
+Close primary duplicates45.994→5.284s (−88.5%), zero-near6.218→6.114s.
+Initial200ms velocity3.980079→3.563681m/s (−10.46%), position0.650101→0.767090;
+200–1000ms velocity2.842105→2.359496, no missing output in either window.
+Tests118 filter+43 tuner passed;1 existing tuner test ignored. Receipts under
+`G/audit10/checks/`. Goal incomplete and defaults unchanged.
+
+Approach65 diagnosis: at43.424s candidate primary recent resting support3.95
+outputs velocity0 while baseline retains older size-inconsistent primary and
+uses auxiliary velocity3.64m/s, close to truth3.76m/s. At48.320s candidate
+selects2.158s-old resting track,1.10m error; true recent track has support1.0,
+while baseline matches the true track with45.8 support. Difference is in
+association/merging and publication eligibility, not only Kalman velocity gains.
+Source states and paired metrics: `G/audit10/diagnosis/`.
+
+### E45 — Merge and reacquisition calibration on the new approach failure
+
+Test existing merge distances0.1/0.15/0.2/0.25/0.275/0.3, matching1/1.2/1.4/1.6/2,
+reacquisition0.1365(original)/0.25/0.5:90 plus baseline and prior candidate.
+216 inspected clips,23 groups, plus separate seed65 approach diagnostic.
+Retain original runtime with optional cap; no new algorithm. Require existing
+close/fast/availability guards and inspect approach/reversal/duplicates before
+new frozen validation. Reserved67/68 untouched. `G/merge-reacquisition/`.
 
 ## 5. Evidence map and operational handoff
 
