@@ -59,9 +59,10 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E76 traced the first high-speed acquisition; audit raw percept geometry,
-assignment decisions, and
-flight projection. Explicit >15m/s/airborne captures expose large baseline errors;
+Next: E77 isolates diffuse-track association and likely false second percept;
+E78's relative logarithmic penalty fixes the first match but regresses full replay.
+Inspect audit3a's regression before selecting a more specific association change;
+airborne projection remains an independent open issue. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
 E67's smooth position-weighted velocity credit is implemented as a diagnostic;
@@ -2305,6 +2306,65 @@ positions imply substantially slower motion than truth. Next audit raw detection
 geometry/timestamps and assignment decisions, then test a narrowly justified
 change against E25/E73 false-motion counterexamples and the complete development
 suite. Fresh67/68 untouched; memory≈4.83GB; no agents or pushes.
+
+### E77 — Assignment costs explain first fast-kick capture [DIAGNOSED]
+
+Instrumented baseline association immediately before Hungarian assignment, using
+frozen original parameters on E75 train-42. `G/first-kick-association/` preserves
+before/after source, frozen evaluator, complete trace, and exact aggregate parity
+receipt against E76. Diagnostic source restored after build. Replay terminal.
+
+At3.042s the true-looking percept projects to(0.75495,−0.02943)m, radius32.0529px.
+The established track is eligible: gated Mahalanobis score−1.94945, after uncertainty
+penalty−2.32348. An existing diffuse weak track scores−0.08200, then−1.03709 and
+wins. Thus neither maximum-distance nor reacquisition gate blocked the primary;
+normalized residual favors the diffuse history despite the bounded penalty.
+At3.082s, the next percept projects to(0.44404,0.05420)m with radius **exactly8px**,
+matching the simulator's fixed false-positive radius. Combined with its false
+size-plausibility flag and inconsistent motion, this strongly identifies an
+outlier rather than a second useful true-ball measurement. Raw detections do not
+carry a truth/provenance label, so this is a source-supported inference.
+The weak updated track again wins (−0.64150 versus−2.35844). Do not interpret E76's
+two ball-labelled detections as two verified observations of the real ball.
+Auxiliary publication-filter traces are also present; distinguish them by their
+single-hypothesis state/configuration. Per-recording and aggregate replay each
+execute tracking, explaining repeated trace blocks.
+
+### E78 — Relative logarithmic association uncertainty [REJECTED]
+
+Question: can an unsaturated covariance penalty prevent diffuse weak candidates
+from absorbing a fast ball's first displaced observation? Change only association
+uncertainty penalty, original parameters otherwise. `G/association-log-penalty/`
+preserves sources, config, binaries, build logs and SHA256 protocol.
+
+First attempt changed trace/(1+trace) to log(1+trace). It failed two existing tests:
+the sole eligible diffuse track was rejected against the unmatched dummy. Archived
+as `lib-after.rs`, not adopted. Revised version subtracts the minimum log penalty
+among eligible tracks for each percept, so uncertainty expresses relative track
+preference; sole eligible track has zero relative penalty. All118 tests pass.
+Source archived as `lib-after-relative.rs`; working source restored after build.
+
+Challenge replay terminal: at3.068s the established track now accepts the3.042s
+observation and output x moves from1.493 to0.731m. It still has zero velocity and
+subsequent outlier/publication behavior remains problematic (output x1.412 at3.1s).
+This verifies the association mechanism, not a complete tracking solution.
+Full216-development replay completed under the45GiB aggregate cap (observed~9GB),
+nice15, original configuration only. `comparison.json` records:
+
+| Metric | Baseline | Candidate | Change |
+|---|---:|---:|---:|
+| Close position RMSE (m) |0.243549712|0.243278659|−0.1113%|
+| Close velocity RMSE (m/s) |0.678003173|0.679248701|+0.1837%|
+| Fast close velocity RMSE (m/s) |2.350457712|2.349591298|−0.0369%|
+| All velocity RMSE (m/s) |0.781474412|0.784191563|+0.3477%|
+
+Wrong output increases10.050s, correct-close missing decreases2.128s, raw close
+velocity missing unchanged. Worst suite audit3a close position+41.582%, velocity
++4.462%. Reject despite diagnostic association improvement and pooled position
+gain. No fresh67/68 evaluation. All jobs terminal, filter source restored. Next
+inspect the audit3a regressions alongside the first-kick counterexample before
+choosing a more selective association or motion-evidence rule; unsaturated
+uncertainty preference alone is insufficient. Preserve single-outlier protection.
 
 ## 5. Evidence map and operational handoff
 
