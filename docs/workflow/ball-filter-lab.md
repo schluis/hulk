@@ -164,7 +164,11 @@ ordinary loading never interprets zero as infinity.
 Zero weights and decay rates already mean zero contribution and stay unchanged.
 `resting_velocity_threshold` and the near-miss region use strict less-than tests:
 zero gives an empty nonnegative speed/distance range. The likelihood-based resting
-transition remains independent. A long near-miss timeout does not cancel its
+transition remains independent. The speed rule uses mean speed plus three times
+the square root of velocity covariance trace, so an uncertain newborn zero velocity
+is not evidence of rest. Equal selection scores prefer the latest observation,
+then effective confidence, while preserving confirmation eligibility.
+A long near-miss timeout does not cancel its
 independent decay rate; set that rate to zero for no additional decay.
 The unused `maximum_matching_cost_validity_penalty_factor` has been removed.
 

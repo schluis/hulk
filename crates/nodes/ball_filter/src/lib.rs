@@ -367,7 +367,12 @@ fn predict_hypotheses_from_odometry(
     if resting_speed.is_finite() && resting_speed > 0.0 {
         for hypothesis in &mut ball_filter.hypotheses {
             if let hypothesis::BallMode::Moving(state) = hypothesis.mode
-                && state.mean.z.hypot(state.mean.w) < resting_speed
+                // A newborn has zero mean velocity but no evidence of rest yet.
+                && state.covariance.fixed_view::<2, 2>(2, 2).trace().is_finite()
+                && state.covariance.fixed_view::<2, 2>(2, 2).trace() >= 0.0
+                && state.mean.z.hypot(state.mean.w)
+                    + 3.0 * state.covariance.fixed_view::<2, 2>(2, 2).trace().sqrt()
+                    < resting_speed
             {
                 hypothesis.mode = hypothesis::BallMode::Resting(MultivariateNormalDistribution {
                     mean: state.mean.xy(),
@@ -1514,9 +1519,13 @@ mod tests {
     }
 
     #[test]
-    fn speed_transition_can_rest_a_quiet_uncertain_ball_without_stopping_fast_motion() {
-        for (threshold, speed, resting) in [(0.0, 0.0, false), (0.1, 0.01, true), (0.1, 1.0, false)]
-        {
+    fn speed_transition_requires_confidently_small_velocity() {
+        for (threshold, speed, variance, resting) in [
+            (0.0, 0.0, 0.0001, false),
+            (0.1, 0.01, 0.0001, true),
+            (0.1, 0.0, 40.0, false),
+            (0.1, 1.0, 0.0001, false),
+        ] {
             let parameters = BallFilterParameters {
                 resting_velocity_threshold: threshold,
                 log_likelihood_of_zero_velocity_threshold: f32::INFINITY,
@@ -1526,7 +1535,9 @@ mod tests {
                 hypotheses: vec![BallHypothesis::new(
                     MultivariateNormalDistribution {
                         mean: nalgebra::vector![1.0, 0.0, speed, 0.0],
-                        covariance: Matrix4::identity() * 50.0,
+                        covariance: Matrix4::from_diagonal(&nalgebra::vector![
+                            50.0, 50.0, variance, variance
+                        ]),
                     },
                     Time::zero(),
                 )],
@@ -1546,6 +1557,61 @@ mod tests {
             assert_eq!(filter.hypotheses[0].position().position, point![1.0, 0.0]);
             assert_eq!(filter.hypotheses[0].validity, 1.0);
         }
+    }
+
+    #[test]
+    fn newborn_learns_fast_motion_without_spawning_a_trail() {
+        let mut parameters = crate::test_parameters();
+        parameters.resting_velocity_threshold = 0.12;
+        parameters.log_likelihood_of_zero_velocity_threshold = 19.0;
+        parameters.maximum_matching_distance = 1000.0;
+        parameters.maximum_matching_cost = 1000.0;
+        parameters.velocity_decay_factor = 1.0;
+        parameters.noise.initial_covariance = vector![0.01, 0.01, 40.0, 40.0];
+        parameters.noise.process_noise_moving = vector![0.000001, 0.000001, 0.01, 0.01];
+        let mut filter = BallFilter::default();
+        let mut solver = AssignmentSolver::default();
+        let mut odometry = None;
+        let mut prediction_time = None;
+        for tick in 0..=80 {
+            let time = Time::from_nanos(tick * 2_000_000);
+            predict_hypotheses_from_odometry(
+                &mut filter,
+                time,
+                Pose2::new(point![0.0, 0.0], 0.0),
+                &mut odometry,
+                &mut prediction_time,
+                &parameters,
+            );
+            if tick % 20 == 0 {
+                let percept = BallPercept {
+                    percept_in_ground: MultivariateNormalDistribution {
+                        mean: vector![0.5 + 4.0 * tick as f32 * 0.002, 0.0],
+                        covariance: Matrix2::identity() * 0.0001,
+                    },
+                    image_location: Circle::new(point![0.0, 0.0], 8.0),
+                };
+                advance_all_hypotheses(
+                    &mut filter,
+                    &mut solver,
+                    time,
+                    &[percept],
+                    None,
+                    None,
+                    &[],
+                    &parameters,
+                    &FieldDimensions::SPL_2025,
+                )
+                .unwrap();
+            }
+            assert_eq!(filter.hypotheses.len(), 1);
+            assert!(matches!(filter.hypotheses[0].mode, BallMode::Moving(_)));
+        }
+        assert!(
+            (filter.hypotheses[0].position().velocity.x() - 4.0).abs() < 0.3,
+            "{:?}",
+            filter.hypotheses[0].position()
+        );
     }
 
     #[test]

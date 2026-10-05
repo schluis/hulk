@@ -98,7 +98,10 @@ impl BallFilter {
                 !established_incumbent || track.validity >= confirmation_confidence
             })
             .max_by(|(a, _, validity_a), (b, _, validity_b)| {
-                rank(a, *validity_a).total_cmp(&rank(b, *validity_b))
+                rank(a, *validity_a)
+                    .total_cmp(&rank(b, *validity_b))
+                    .then_with(|| a.last_seen.cmp(&b.last_seen))
+                    .then_with(|| validity_a.total_cmp(validity_b))
             })?;
         let recovered = candidates
             .filter(|(candidate, recovery_rank, _)| {
@@ -330,7 +333,7 @@ mod tests {
                 .select_hypothesis(0.5, |_| 1.0, 0.0, 0.0)
                 .unwrap()
                 .validity,
-            4.0
+            50.0
         );
         let filter = BallFilter {
             hypotheses: vec![track(1.0, 50.0, 0), track(2.0, 2.0, 0)],
@@ -349,6 +352,40 @@ mod tests {
                 .validity,
             2.0
         );
+    }
+
+    #[test]
+    fn capped_ties_prefer_recent_confirmed_tracks_in_either_order() {
+        for cap in [0.0, 3.0] {
+            for reverse in [false, true] {
+                let mut hypotheses = vec![track(1.0, 50.0, 0), track(2.0, 4.0, 40_000_000)];
+                if reverse {
+                    hypotheses.reverse();
+                }
+                let filter = BallFilter { hypotheses };
+                assert_eq!(
+                    filter
+                        .select_hypothesis(0.5, |_| 1.0, 0.0, cap)
+                        .unwrap()
+                        .position()
+                        .position
+                        .x(),
+                    2.0
+                );
+                let filter = BallFilter {
+                    hypotheses: vec![track(1.0, 50.0, 0), track(2.0, 1.0, 40_000_000)],
+                };
+                assert_eq!(
+                    filter
+                        .select_hypothesis(0.5, |_| 1.0, 0.0, cap)
+                        .unwrap()
+                        .position()
+                        .position
+                        .x(),
+                    1.0
+                );
+            }
+        }
     }
 
     #[test]
