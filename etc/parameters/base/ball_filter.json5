@@ -1,8 +1,9 @@
 {
+  // Experimental E43 simulator candidate; fresh validation failed (investigation E44).
   good_localization: true,
   field_boundary_margin: 0.5,
-  field_boundary_confidence_decay_distance: 0.3,
-  field_boundary_validity_decay_rate: 2.0,
+  field_boundary_confidence_decay_distance: 0.55,
+  field_boundary_validity_decay_rate: 0.5,
   maximum_detection_distance: 15.0,
   maximum_camera_matrix_age: { secs: 0, nanos: 20000000 },
   visible_missed_detection_timeout: { secs: 1, nanos: 0 },
@@ -15,7 +16,9 @@
   near_visible_missed_validity_decay_rate: 20.82781410217285,
   competing_hypothesis_validity_decay_rate: 0.13457733392715454,
   nearby_spawn_validity_factor: 0.7493224143981934,
-  hypothesis_merge_distance: 0.10000000149011612,
+  // Bound stored support separately from selection ranking. Zero means zero.
+  maximum_confidence: 3.95,
+  hypothesis_merge_distance: 0.30000001192092896,
   hypothesis_timeout: {
     nanos: 0,
     secs: 20,
@@ -23,9 +26,9 @@
   ball_confidence_threshold: 0.6,
   log_likelihood_of_zero_velocity_threshold: 19.06328582763672,
   maximum_matching_cost: 7.652429580688477,
-  resting_velocity_threshold: 0.11987119168043137,
+  resting_velocity_threshold: 0.09390133619308472,
   // Limits are literal; zero is not an unbounded-distance sentinel.
-  maximum_matching_distance: 1.6011608839035034,
+  maximum_matching_distance: 1.2018376588821411,
   reacquisition_matching_distance: 0.13652116060256958,
   maximum_detection_radius_ratio: 1000000.0,
   radius_consistency_maximum_distance: 1000.0,
@@ -36,20 +39,20 @@
   visibility_uncertainty_scale: 3.0,
   maximum_number_of_hypotheses: 15,
   // Correct implausibly small detections using independently supported history.
-  publication_filter_blend: 0.944531261920929,
+  publication_filter_blend: 0.9546992182731628,
   publication_detection_noise: 0.2,
   publication_maximum_age: { secs: 1000000, nanos: 0 },
   publication_maximum_distance: 1000.0,
-  publication_maximum_covariance_ratio: 6.048000335693359,
+  publication_maximum_covariance_ratio: 1000.0,
   publication_field_boundary_margin: 1.5,
   noise: {
-    detection_noise: [0.12650728225708008, 0.12650728225708008],
-    initial_covariance: [0.5, 0.5, 40.0, 40.0],
-    process_noise_moving: [0.0065751285292208195, 0.0065751285292208195, 0.10000000149011612, 0.10000000149011612],
-    process_noise_resting: [0.01491544395685196, 0.01491544395685196],
+    detection_noise: [0.12041410058736801, 0.12313969433307648],
+    initial_covariance: [1.0, 1.0, 40.0, 40.0],
+    process_noise_moving: [0.005549164954572916, 0.004599729552865028, 1.2277345657348633, 0.6370271444320679],
+    process_noise_resting: [0.01453508622944355, 0.013527353294193745],
   },
   validity_discard_threshold: 0.2,
   validity_output_threshold: 0.5,
-  velocity_decay_factor: 0.9994442462921143,
+  velocity_decay_factor: 0.9970690608024597,
   visible_validity_exponential_decay_factor: 0.96,
 }

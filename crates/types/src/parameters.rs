@@ -255,6 +255,11 @@ pub struct BallFilterParameters {
     /// Fraction of bounded confidence inherited when spawning near a recent track.
     /// None preserves legacy spawn confidence; zero disables the bonus.
     pub nearby_spawn_validity_factor: Option<f32>,
+    /// Maximum accumulated hypothesis support, applied before retention/merging.
+    /// None preserves unbounded historical support; zero caps support at zero.
+    /// Negative/NaN values act as zero. This is separate from the ranking cap.
+    #[serde(default)]
+    pub maximum_confidence: Option<f32>,
     pub validity_output_threshold: f32,
     pub validity_discard_threshold: f32,
     pub velocity_decay_factor: f32,

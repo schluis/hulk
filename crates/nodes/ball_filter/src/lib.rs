@@ -597,6 +597,12 @@ fn remove_invalid_and_merge_hypotheses(
     filter_parameters: &BallFilterParameters,
     field_dimensions: &FieldDimensions,
 ) {
+    if let Some(maximum) = filter_parameters.maximum_confidence {
+        let maximum = maximum.max(0.0);
+        for hypothesis in &mut ball_filter.hypotheses {
+            hypothesis.validity = hypothesis.validity.min(maximum);
+        }
+    }
     let is_hypothesis_valid = |hypothesis: &BallHypothesis| {
         let ball = hypothesis.position();
         let Some(duration_since_last_observation) = ball.age_at(time) else {
@@ -994,6 +1000,41 @@ mod tests {
     use types::multivariate_normal_distribution::MultivariateNormalDistribution;
 
     use super::*;
+
+    #[test]
+    fn stored_confidence_cap_preserves_state_and_zero_removes_support() {
+        let mut parameters = crate::test_parameters();
+        parameters.maximum_confidence = Some(5.0);
+        let mut hypothesis = BallHypothesis::new(
+            MultivariateNormalDistribution {
+                mean: nalgebra::vector![1.0, 0.0, 2.0, 0.0],
+                covariance: Matrix4::identity(),
+            },
+            Time::zero(),
+        );
+        hypothesis.validity = 100.0;
+        let mut filter = BallFilter {
+            hypotheses: vec![hypothesis],
+        };
+        remove_invalid_and_merge_hypotheses(
+            &mut filter,
+            Time::zero(),
+            &parameters,
+            &FieldDimensions::SPL_2025,
+        );
+        assert_eq!(filter.hypotheses.len(), 1);
+        assert_eq!(filter.hypotheses[0].validity, 5.0);
+        assert_eq!(filter.hypotheses[0].position().velocity.x(), 2.0);
+        assert_eq!(filter.hypotheses[0].position().position.x(), 1.0);
+        parameters.maximum_confidence = Some(0.0);
+        remove_invalid_and_merge_hypotheses(
+            &mut filter,
+            Time::zero(),
+            &parameters,
+            &FieldDimensions::SPL_2025,
+        );
+        assert!(filter.hypotheses.is_empty());
+    }
 
     fn horizontal_test_camera() -> CameraMatrix {
         // Camera one metre above Ground, looking along +x; pixel y increases down.
@@ -1915,8 +1956,11 @@ mod odometry_pose_tests {
 
 #[cfg(test)]
 fn test_parameters() -> BallFilterParameters {
-    json5::from_str(include_str!(
+    let mut parameters: BallFilterParameters = json5::from_str(include_str!(
         "../../../../etc/parameters/base/ball_filter.json5"
     ))
-    .expect("base ball_filter parameters must deserialize")
+    .expect("base ball_filter parameters must deserialize");
+    // Isolate confidence accounting from the deployed cap; cap tests opt in explicitly.
+    parameters.maximum_confidence = None;
+    parameters
 }

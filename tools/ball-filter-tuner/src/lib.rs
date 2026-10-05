@@ -871,7 +871,7 @@ mod tests {
         ))
         .unwrap();
         assert!(!current.visible_missed_detection_timeout.is_zero());
-        assert_eq!(current.field_boundary_validity_decay_rate, 2.0);
+        assert_eq!(current.field_boundary_validity_decay_rate, 0.5);
         assert_eq!(current.maximum_detection_distance, 15.0);
         // Historical captures must supply their old behavior explicitly now
         // that production parameter defaults live in configuration files.

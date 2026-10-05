@@ -41,14 +41,14 @@ robot, kicks, and recovery after a robot obstacle occludes the ball.
 
 At `0ed7a0910`, the latest investigation retained a **selection tie fix**:
 equal ranks prefer recent observations, then effective confidence, without
-relaxing confirmation eligibility. Preferred parameter values are unchanged.
+relaxing confirmation eligibility. The accepted benchmark remains unchanged; see the experimental checkout below.
 Resting/moving transition experiments were rejected. Tooling now includes v11
 fast-close velocity loss, initial-position-covariance tuning, seeded no-search
 demos, and the image observer.
 
 E06 association tracing is complete. E07 tested a full-span motion-significance
 check with fixed parameters and was rejected on all three replay partitions.
-The retained baseline runtime and parameters are those of `0ed7a0910`. Runtime code and preferred parameter defaults remain unchanged.
+The retained baseline runtime and parameters are those of `0ed7a0910`. The accepted baseline runtime and parameters remain the comparison reference.
 Goal mode is active at the user’s request. E08 failed fresh validation; E10
 retention calibration found a publication dependency (E15). A joint primary/auxiliary
 parameter search completed (E16) on all 54 inspected development clips. The
@@ -62,7 +62,8 @@ and passes fresh validation; do not declare diagnostic progress a completed goal
 Next: E47 failed; E48 jointly calibrates existing parameters against all216
 inspected clips.
 Reserved67/68 remain unscored. Working runtime has
-experimental optional cap; default parameters remain original until fresh validation succeeds.
+experimental optional cap. At the user’s explicit request to push for local testing,
+the checkout now uses E43 parameters; this is not acceptance or a merge recommendation.
 
 
 ### 2.2 Baseline and terminology
@@ -1413,6 +1414,24 @@ fast/bounded/availability and reversal guards. Early stop only when fully
 feasible and pooled position/velocity each improve>=1%; then manual review and
 fresh validation on untouched67/68. No algorithm additions beyond optional cap.
 Artifacts `G/joint-calibration/`. Default parameters remain unchanged.
+
+### E49 — User-requested simulator checkout and push
+
+The user requested the best current candidate and then explicitly requested a
+push so they can pull it. Apply exactly E43/refine-040 (`G/audit10/candidate.json5`,
+SHA256 e4f2c2a63ced11611e37dca14fa85f449cf5f497944cc8b1543a997f0832e4a6)
+to the simulator branch defaults, with the tested optional stored-confidence cap.
+This is an experimental local-testing checkout, not adoption: audit10 close
+position regressed6.45%, while close velocity improved1.45%; details in E44.
+The accepted comparison baseline remains `ed1d39b67`, and goal mode continues.
+E48 uses frozen binaries/configurations and is unaffected by this checkout change.
+Push only this branch to `schluis`; no other branches or PR are requested.
+Verification: the checked-out defaults reproduce the frozen candidate's parsed
+parameters and seed65 approach score exactly. All 118 ball-filter tests and 41
+tuner library tests pass, along with tuner binary targets. Unrelated confidence
+accounting fixtures explicitly disable the cap; the dedicated test covers the cap
+and literal zero. The legacy warm-start test's expected configured boundary decay
+is updated to 0.5. Local diagnostic examples are excluded from this commit.
 
 ## 5. Evidence map and operational handoff
 
