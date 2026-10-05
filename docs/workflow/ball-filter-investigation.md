@@ -59,53 +59,34 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Current: E81–E93 developed resting-only association, selection re-confirmation,
-and conditional stale-resting merging. E95 continuous publication taper and E99
-newer-moving velocity preference were rejected after full replay; keep all evidence.
-E101 calibrated existing publication settings on E93; E102 verified ratio7 candidate
-improves development position1.51%, correctly associated velocity0.030%, duplicate
-exposure30.93%, joint credit and coverage. Raw suite velocity regressions include
-position-credit confounds, but three tiny common-correct regressions are preserved.
-E103 froze candidate before fresh67/68: position improves0.83%/1.33%, wrong output
-falls1.4s, correct-close coverage gains0.082s with no loss, duplicates improve0.786
-hypothesis-seconds; velocity is EXACTLY unchanged on both fresh suites. Thus strict
-fresh velocity improvement is not achieved; no goal winner adopted. Preserve this
-candidate as evidence of generalizing position/duplicate benefit. Continue motion
-recovery work; newly changed candidates require new reserved scenarios. Seeds67/68
-are consumed. E104 diagnoses the largest new reversal failure: detection gap plus
-slow wrong-sign recovery; rejected E66 leaves this unchanged. Verify its pre-update
-change gate before testing a narrower reversal mechanism. E105 verifies gate0.704<9;
-E106 narrower reversal improves target velocity5.1% and pooled fast1.19%, but fails
-audit3a position50.6%. Failure involves stale moving track blocking fresh near-truth
-hypothesis below confirmation3. Standalone E106 rejected; investigate selection
-interaction with E93-only control before any new validation. E107 finds73% of extra
-error has no near-truth hypothesis, limiting selection fixes. E108 close-only reversal
-improves velocity0.82%/fast1.11% but still fails audit9a position23.1%; rejected.
-E109 non-accelerating reversal removes those large regressions: all216 position
-−1.514%, velocity−0.179%, fast−0.111%, every suite position/fast passes. Full paired
-audit E110 confirms correct velocity−0.2145%, duplicate−30.93%, joint credit gains.
-E111 six-suite fresh validation FAILS: pooled raw velocity+0.0185%, position
-regresses0.00115%seed75 and0.68757%seed77. Other pooled/correctness guards improve.
-No adoption; E113 shows reversal has no true-ball score benefit on these54 clips
-and adds1.984s false output versus E93. Position failures also occur without it;
-inspect seed77 brief-gaps divergence and seed76 false reset separately.
-All validation/control jobs terminal; runtime restored, no pushes.
-High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
-they supplement, not replace, the original close-accuracy/fresh-validation goal.
-E73's longer-window fallback is rejected; do not relax activation blindly.
-E67's smooth position-weighted velocity credit is implemented as a diagnostic;
-the publication candidate slightly worsens it. E66's moving reconfirmation fails
-full replay and is archived, with working runtime restored.
-E56 isolates excessive velocity noise as a cause of direction jitter. E62's paired
-216-recording audit confirms E61's one-second clear-miss gate removes 57.132 seconds
-of wrong output, loses no correct output, and changes no remaining estimate.
-Correctly associated close-velocity error and coverage are unchanged: this is a
-false-output improvement, not a velocity winner. The production objective remains
-v11; supplementary scoring is diagnostic only. No accepted winner. Experimental
-runtimes are archived and prior runtime restored; E74 captures and E75 analysis completed.
-Reserved67/68 remain unscored. Working runtime has
-experimental optional cap. At the user’s explicit request to push for local testing,
-the checkout now uses E43 parameters; this is not acceptance or a merge recommendation.
+Current frozen candidate: **E120**, validated only on consumed development data so
+far. It combines confirmed resting-association competition, selective stale-resting
+merging with fresh endpoint only beyond one ball radius, uncertainty-aware close
+reversal recovery with a prior size-consistency veto, and publication covariance
+ratio7. No new tunable parameter is introduced. See E114–E120 for causal ablations,
+regressions and fixes; E81–E113 preserve earlier rejected experiments.
+
+- Original216: close position−1.487%, velocity−0.241%, fast velocity−0.177%.
+  Exact paired audit complete: common-correct velocity0.626021676→0.624209643m/s;
+  gained3.668s correct coverage, lost0; extra near-truth hypotheses693.982→479.150
+  hypothesis-seconds. Joint/fast credit improves. Small audit2a common velocity
+  regression+0.000016792m/s remains; raw per-suite velocity is not universally better.
+- Consumed54 (69/71/73/75/76/77): all frozen metric checks pass after E120; pooled
+  position0.233376828→0.229637407m, velocity0.681333155→0.672266121m/s,
+  false237.824→235.840s. These are development evidence, not fresh validation.
+- **E121 fresh validation running:** frozen sources/binaries/parameters/protocol
+  in G/wide-merge-fresh; first6 successful suites from seeds78..87, retain failures,
+  unchanged acceptance thresholds. Capture exec1564 confirmed live; seeds78/79/80
+  each completed5/9 scenarios at this checkpoint. Candidate remains unmodified.
+- E122 supplemental challenges: extreme>15m/s and airborne velocity remain weak;
+  no claim to solve those cases. Preserve raw incidental-flight velocity regression.
+- Working checkout/defaults remain the previously pushed **E43 user-test experiment**;
+  frozen E120 is not yet installed/adopted. Accepted benchmark remains0ed7a0910.
+  All later changes committed locally are investigation notes; no pushes or agents.
+
+Fresh67–77 are consumed; do not call them held out again. E111 failed fresh validation
+and E109 added false output; both remain documented. E120 succeeds on that consumed
+data after fixes, but **goal completion still requires E121 and final delivery audit**.
 
 
 ### 2.2 Baseline and terminology
@@ -3677,6 +3658,15 @@ identified E112 wrong-position credit concern; preserve raw regression rather th
 claiming universal nonregression. Overall high-speed velocity+0.009749m/s. No3D
 tracking claim. Fresh capture1564 and exact full216 audit96479 remain live; candidate
 unchanged, first capture batch78/79/80 progressing through fast-crossing, RAM~6GiB.
+
+E120 full216 paired audit96479 complete: common velocity0.626021676→0.624209643,
+coverage gained3.668/lost0, duplicates693.982→479.150; mean joint0.894368508,
+fast0.548114696. Metrics preserve E118 gains exactly except negligible joint-credit
+changes from close-merge restoration. Reversal plot generated/visually inspected:
+G/wide-merge-endpoint/reversal-recovery.png shows seed69 y-direction recovery
+133.214 versus baseline~133.500 (~0.29s sooner), lower position error afterward,
+but component-speed overshoot remains. Plot is development evidence, not fresh.
+Fresh capture1564 still live; seeds78/79/80 completed5/9 scenarios, no score inspected.
 
 ## 5. Evidence map and operational handoff
 
