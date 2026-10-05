@@ -73,6 +73,9 @@ selection-only improvement (position/wrong output, no fast-velocity gain). Inves
 stale-history retirement without broad merge changes before fresh validation.
 E88 confirms one duplicate's center is visible but covariance makes exposure unknown;
 the other is physically hidden. Do not apply a common clear-miss deletion rule.
+E89 conditional merging removes dominant two-clip duplicate increases and preserves
+pooled velocity gains, but development position regresses0.124%; inspect before
+fresh validation. Broad0.21m merge control regresses one suite8.64% and is rejected.
 High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
@@ -2677,6 +2680,51 @@ merge remains rejected (E36). Alternatively investigate resting uncertainty grow
 with explicit reacquisition/occlusion guards; neither is currently adopted.
 All jobs terminal, fresh67/68 untouched, no pushes. Existing candidate still has
 unresolved duplicate increase and fast/airborne limitations; goal not complete.
+
+### E89 — Conditional resting duplicate merging [DEVELOPMENT ONLY]
+
+E84 combined with configured merge maximum0.21m and a physical resting-track
+limit: ordinary resting pairs limited to one ball radius; recent confirmed
+size-plausible resting track (age≤120ms, support≥3) with stale resting history
+(age≥1s) may use up to a diameter. Actual limit is min(configured, physical), so
+zero still disables merging and the parameter remains an upper bound. Existing
+same-exposure/disjoint-history and covariance agreement checks remain. Moving
+pairs retain configured-distance behavior (thus parameter increase affects them).
+This is explicitly not a proof that overlapping predicted means imply one ball.
+
+`G/stale-resting-merge/` preserves both source attempts, build logs, SHA256 protocol,
+binaries/config. First attempt accidentally limited moving merges and failed an
+existing test; new test also assumed simulator0.105m radius while fixture used
+SPL2025's0.05m. Corrected moving behavior and explicit fixture radius; all120 tests
+pass, including fresh/stale positive, same exposure, weak, moving and zero-limit
+negative cases. Working sources restored after build.
+
+Two-clip diagnostic near-truth duplicate hypothesis-seconds:
+
+| Recording | Baseline | E84 | E89 |
+|---|---:|---:|---:|
+|144 stationary-close|6.880|24.160|2.280|
+|177 long-occlusion|0|9.080|0|
+
+Full216 replay completed, plus E84 runtime with same0.21m parameter as broad control,
+under45GiB/nice15 (observed~9.22GiB). Results vs accepted baseline:
+
+| Metric | Conditional E89 | Broad0.21m control |
+|---|---:|---:|
+| Close position RMSE (m) |0.242464272 (−0.44568%)|0.239268363 (−1.75790%)|
+| Close velocity RMSE (m/s) |0.677871787 (−0.01938%)|0.677897957 (−0.01552%)|
+| Fast close velocity RMSE (m/s) |2.349776931 (−0.02896%)|same|
+| Wrong output delta (s) |−7.962|−8.222|
+| Correct-close missing delta (s) |−2.060|−3.430|
+| Worst suite close position |+0.12372%development|+8.64018%audit6a|
+
+Raw close velocity missing unchanged. E85's known original raw-velocity correctness
+confound remains+0.108775%. Conditional E89's full duplicate metrics are not yet
+exported; two-clip cleanup is not full-suite evidence. This experiment supports the
+need for conservative conditions but still fails a position guard. Broad control
+is rejected despite larger pooled gain. Next trace development position regression
+(index27–35) before acceptance; avoid adding more policy merely to fit one case.
+All jobs terminal; source restored; no adopted runtime or push. Fresh67/68 unused.
 
 ## 5. Evidence map and operational handoff
 
