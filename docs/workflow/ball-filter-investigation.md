@@ -1861,6 +1861,68 @@ mechanism as a separate promising correction. Next isolate the largest original
 baseline velocity-error windows by motion, observation age and scenario, then
 choose a targeted model/update change rather than another undirected search.
 
+### E64 — Largest baseline velocity failures [DIAGNOSED; EXPERIMENT PENDING]
+
+`G/velocity-error-audit/` partitions all 216 development recordings by truth speed,
+selected primary age, mode, and position correctness. Raw close velocity RMSE
+reconciles to 0.678003185 m/s. Fast frames (>=2 m/s) account for 785.042 of
+1137.193 time-integrated squared velocity error, despite only 142.098 of 2473.834
+seconds of available close velocity. Mode/age are primary diagnostics and do not
+prove the published estimate came from that primary rather than auxiliary output.
+
+Largest correct-position 200 ms window: recording 111, fast-near-shot, 143.2–143.4 s;
+velocity RMSE 5.946 m/s while position RMSE is 0.161 m. Around 143.10 s truth and
+estimate velocities agree near (-1.4, 5.5) m/s. By 143.19 s truth has reversed to
+(2.45, -1.53), while the estimate remains near (-1.43, 5.61). Fresh observations
+then correct velocity slowly. This is evidence for abrupt-motion recovery, not
+proof of a particular physical contact. Proposed experiment: reuse three-point
+consistent motion evidence in moving tracks to detect significant velocity
+changes; preserve outlier rejection. No implementation or acceptance yet.
+
+User clarified velocity credit should decrease with position error. Plan a
+smooth product of position and velocity credits with truth-based denominators;
+retain raw metrics, coverage and false-output penalties. Not implemented yet;
+E62's hard-radius prototype remains supplementary, not the production objective.
+
+### E65 — B-Human reference and expanded fast/airborne requirements
+
+Inspected official 2025 public release at commit
+`d89d603f0388208cecd1c3144b6e8eb92aef4a93`; local source snapshots in
+`G/bhuman-reference/`. This is architectural evidence, not a shared benchmark or
+knowledge of their current private competition code.
+
+- [Estimator](https://github.com/bhuman/BHumanCodeRelease/blob/d89d603f0388208cecd1c3144b6e8eb92aef4a93/Src/Modules/Modeling/BallStateEstimator/BallStateEstimator.cpp):
+  separate stationary/rolling Kalman banks, likelihood ranking and bounded banks;
+  initialize new rolling candidates from recent observation pairs with friction
+  compensation. New candidates normally need a later update before selection;
+  published velocity additionally requires minimum measurement support.
+- [Defaults](https://github.com/bhuman/BHumanCodeRelease/blob/d89d603f0388208cecd1c3144b6e8eb92aef4a93/Src/Modules/Modeling/BallStateEstimator/BallStateEstimator.h):
+  ten hypotheses per mode, four measurements for nonzero rolling output;
+  disappearance evidence after seven expected-visible misses within one metre.
+  This updates disappearance metadata, not automatic deletion of the estimate.
+- [Percept filtering](https://github.com/bhuman/BHumanCodeRelease/blob/d89d603f0388208cecd1c3144b6e8eb92aef4a93/Src/Modules/Modeling/BallStateEstimator/BallPerceptFilter.cpp):
+  verification buffers and trajectory checks precede estimation, including weaker
+  percepts supported by coherent rolling motion. This helps explain why copying
+  their two-point births alone would not reproduce their robustness (cf. E25).
+- [Contact handling](https://github.com/bhuman/BHumanCodeRelease/blob/d89d603f0388208cecd1c3144b6e8eb92aef4a93/Src/Modules/Modeling/BallStateEstimator/BallContactCheckerProvider.cpp):
+  foot geometry/motion supplies explicit collision correction. Their inspected
+  estimator is planar stationary/rolling, not evidence of full airborne tracking.
+
+New user requirement: prepare for extremely fast, long kicks and airborne balls
+from the next opponent. Do not treat present rolling tests as coverage of this.
+Our detector projection intersects the ray with fixed ball-centre height and
+tracks 2D position/velocity. Larger-image tolerance does not estimate height.
+The scorer currently excludes truth speeds above 15 m/s; thus it cannot establish
+performance above that speed. Exact opponent speed/flight envelope is not known.
+
+Required next validation work: explicit high-speed and airborne scenarios,
+measurement/projection audit (including rays above the ground intersection), and
+separate onset, flight, bounce/landing and occlusion recovery metrics. Preserve
+original baseline metrics and fresh 67/68 validation; new challenge scenarios
+must be versioned separately. Assess whether available image centre/radius and
+camera pose support height/range inference before choosing added state/dynamics.
+Do not claim airborne support from changes to 2D process noise alone.
+
 ## 5. Evidence map and operational handoff
 
 - `G` = `/home/schluis/hulk/logs/ball-filter-goal-20261005/`.
