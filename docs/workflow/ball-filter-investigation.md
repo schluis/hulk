@@ -59,7 +59,7 @@ local-0322; E21 rejected it on fresh suite and fast-velocity regressions.
 Stop only after a candidate beats the frozen current best with improved velocity
 and passes fresh validation; do not declare diagnostic progress a completed goal.
 
-Next: E36 merge-distance/velocity response calibration after E35 rejection. Runtime/default
+Next: E37 independent validation of E36 evo-1-056 with duplicate reduction. Runtime/default
 parameters remain at the original retained baseline until fresh validation succeeds.
 
 
@@ -1138,6 +1138,29 @@ non-regressing pooled fast velocity and targeted reversal close/fast velocity.
 Minimize worst17-group close p/v ratio; generation centres/ranges saved. No
 fresh data or new code mechanism. This targets the residual0.35% velocity
 regression while retaining the demonstrated duplicate reduction.
+
+E36 minimax stopped early after2×64 samples as prespecified: evo-1-056 passes
+all17 group close p/v checks with worst ratio0.998818, plus pooled fast/bounded
+loss/availability and targeted reversal checks. Total463 evaluated configurations.
+Pooled position -28.48%, velocity -6.33%, fast -3.43%; wrong-output -14.756s,
+false-output +9.326s, close correct missing -11.096s, velocity missing unchanged.
+It keeps baseline hidden decay, uses initial xy covariance1, and merge0.3.
+
+Exact-score diagnostic replay on the recent18 clips confirms duplicate benefit:
+original baseline close multiple-near23.296s → candidate5.202s (-77.67%),
+zero-near10.990→9.796s, one-near180.602→199.890s. Total primary hypothesis
+integral1354.646→1272.238 over214.888s. No missing-velocity increase. This is
+still development evidence, with geometric proximity rather than track identity.
+Artifacts: `G/merge-response/final-development-counts.json`.
+
+### E37 — Eighth frozen independent audit
+
+**Status:** frozen/capturing. `G/audit8/candidate.json5`, exact hash in freeze.json.
+All-new seeds61–72 in fixed order, four concurrent isolated captures, first two
+complete valid suites selected before candidate scoring; extras unused. Frozen
+capture/evaluator hashes verified. Fresh numeric criteria and manual recovery/
+duplicate assessment unchanged. Runtime/defaults remain original pending outcome;
+no confidence cap or other experimental algorithm change is retained.
 
 ## 5. Evidence map and operational handoff
 
