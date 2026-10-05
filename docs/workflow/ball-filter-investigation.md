@@ -62,8 +62,10 @@ and passes fresh validation; do not declare diagnostic progress a completed goal
 Next: E81 identifies delayed reversal as E80's remaining velocity regression.
 E82 restricts changed association to resting-only competition, improving pooled
 close/fast metrics and wrong time, but audit8b position still regresses0.501mm RMSE.
-Inspect that paired regression and duplicate hypotheses before any fresh validation;
-high-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
+E83 traces that regression to inherited support making a newly matched false-size
+resting track eligible to win recency; investigate re-confirmation before selection.
+One-clip near-truth duplicate proxy is unchanged, full duplicate review still open.
+High-speed velocity acquisition and airborne projection remain open. Explicit >15m/s/airborne captures expose large baseline errors;
 they supplement, not replace, the original close-accuracy/fresh-validation goal.
 E73's longer-window fallback is rejected; do not relax activation blindly.
 E67's smooth position-weighted velocity credit is implemented as a diagnostic;
@@ -2462,6 +2464,46 @@ before any promotion; score report lacks a duplicate count. No accepted runtime 
 fresh67/68 evaluation. Next inspect audit8b's position regression and test narrowly
 justified corrections, preserving reversal and isolated-outlier counterexamples.
 All jobs terminal; peak observed RAM<10GiB, CPU nice15, no pushes.
+
+### E83 — Resting-association regression exposes inherited-support selection [DIAGNOSED]
+
+Paired audit8b development exports and a full-state baseline/candidate replay of
+brief-gaps seed50000062 are preserved in `G/association-resting-log/position-audit/`.
+Scripts `position_windows.py` and `duplicates.py`, failure-window/selection-states
+and duplicate/count reports make this reproducible. All replay jobs terminal.
+
+The+0.501mm suite RMSE hides a large short failure at202.538s: truth
+(0.19759,0.14792)m, baseline(0.12629,0.18308)m (≈0.080m error), candidate
+(0.72754,−0.56090)m (≈0.885m error), zero published velocity. In202.4–202.6s,
+position SSE0.00137850→0.03225701m²s (0.08302→0.40160m RMSE over0.2s).
+The existing moving hypothesis is identical in position/covariance/velocity in both
+replays. Its support is47.231 baseline,47.275 candidate. The false-size resting
+hypothesis at the wrong location has support2.657 baseline versus14.967 candidate.
+Both last matched202.522s; moving track last matched202.282s. This is a selection
+switch caused by different inherited support, not corruption of the moving state.
+
+`filter.rs::select_hypothesis` requires support≥3 to compete against established
+history; with original selection_confidence_cap=0, eligible ranking ties resolve
+by last_seen. Baseline wrong track fails that confirmation threshold; candidate
+passes and wins recency. A previously supported track can therefore regain output
+on one size-inconsistent percept. This qualifies the comment that a lone false
+observation cannot trigger recovery: it prevents a newborn from doing so, not a
+retained formerly supported hypothesis. No fix claimed; relaxing association gates
+or ignoring the tiny aggregate regression would conceal this failure.
+
+Hypothesis counts across all9 audit8b clips:2165.446→2183.726 hypothesis-seconds,
+counts differ for18.280s over359.904s. These counts alone are not duplicate counts.
+On the full-state brief-gaps clip, near-truth duplicate proxy (extra hypotheses
+within0.3m of sole truth) is unchanged1.552 hypothesis-seconds, multiple-near-truth
+duration1.552s. Total hypothesis-seconds223.226→224.906; near-truth hypothesis-seconds
+37.968→38.008. First state/count divergence190.104s. This is only one clip's spatial
+duplicate assessment, not evidence of full216 duplicate nonregression.
+
+Next inspect/restrict re-confirmation of retained, newly matched size-inconsistent
+histories before they displace a supported track, preserving ordinary true-ball
+recovery and existing false-percept counterexamples. Consider existing leadership
+observation evidence before adding state. E82 remains unaccepted; source unchanged,
+fresh67/68 untouched, RAM≈4.85GB after completed jobs, no agents or pushes.
 
 ## 5. Evidence map and operational handoff
 
