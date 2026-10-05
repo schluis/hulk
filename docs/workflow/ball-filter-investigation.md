@@ -3520,7 +3520,7 @@ with explicit false-output and old counterexample checks. This remains untested.
 Sources/defaults unchanged; ranking40334, full-state62467 and E10913973 all terminal.
 No fresh data consumed, no pushes or agents. Goal remains incomplete.
 
-### E117 — Observation-uncertainty speed guard [RUNNING]
+### E117 — Observation-uncertainty speed guard [INCOMPLETE CANDIDATE]
 
 E116 exact observation-gate reconstruction at133.214: intervals40/40ms,
 displacement dot0.05357>0, significance131.85/151.13>9, consistency0.19463<9,
@@ -3557,6 +3557,38 @@ E117 full216 terminal: position0.239928049m (-1.48703%), velocity0.676367049m/s
 nonregressing. Worst raw velocity suite now original+0.108775%, so not all guards
 pass; requires paired-frame diagnosis rather than ignoring. Wrong/missing reductions
 remain13.300s/3.668s. consumed54 exec90593 still live; memory4.78GiB at checkpoint.
+
+E117 consumed54 complete (90593 terminal): position0.233376828→0.229637377m,
+velocity0.681333155→0.672266121m/s, fast2.430878395→2.395125121. Common-correct
+velocity0.657107184→0.647491668, lost0.040/gained0.836s. Wrong322.864→320.110,
+false237.824 unchanged versus baseline; but false+1.984s versus simpler E115.
+Each-suite position still fails tiny seed75 increase; other frozen metric checks
+pass. Original216 velocity regression isolated to contested clip5; paired original9
+velocity exactlyequal0.640577568m/s on108.514common-correct seconds, gained1.438s,
+lost0. No reversal difference on original suite versus E115. Raw regression remains
+reported, but it is changed coverage rather than worsened common-frame velocity.
+Evidence regression-diagnosis/common-velocity.json; original replays99186 terminal.
+
+### E118 — Size-consistency veto for reversal recovery [RUNNING]
+
+E117 false seed76 full-state control/candidate replay88038 terminal. First divergence
+304.416s: moving false hypothesis support131.56 resets velocity(-0.7075,0.1039)→
+(0.1723,-0.5420), last observed size false before and after. Useful seed69 reset
+133.214 has previous observation size true. Artifacts E117/regression-diagnosis/
+false-first-divergence.json. Test E117 with reversal veto when existing previous
+last_observation_size_plausible==Some(false). Unknown remains allowed (including
+auxiliary tracker, which already has its own radius gate); no new size parameter
+or general detection rejection. Current observation size is assigned after update,
+so this specifically checks prior evidence; do not describe it as a current-size
+or three-consistent-sizes gate. Added direct no-reset test with false size evidence.
+G/size-supported-reversal frozen source/backups; build25144 via resource runner.
+After terminal build restore source and test target, full216, consumed54 false time.
+Goal remains unachieved; no new validation, pushes or agents.
+
+E118 build terminal,129 tests pass including explicit size-inconsistent no-reset.
+All runtime sources restored exactly. Full216/target replay51182 and consumed54
+paired audit12295 confirmed running under resource runner; aggregate~7.02GiB RAM,
+45GiB max, low CPU priority. No fresh data or adopted source changes.
 
 ## 5. Evidence map and operational handoff
 
