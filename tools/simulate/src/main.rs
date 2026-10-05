@@ -7,7 +7,7 @@ use bevy::{
     picking::mesh_picking::{MeshPickingCamera, MeshPickingPlugin, MeshPickingSettings},
     prelude::*,
 };
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use color_eyre::{Result, eyre::Context as _};
 use ros_z::prelude::*;
 use ros_z::time::{Clock, Time as RosTime};
@@ -41,8 +41,42 @@ mod simulation;
 
 const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
+fn default_demo_output() -> PathBuf {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    PathBuf::from(format!(
+        "logs/ball-demo-{}-{}",
+        now.as_millis(),
+        std::process::id()
+    ))
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    /// Run every ball-filter example once, without parameter search, and serve replay images.
+    Demo {
+        #[arg(long, value_name = "NEW_DIRECTORY", default_value_os_t = default_demo_output())]
+        output: PathBuf,
+        /// Optional ball-filter overrides. Omitted values use current robotics layers.
+        #[arg(long)]
+        parameters: Option<PathBuf>,
+        #[arg(long, default_value = "127.0.0.1:8765")]
+        image_listen: std::net::SocketAddr,
+        /// Do not launch the desktop 3D viewer (HTTP images remain available).
+        #[arg(long)]
+        headless: bool,
+        /// Exit after the final scenario instead of keeping the image interface open.
+        #[arg(long)]
+        exit_after: bool,
+    },
+}
+
 #[derive(Debug, Parser)]
+#[command(subcommand_negates_reqs = true, args_conflicts_with_subcommands = true)]
 struct Args {
+    #[command(subcommand)]
+    command: Option<Command>,
     #[arg(long, value_name = "DIRECTORY")]
     parameter_root: Option<PathBuf>,
     #[arg(long)]
@@ -118,6 +152,35 @@ struct Args {
 fn main() -> Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
+    if let Some(Command::Demo {
+        output,
+        parameters,
+        image_listen,
+        headless,
+        exit_after,
+    }) = &args.command
+    {
+        let images = ball_filter_tuner::observation::ImageServer::start(*image_listen)?;
+        return ball_tuning::run(
+            output,
+            0,
+            &args.robotics_parameter_root,
+            &args.location,
+            !exit_after,
+            ball_tuning::TuningSource::Demo {
+                parameters: parameters.as_deref(),
+                images: &images,
+                viewer: !headless,
+            },
+            true,
+            1,
+            types::ball_filter_tuning::OpponentParameters {
+                count: 0,
+                width: 0.44,
+            },
+            1.0,
+        );
+    }
     if let Some(output) = &args.check_ball_approach {
         return approach_regression::run(output, &args.robotics_parameter_root, &args.location);
     }
@@ -306,6 +369,53 @@ fn setup_scene(mut commands: Commands) {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+
+    #[test]
+    fn demo_is_a_separate_command_without_search_flags() {
+        assert!(matches!(
+            Args::try_parse_from(["simulate", "demo"]).unwrap().command,
+            Some(Command::Demo { .. })
+        ));
+        let args = Args::try_parse_from([
+            "simulate",
+            "demo",
+            "--output",
+            "demo",
+            "--headless",
+            "--exit-after",
+        ])
+        .unwrap();
+        assert!(matches!(
+            args.command,
+            Some(Command::Demo {
+                headless: true,
+                exit_after: true,
+                ..
+            })
+        ));
+        assert!(
+            Args::try_parse_from([
+                "simulate",
+                "demo",
+                "--output",
+                "demo",
+                "--tuning-trials",
+                "100"
+            ])
+            .is_err()
+        );
+        assert!(
+            Args::try_parse_from([
+                "simulate",
+                "--tune-ball-filter",
+                "search",
+                "demo",
+                "--output",
+                "demo"
+            ])
+            .is_err()
+        );
+    }
 
     #[test]
     fn remote_preview_and_capture_are_separate_from_local_search() {

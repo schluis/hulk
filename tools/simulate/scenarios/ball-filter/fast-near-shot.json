@@ -1,0 +1,67 @@
+{
+  "family": "fast-near-shot",
+  "ball_position": [
+    2.5,
+    0.6
+  ],
+  "robot_position": [
+    0,
+    0
+  ],
+  "robot_yaw": 0,
+  "perception": {
+    "frame_period": 0.04,
+    "delivery_delay_seconds": 0.05,
+    "delivery_jitter_seconds": 0.015,
+    "center_noise_pixels": 1.0,
+    "false_positive_probability": 0.04,
+    "seed": 42
+  },
+  "steps": [
+    {
+      "until": 3,
+      "name": "stationary before close shot",
+      "ball_present": true,
+      "ball_impulse": null
+    },
+    {
+      "until": 10,
+      "name": "fast shot beside robot",
+      "ball_present": true,
+      "ball_impulse": [
+        -2.8,
+        0.0
+      ]
+    },
+    {
+      "until": 20,
+      "name": "fast shot beside robot",
+      "ball_present": true,
+      "ball_impulse": [
+        2.8,
+        0.0
+      ]
+    },
+    {
+      "until": 30,
+      "name": "fast shot beside robot",
+      "ball_present": true,
+      "ball_impulse": [
+        -2.8,
+        0.0
+      ]
+    },
+    {
+      "until": 40,
+      "name": "fast shot beside robot",
+      "ball_present": true,
+      "ball_impulse": [
+        2.8,
+        0.0
+      ]
+    }
+  ],
+  "minimum_coverage": {
+    "fast_ball_seconds": 0.5
+  }
+}

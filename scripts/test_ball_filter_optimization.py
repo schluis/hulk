@@ -40,6 +40,19 @@ class BallFilterLauncherTests(unittest.TestCase):
             children.start.assert_not_called()
             children.monitor.assert_not_called()
 
+    def test_demo_runs_scenarios_without_optimizer_or_remote_workers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "demo"
+            children = Mock()
+            with patch.object(launcher, "remote_worker_slots") as capacity, patch.object(launcher, "log"):
+                launcher.run(self.arguments("demo", output), children)
+            capacity.assert_not_called()
+            children.run.assert_called_once_with(
+                [launcher.REPOSITORY / "simulator", "demo", "--output", output / "demo"],
+                "Scenario demo (no search)")
+            children.start.assert_not_called()
+            children.monitor.assert_not_called()
+
     def test_existing_output_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)

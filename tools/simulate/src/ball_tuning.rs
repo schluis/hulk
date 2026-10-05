@@ -41,6 +41,19 @@ use types::{
 
 const EPISODE_SECONDS: f64 = 40.0;
 
+// Benchmark families plus the fast near-shot regression; one seed per demo.
+const DEMO_SCENARIOS: &[(&str, u32, f32)] = &[
+    ("stationary-close", 0, 0.44),
+    ("approach", 0, 0.44),
+    ("fast-crossing", 0, 0.44),
+    ("fast-near-shot", 0, 0.44),
+    ("brief-gaps", 0, 0.44),
+    ("contested", 2, 0.44),
+    ("long-occlusion", 1, 0.75),
+    ("empty-false", 0, 0.44),
+    ("sideline", 1, 0.44),
+];
+
 pub(crate) const TOPICS: &[&str] = &[
     "detected_objects",
     "detected_objects/announce",
@@ -104,8 +117,22 @@ fn launch_viewer(log_path: &Path) -> std::io::Result<std::process::Child> {
         .spawn()
 }
 
+// Own the viewer child so stopping a demo also stops its desktop renderer.
+struct ViewerProcess(std::process::Child);
+impl Drop for ViewerProcess {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum TuningSource<'a> {
+    Demo {
+        parameters: Option<&'a Path>,
+        images: &'a ball_filter_tuner::observation::ImageServer,
+        viewer: bool,
+    },
     Record,
     RecordOnly {
         parameters: Option<&'a Path>,
@@ -133,13 +160,19 @@ pub fn run(
         "output directory already exists: {}",
         output.display()
     );
-    ensure!(trials > 0, "tuning trials must be positive");
+    ensure!(
+        matches!(source, TuningSource::Demo { .. }) || trials > 0,
+        "tuning trials must be positive"
+    );
     ensure!(opponents.is_valid(), "invalid opponent count or width");
     ensure!(
         walking_speed_scale_is_valid(walking_speed_scale),
         "walking speed scale must be finite and between 0.1 and 3"
     );
     let (capture_parameters, seed_offset) = match source {
+        TuningSource::Demo { parameters, .. } => {
+            (parameters.map(capture_parameter_override).transpose()?, 0)
+        }
         TuningSource::RecordOnly {
             parameters,
             seed_offset,
@@ -243,7 +276,7 @@ pub fn run(
                 "Preparing recordings"
             }.into(),
             output_directory: output.display().to_string(),
-            recordings: if recipe.is_some() { 3 } else { 6 },
+            recordings: if matches!(source, TuningSource::Demo { .. }) { DEMO_SCENARIOS.len() as u64 } else if recipe.is_some() { 3 } else { 6 },
             duration_seconds: EPISODE_SECONDS,
             opponents,
             walking_speed_scale,
@@ -253,9 +286,15 @@ pub fn run(
         let viewer_log = output.join("3d-viewer.log");
         let scenario_path = output.join("scenario.json");
         let parameter_node = node.clone();
+        let start_viewer = matches!(source, TuningSource::Demo { viewer: true, .. });
         let task = tokio::spawn(async move {
             let _node = node;
-            let mut viewer: Option<std::process::Child> = None;
+            let mut viewer: Option<ViewerProcess> = if start_viewer {
+                match launch_viewer(&viewer_log) {
+                    Ok(child) => Some(ViewerProcess(child)),
+                    Err(error) => { eprintln!("Could not open 3D viewer: {error}; HTTP images remain available"); None }
+                }
+            } else { None };
             let mut heartbeat = tokio::time::interval(Duration::from_millis(500));
             loop {
                 tokio::select! {
@@ -289,7 +328,7 @@ pub fn run(
                     },
                     _ = heartbeat.tick() => {
                         if let Some(child) = &mut viewer {
-                            match child.try_wait() {
+                            match child.0.try_wait() {
                                 Ok(Some(status)) => {
                                     let message = if status.success() {
                                         "3D viewer closed".to_string()
@@ -311,7 +350,7 @@ pub fn run(
                         if matches!(request, Ok(true)) && viewer.is_none() {
                             let launched = launch_viewer(&viewer_log);
                             let status = match launched {
-                                Ok(child) => { viewer = Some(child); "3D viewer process started".to_string() },
+                                Ok(child) => { viewer = Some(ViewerProcess(child)); "3D viewer process started".to_string() },
                                 Err(error) => format!("Could not open 3D viewer: {error}; log: {}", viewer_log.display()),
                             };
                             viewer_updates.send_modify(|state| state.viewer_status = Some(status));
@@ -332,6 +371,60 @@ pub fn run(
     );
     let mut preview = None;
     let result = (|| -> Result<()> {
+        if let TuningSource::Demo { images, .. } = source {
+            let mut manifest = Vec::new();
+            for (index, (family, count, width)) in DEMO_SCENARIOS.iter().enumerate() {
+                ensure!(!shutdown.load(Ordering::Relaxed), "demo stopped");
+                let recipe: CaptureRecipe = serde_json::from_slice(&std::fs::read(root.join(
+                    format!("tools/simulate/scenarios/ball-filter/{family}.json"),
+                ))?)?;
+                recipe.validate()?;
+                let path = output.join(format!("{family}.mcap"));
+                let opponents = OpponentParameters {
+                    count: *count,
+                    width: *width,
+                };
+                progress.send_modify(|state| {
+                    state.status = "Demo · no parameter search".into();
+                    state.recording = format!("{family}.mcap");
+                    state.recording_index = index as u64 + 1;
+                    state.elapsed_seconds = 0.0;
+                    state.phase = "Starting robotics stack".into();
+                    state.opponents = opponents;
+                });
+                eprintln!("Demo {}/{}: {family}", index + 1, DEMO_SCENARIOS.len());
+                record(
+                    runtime.handle(),
+                    &root,
+                    parameter_root,
+                    location,
+                    &path,
+                    42,
+                    1,
+                    RosTime::from_nanos(index as i64 * 41_000_000_000),
+                    &progress,
+                    capture_parameters.as_ref(),
+                    opponents,
+                    walking_speed_scale,
+                    Some(&recipe),
+                    None,
+                    &shutdown,
+                )?;
+                let effective: BallFilterParameters =
+                    json5::from_str(&std::fs::read_to_string(output.join("baseline.json5"))?)?;
+                images.add(ball_filter_tuner::observation::Clip::read(
+                    &path, &effective, &effective,
+                )?);
+                manifest.push(serde_json::json!({"family":family,"recording":path,"seed":42,"opponents":opponents,"recipe":recipe}));
+                write_checkpoint(
+                    &output.join("demo.json"),
+                    &serde_json::to_vec_pretty(&serde_json::json!({
+                        "search_trials":0,"complete": index + 1 == DEMO_SCENARIOS.len(),"scenarios":manifest
+                    }))?,
+                )?;
+            }
+            return Ok(());
+        }
         let training_seeds: &[u64] = if recipe.is_some() {
             &[42, 43]
         } else {
@@ -512,7 +605,7 @@ pub fn run(
         eprintln!("Ball-filter tuning failed: {error:#}");
     }
     if keep_open && !cancelled {
-        eprintln!("Keeping live simulation and Twix monitor available. Press Ctrl-C to exit.");
+        eprintln!("Keeping image interface and Twix monitor available. Press Ctrl-C to exit.");
         while !shutdown.load(Ordering::Relaxed) {
             std::thread::sleep(Duration::from_millis(50));
         }
@@ -755,10 +848,13 @@ async fn apply_live_parameters(
 
 fn capture_parameter_override(path: &Path) -> Result<serde_json::Value> {
     let parameters: serde_json::Value = json5::from_str(&std::fs::read_to_string(path)?)?;
-    // Validate a historical best, but preserve its original keys. New captures
-    // inherit newly introduced settings from current production layers, while
-    // replay of old baselines still uses their legacy deserialization defaults.
-    let _: BallFilterParameters = serde_json::from_value(parameters.clone())?;
+    // This is a parameter layer, not a standalone replay baseline. Validate the
+    // effective typed parameters when Robotics binds the merged layers below.
+    // Explicit numeric limits retain their literal meaning; omissions inherit.
+    ensure!(
+        parameters.is_object(),
+        "ball-filter parameter override must be an object"
+    );
     Ok(parameters)
 }
 
@@ -1857,6 +1953,38 @@ fn step_with_ball_impulse(world: &mut MujocoWorld, impulse: Option<BallImpulse>)
 #[cfg(test)]
 mod tests {
     #[test]
+    fn demo_covers_every_checked_in_recipe_once() {
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("scenarios/ball-filter");
+        let mut files: Vec<_> = std::fs::read_dir(&directory)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|e| e == "json"))
+            .map(|path| path.file_stem().unwrap().to_string_lossy().into_owned())
+            .collect();
+        let mut families: Vec<_> = DEMO_SCENARIOS
+            .iter()
+            .map(|(name, count, width)| {
+                assert!(
+                    OpponentParameters {
+                        count: *count,
+                        width: *width
+                    }
+                    .is_valid()
+                );
+                let recipe: CaptureRecipe = serde_json::from_slice(
+                    &std::fs::read(directory.join(format!("{name}.json"))).unwrap(),
+                )
+                .unwrap();
+                recipe.validate().unwrap();
+                name.to_string()
+            })
+            .collect();
+        files.sort();
+        families.sort();
+        assert_eq!(families, files);
+    }
+
+    #[test]
     fn capture_recipes_cover_complete_episodes_and_validate_geometry() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("scenarios/ball-filter");
         for entry in std::fs::read_dir(root).unwrap() {
@@ -1962,6 +2090,7 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         let overrides = tempfile::tempdir().unwrap();
         let original = include_str!("../../../etc/parameters/base/ball_filter.json5");
+        let expected: BallFilterParameters = json5::from_str(original).unwrap();
         std::fs::write(base.path().join("ball_filter.json5"), original).unwrap();
         let mut historical: serde_json::Value = json5::from_str(original).unwrap();
         historical
@@ -2013,18 +2142,6 @@ mod tests {
             .unwrap()
             .remove("nearby_spawn_validity_factor");
         historical["maximum_matching_cost"] = serde_json::json!(2.5);
-        let legacy: BallFilterParameters = serde_json::from_value(historical.clone()).unwrap();
-        assert!(legacy.visible_missed_detection_timeout.is_zero());
-        assert!(legacy.near_visible_missed_detection_timeout.is_zero());
-        assert_eq!(legacy.near_visible_missed_detection_distance, 0.0);
-        assert_eq!(legacy.field_boundary_margin, 0.0);
-        assert_eq!(legacy.field_boundary_validity_decay_rate, 0.0);
-        assert_eq!(legacy.maximum_detection_distance, 0.0);
-        assert_eq!(legacy.hidden_validity_decay_rate, None);
-        assert_eq!(legacy.visible_missed_validity_decay_rate, None);
-        assert_eq!(legacy.near_visible_missed_validity_decay_rate, None);
-        assert_eq!(legacy.competing_hypothesis_validity_decay_rate, None);
-        assert_eq!(legacy.nearby_spawn_validity_factor, None);
         let path = overrides.path().join("ball_filter.json5");
         std::fs::write(&path, serde_json::to_vec(&historical).unwrap()).unwrap();
         let retained = capture_parameter_override(&path).unwrap();
@@ -2063,26 +2180,32 @@ mod tests {
             Duration::from_millis(120)
         );
         assert_eq!(snapshot.typed().near_visible_missed_detection_distance, 1.0);
-        assert_eq!(snapshot.typed().hidden_validity_decay_rate, Some(0.0));
-        assert_eq!(snapshot.typed().nearby_spawn_validity_factor, Some(0.5));
+        assert_eq!(
+            snapshot.typed().hidden_validity_decay_rate,
+            expected.hidden_validity_decay_rate
+        );
+        assert_eq!(
+            snapshot.typed().nearby_spawn_validity_factor,
+            expected.nearby_spawn_validity_factor
+        );
         assert_eq!(
             snapshot.typed().visible_missed_validity_decay_rate,
-            Some(1.0)
+            expected.visible_missed_validity_decay_rate
         );
         assert_eq!(
             snapshot.typed().near_visible_missed_validity_decay_rate,
-            Some(20.0)
+            expected.near_visible_missed_validity_decay_rate
         );
         assert_eq!(
             snapshot.typed().competing_hypothesis_validity_decay_rate,
-            Some(0.5)
+            expected.competing_hypothesis_validity_decay_rate
         );
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn capture_overrides_inherit_omissions_and_preserve_explicit_disabling() {
-        // Replay of an old file keeps its historical enabled prior. A fresh
-        // capture instead inherits current layers when the key was omitted.
+        // A fresh capture inherits current layers when a key was omitted;
+        // explicit false and zero retain their literal meaning.
         for (current_gate, override_gate) in [(false, None), (true, Some(false))] {
             let base = tempfile::tempdir().unwrap();
             let overrides = tempfile::tempdir().unwrap();
@@ -2093,6 +2216,7 @@ mod tests {
             let mut current = original.clone();
             current["good_localization"] = serde_json::json!(current_gate);
             current["field_boundary_margin"] = serde_json::json!(0.5);
+            current["nearby_spawn_validity_factor"] = serde_json::json!(0.5);
             std::fs::write(
                 base.path().join("ball_filter.json5"),
                 serde_json::to_vec(&current).unwrap(),
@@ -2111,10 +2235,6 @@ mod tests {
                 .as_object_mut()
                 .unwrap()
                 .remove("nearby_spawn_validity_factor");
-            let legacy: BallFilterParameters = serde_json::from_value(historical.clone()).unwrap();
-            assert!(legacy.good_localization);
-            assert_eq!(legacy.field_boundary_margin, 0.0);
-            assert_eq!(legacy.nearby_spawn_validity_factor, None);
             if let Some(enabled) = override_gate {
                 historical["good_localization"] = serde_json::json!(enabled);
                 historical["field_boundary_margin"] = serde_json::json!(0.0);

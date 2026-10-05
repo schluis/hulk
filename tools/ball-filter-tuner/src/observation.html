@@ -1,0 +1,35 @@
+<!doctype html><meta charset="utf-8"><title>Ball-filter image observer</title>
+<style>body{background:#101b28;color:#dce6f0;font:16px system-ui;margin:16px}button,select,input{font:inherit;margin:5px}img{display:block;width:100%;max-width:1280px}#seek{width:420px}a{color:#8bcaff}</style>
+<h1>Ball-filter image observer</h1>
+<p>Replay of simulator detections through the production filter. No parameter search. New demo scenarios appear when their recording completes.</p>
+<label>Scenario <select id="clip" aria-label="Scenario"></select></label>
+<button id="back">Previous frame</button><button id="play">Play</button><button id="next">Next frame</button>
+<label>Frame <input id="seek" type="range" min="0" max="0" value="0"></label>
+<label>Time (s) <input id="time" type="number" min="0" step="0.04" value="0" style="width:100px"></label><button id="go">Seek</button>
+<a id="state">Frame JSON</a> · <a id="svg">SVG image</a><p id="status">Waiting for recordings…</p>
+<img id="image" alt="Field and camera projection with ball-filter hypotheses">
+<script>
+let clips=[], index=0, timer=null, serial=0;
+const el=id=>document.getElementById(id);
+async function show(time){
+ const request=++serial, clip=el('clip').value;
+ if(!clips.length)return;
+ const query=`clip=${clip}&`+(time===undefined?`index=${index}`:`time=${time}`);
+ const response=await fetch('/frame.json?'+query);if(!response.ok){el('status').textContent=await response.text();return;}
+ const data=await response.json();if(request!==serial)return;
+ index=data.index;el('seek').value=index;el('time').value=data.frame.seconds.toFixed(3);
+ const url=`clip=${clip}&index=${index}`;
+ el('image').src='/frame.svg?'+url;el('svg').href='/frame.svg?'+url;el('state').href='/frame.json?'+url;
+ el('status').textContent=`${data.clip} · frame ${index+1}/${clips[Number(clip)].frames} · ${data.frame.seconds.toFixed(3)} s`;
+}
+async function refresh(){
+ const next=await(await fetch('/clips.json')).json();
+ if(next.length!==clips.length){const old=el('clip').value;clips=next;el('clip').replaceChildren(...clips.map(c=>new Option(c.name.split('/').slice(-2).join('/'),c.id)));el('clip').value=old||'0';change();}
+}
+function change(){index=0;el('seek').max=(clips[Number(el('clip').value)]?.frames||1)-1;show();}
+function step(delta){index=Math.max(0,Math.min(Number(el('seek').max),index+delta));show();}
+el('clip').onchange=change;el('seek').oninput=()=>{index=Number(el('seek').value);show();};
+el('back').onclick=()=>step(-1);el('next').onclick=()=>step(1);el('go').onclick=()=>show(Number(el('time').value));
+el('play').onclick=()=>{if(timer){clearInterval(timer);timer=null;el('play').textContent='Play';}else{timer=setInterval(()=>{if(index<Number(el('seek').max))step(1);else el('play').click();},100);el('play').textContent='Pause';}};
+refresh();setInterval(refresh,2000);
+</script>

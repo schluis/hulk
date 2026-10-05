@@ -82,6 +82,7 @@ impl Default for StartupSettings {
 
 #[derive(Clone, Copy, Debug)]
 enum StartupAction {
+    Demo,
     Local,
     Remote,
     Connect,
@@ -562,6 +563,7 @@ impl BallFilterOptimizationPanel {
                 });
                 ui.label("Paths are relative to the repository. Closing this panel leaves the run active.");
                 ui.horizontal_wrapped(|ui| {
+                    if ui.button("Run all scenarios · no search").clicked() { action = Some(StartupAction::Demo); }
                     if ui.button("Start local optimization").clicked() { action = Some(StartupAction::Local); }
                     if ui.button("Start remote optimization").clicked() { action = Some(StartupAction::Remote); }
                 });
@@ -1067,11 +1069,19 @@ fn startup_arguments(settings: &StartupSettings, action: StartupAction) -> Resul
         !settings.output.trim().is_empty(),
         "Output directory is required"
     );
+    if matches!(action, StartupAction::Demo) {
+        return Ok(vec![
+            "demo".into(),
+            "--output".into(),
+            settings.output.trim().into(),
+        ]);
+    }
     color_eyre::eyre::ensure!(
         walking_speed_scale_is_valid(settings.walking_speed_scale),
         "Walking speed multiplier must be finite and between 0.1 and 3"
     );
     let mode = match action {
+        StartupAction::Demo => unreachable!("demo returns above"),
         StartupAction::Local => "local",
         StartupAction::Remote => "remote",
         StartupAction::Connect => "connect",
@@ -1082,6 +1092,7 @@ fn startup_arguments(settings: &StartupSettings, action: StartupAction) -> Resul
         settings.output.trim().into(),
     ];
     match action {
+        StartupAction::Demo => unreachable!("demo returns above"),
         StartupAction::Local | StartupAction::Remote => {
             color_eyre::eyre::ensure!(
                 settings.opponent_count <= 8
@@ -1152,7 +1163,7 @@ fn spawn_startup(
     ));
     let state = Arc::new(Mutex::new(LaunchStatus {
         active: true,
-        message: "Starting optimization helper…".into(),
+        message: "Starting simulator helper…".into(),
         pid: None,
         log_path,
         log_tail: String::new(),
@@ -1212,7 +1223,7 @@ fn monitor_startup(
         .wrap_err("could not launch python3 optimization helper")?;
     if let Ok(mut state) = state.lock() {
         state.pid = Some(child.id());
-        state.message = "Optimization helper is running.".into();
+        state.message = "Simulator helper is running.".into();
     }
     repaint.request_repaint();
     loop {

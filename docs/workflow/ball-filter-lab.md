@@ -236,3 +236,56 @@ The scoring and guard change applies to the tuner and simulator companion branch
 the production filter implementation is unchanged during this search. Commits stay
 local and must not be pushed without another user instruction. Compare v10 runs
 only with baselines re-evaluated under v10.
+
+## Image observer and no-search demo (2026-10-05)
+
+`./simulator demo` now runs all nine checked-in examples once, including the
+fast-near-shot regression, with the current parameters. It launches the 3D view
+and serves timestamped diagnostic images at `http://127.0.0.1:8765`. Use
+`--headless` on a server. Twix has a **Run all scenarios · no search** button.
+See [the simulator guide](../../tools/simulate/README.md#scenario-demo-and-image-observer)
+for replay, HTTP endpoints, parameter overrides and shutdown options.
+
+The first full lower-noise demo completed all nine 40-second recordings with
+zero search trials. Evidence on the lab server is under
+`/home/schluis/hulk/logs/ball-filter-image-interface-20261005/`.
+The capture uses the close-range candidate from `a54a3e159`, with the example
+noise reduction from `08d5646c7`. Images are schematic projections of recorded
+state, not RGB camera images. The observer verifies original live/replay parity
+before rendering alternative parameters.
+
+The images expose issues not resolved by the aggregate tuning result:
+
+- In the fresh fast-near-shot recording at elapsed **3.014 s**, the ball is
+  **0.208 m** away and moves at **6.026 m/s**, while the selected model remains
+  resting with zero velocity. Position error is only **0.084 m**. Newborn models
+  start at zero velocity; the positive resting-speed threshold can convert them
+  to resting before they learn motion. Reactivation requires three consistent,
+  statistically significant observations. This also delays response to kicks
+  of an already resting ball. Some shots leave camera coverage before that
+  evidence accumulates.
+- At **10.190 s**, a recently updated moving hypothesis estimates **5.77 m/s**,
+  but the published result switches to a resting hypothesis last seen **7.188 s**
+  earlier. With `selection_confidence_cap: 0`, every eligible ranking score is
+  zero, so selection is sensitive to iteration order. Replaying the identical
+  recording with only the cap raised to `1e6` retains the moving hypothesis at
+  this instant. This is not a complete fix: it also switches later, as the field
+  prior changes the ranking of a ball travelling beyond the sideline.
+- The fresh fast-near-shot recording reaches **14 concurrent hypotheses**.
+  These include long-lived distractors; this count alone does not prove that
+  every hypothesis was spawned from the true ball. Reduced image noise did not
+  remove the accumulation.
+- In **contested**, a recorded opponent kick at physical episode time
+  **12.494 s** is explicitly marked occluded and in the camera view. At observer
+  elapsed **12.510 s**, truth speed is **6.13 m/s**, there is no ball detection,
+  and the selected resting hypothesis is **8.43 s** old. A detection returns at
+  **12.536 s**, with a new eighth hypothesis; selection only reaches a recent
+  hypothesis by **12.668 s**, and its velocity is still zero. Occlusion and
+  subsequent confirmation/velocity recovery are distinct parts of the failure.
+
+Two one-parameter replay diagnostics (resting threshold zero and confidence cap
+`1e6`) are saved with the evidence. They are **not adopted tuning results**;
+there was no search or held-out validation of these alternatives. The examples
+above are individual failures, not a replacement benchmark comparison. The
+next work should address ranking ties, motion initialization/recovery and stale
+hypothesis retention within the existing filter before calling the tuning done.

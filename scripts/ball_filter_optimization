@@ -192,7 +192,7 @@ class Children:
 
 def parser():
     result = argparse.ArgumentParser(description=__doc__)
-    result.add_argument("mode", choices=["local", "remote", "connect"])
+    result.add_argument("mode", choices=["demo", "local", "remote", "connect"])
     result.add_argument("--output", type=Path, required=True, help="new local session directory")
     result.add_argument("--recordings", type=Path, help="completed six-recording capture directory")
     result.add_argument("--trials", type=int, default=256, help="candidates per continuous search round")
@@ -214,6 +214,8 @@ def parser():
 
 
 def validate(args):
+    if args.mode == "demo" and (args.recordings or args.manifest or args.resume_manifest):
+        raise ValueError("demo runs fresh scenarios; do not supply recordings or remote manifests")
     if args.trials < 1 or not 1 <= args.workers <= 32:
         raise ValueError("trials must be positive and workers must be between 1 and 32")
     if args.worker_memory_mib is not None and args.worker_memory_mib < 1:
@@ -475,6 +477,9 @@ def run(args, children):
                    workers=workers, target_workers=args.workers, worker_memory_mib=args.worker_memory_mib, active_generation=0)
     save_session(session)
     log(f"Preparing {args.mode} session in {output}")
+    if args.mode == "demo":
+        children.run([simulator, "demo", "--output", output / "demo"], "Scenario demo (no search)")
+        return
     if args.mode == "local":
         command = [simulator, "--tune-ball-filter", output / "local", "--tuning-trials", str(args.trials), *simulator_scenario(args)]
         if args.recordings:

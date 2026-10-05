@@ -880,3 +880,64 @@ integration. Dropping that commit also restores the main branch SDK integration.
 Run simulator checks and captures with the documented MuJoCo and ONNX Runtime
 environment. The runtime ball filter source and selected parameters are identical
 with or without the tooling commits.
+
+### Scenario demo and image observer
+
+Run every ball-filter example once, with the current filter parameters and **no
+parameter search**:
+
+```sh
+./simulator demo
+```
+
+Use `--output logs/ball-demo` to choose the new output directory; otherwise a
+timestamped directory is created under `logs/`. This runs nine 40-second episodes: stationary close, approach, fast crossing,
+fast near shot, brief gaps, contested, long occlusion, empty false detections,
+and sideline. Each uses seed 42 and its prescribed opponent count/width. The
+normal behavior stack controls the robot. A desktop 3D viewer opens, and Twix's
+**Ball-filter optimization → Run all scenarios · no search** starts the same demo.
+The optimizer settings in that panel apply only to optimization, not this demo.
+
+Open <http://127.0.0.1:8765> for the image observer. Completed scenarios become
+available as each recording finishes. Step through frames, seek by elapsed time,
+or play a sequence. The interface stays open after the final scenario; Ctrl-C
+exits. `--headless` suppresses the desktop viewer, and `--exit-after` exits after
+the last scenario. `--parameters FILE` applies ball-filter overrides for the demo;
+omitted values inherit the current robotics layers. The effective parameters,
+recordings, coverage summaries and `demo.json` (including `search_trials: 0`) are
+saved in the new output directory.
+
+The image interface renders a Ground-frame diagnostic view with truth, all
+primary hypotheses, mode, confidence, velocity arrows and the published estimate.
+The dashed circle marks 1 metre. Orange circles show recorded robot obstacles,
+transformed through their own recorded pose into the output frame; their age is
+shown, and missing transforms are left unknown. It also renders synthetic detection boxes and
+projected hypotheses in camera coordinates; **these are not RGB camera images**.
+Camera exposure and output timestamps are separate. Hypothesis indices are local
+to each displayed frame, not persistent IDs. Truth velocity is a Field-frame
+finite difference rotated into Ground; missing or implausible derivatives are
+left unknown.
+
+The read-only HTTP API binds to loopback:
+
+- `/clips.json`: available recordings and frame counts.
+- `/frame.svg?clip=0&time=3.2`: first image at or after 3.2 seconds.
+- `/frame.json?clip=0&index=80`: matching numeric state and source timestamps.
+- `/frames.json?clip=0`: all camera-frame samples for analysis.
+- `/parameters.json?clip=0`: exact replay parameters.
+
+For an existing simulator recording, including comparison with other parameters:
+
+```sh
+cargo run --release -p ball-filter-tuner --bin ball-filter-observer -- \
+  --recordings logs/ball-demo/fast-near-shot.mcap logs/ball-demo/contested.mcap \
+  --capture-parameters logs/ball-demo/baseline.json5 \
+  --parameters etc/parameters/base/ball_filter.json5 \
+  --listen 127.0.0.1:8765
+```
+
+The observer verifies the recording's live output against the exact capture
+parameters before replaying the requested parameters. Historical files using
+zero-as-disabled limits need the explicit parameter migration described above.
+On a remote server, forward the port with `ssh -L 8765:127.0.0.1:8765 HOST`.
+Rendering is on demand, without a GPU or a continuously growing image queue.

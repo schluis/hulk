@@ -1,4 +1,5 @@
 //! Offline tuning from ordinary ros-z MCAP recordings; no simulator dependency.
+pub mod observation;
 pub mod parameter_migration;
 mod recording;
 mod scoring;
