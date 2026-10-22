@@ -162,7 +162,8 @@ impl Clip {
                     json!({"position":[p.x(),p.y()],"radius":obstacle.radius_at_foot_height.max(obstacle.radius_at_hip_height)})
                 }).collect::<Vec<_>>())
             });
-            let selected = tracker.filter.best_hypothesis_with_field_pose(
+            let selected = tracker.filter.best_hypothesis_for_output(
+                cycle.time,
                 parameters,
                 &cycle.dimensions,
                 cycle.field_prior_pose,

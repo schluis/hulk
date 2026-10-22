@@ -1,6 +1,6 @@
 # Ball-filter investigation — living plan and experiment memory
 
-Last updated: 2026-10-05. Owner: the agent continuing this investigation.
+Last updated: 2026-10-22. Owner: the agent continuing this investigation.
 
 This is the canonical index of current work, decisions, and explored ideas.
 Update it **before starting an experiment, after obtaining a result, and before
@@ -36,6 +36,39 @@ robot, kicks, and recovery after a robot obstacle occludes the ball.
 - Parameter limits have literal numeric semantics; zero is not infinity.
 
 ## 2. Current checkpoint
+
+### 2026-10-22: experimental retained hypotheses and current belief
+
+**Experimental; not cleared for an important game.** See the
+[handoff](ball-filter-experimental-handoff.md) for branch locations, current
+validation, rollback, and the remaining robot tests. The user authorized pushing
+this experimental checkpoint on 2026-10-22; this does not authorize deployment.
+
+A manual test reported a selected ball persisting for roughly a minute after
+removing the physical ball. A stored candidate is useful for reacquisition;
+publishing it as a current estimate needs separate evidence. The runtime now
+applies `maximum_output_age` (200 ms in the base configuration) before selecting
+current output, without shortening hypothesis storage or refreshing `last_seen`.
+Stale candidates remain available as hypothetical/search positions. Auxiliary
+publication history follows the same freshness gate, and the image observer
+marks only an output-eligible hypothesis as selected.
+
+The ball-state composer also rejects cached observations older than its 4.5 s
+ceiling, matching the existing team-ball age budget, and rechecks on a 100 ms
+logical timer even if publishers stop. Repeated composition preserves visual
+observation time. This addresses a separate path that could otherwise keep a
+cached ball current indefinitely; the exact manual scene was not recorded.
+
+Regression coverage includes a retained one-minute hypothesis with no current
+output after 200 ms, reacquisition using the retained track, selection past a
+stale high-support candidate, stale auxiliary rejection, and cached local/team
+expiry with recent-team fallback. Omitted `maximum_output_age` remains `None`
+for historical recording replay; the production/simulator base enables 200 ms.
+
+The E120/E125 metrics below describe the earlier configuration. This output
+policy changes availability during occlusion and has not been validated on the
+historical recordings or a fresh robot/simulator accuracy benchmark. No tuning
+or capture campaign was restarted, and the v11 scoring objective is unchanged.
 
 ### 2.1 Comparison baseline and selected implementation
 

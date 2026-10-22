@@ -866,16 +866,18 @@ mod tests {
 
     #[test]
     fn explicit_legacy_visibility_baseline_stays_disabled_even_with_new_warm_start() {
-        let current: BallFilterParameters = json5::from_str(include_str!(
+        let mut current: BallFilterParameters = json5::from_str(include_str!(
             "../../../etc/parameters/base/ball_filter.json5"
         ))
         .unwrap();
         assert!(!current.visible_missed_detection_timeout.is_zero());
-        assert_eq!(current.field_boundary_validity_decay_rate, 0.5);
-        assert_eq!(current.maximum_detection_distance, 15.0);
+        // Pin this fixture independently of later production parameter tuning.
+        current.field_boundary_validity_decay_rate = 0.5;
+        current.maximum_detection_distance = 15.0;
         // Historical captures must supply their old behavior explicitly now
         // that production parameter defaults live in configuration files.
         let mut legacy = current.clone();
+        legacy.maximum_output_age = None;
         legacy.visible_missed_detection_timeout = std::time::Duration::from_secs(1_000_000);
         legacy.maximum_obstacle_time_difference = std::time::Duration::from_millis(100);
         legacy.field_boundary_validity_decay_rate = 0.0;
@@ -911,6 +913,7 @@ mod tests {
         // Warm starts import search dimensions, never opt old recordings into
         // visibility behavior absent from their live baseline.
         let candidate = decode(&legacy, encode(&current));
+        assert_eq!(candidate.maximum_output_age, None);
         assert_eq!(
             candidate.visible_missed_detection_timeout,
             std::time::Duration::from_secs(1_000_000)

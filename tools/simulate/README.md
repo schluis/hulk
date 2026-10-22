@@ -883,6 +883,17 @@ with or without the tooling commits.
 
 ### Scenario demo and image observer
 
+The freshness policy below is **experimental**. See the
+[handoff](../../docs/workflow/ball-filter-experimental-handoff.md) for validation
+limits and the remaining robot tests before game use.
+
+The current filter keeps hypothesis memory separate from current output. With
+the base `maximum_output_age` of 200 ms, a retained hypothesis loses selected
+status and the published estimate becomes absent once its visual support is
+older than that grace period. It can remain available for search/reacquisition
+under the existing retention rules. The browser and 3D views continue to show
+stored hypotheses without marking them as a current selected estimate.
+
 Run every ball-filter example once, with the current filter parameters and **no
 parameter search**:
 
