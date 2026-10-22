@@ -1,0 +1,51 @@
+{
+  "family": "approach-fast-pass",
+  "ball_position": [
+    2.5,
+    0.65
+  ],
+  "robot_position": [
+    0,
+    0
+  ],
+  "robot_yaw": 0,
+  "head_target": [
+    2.0,
+    0.0
+  ],
+  "perception": {
+    "frame_period": 0.04,
+    "delivery_delay_seconds": 0.05,
+    "delivery_jitter_seconds": 0.015,
+    "center_noise_pixels": 1.0,
+    "false_positive_probability": 0.04,
+    "seed": 42
+  },
+  "steps": [
+    {
+      "until": 4,
+      "name": "walk toward stationary ball",
+      "ball_present": true,
+      "ball_impulse": null,
+      "walking_velocity": [
+        0.25,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "until": 40,
+      "name": "fast pass alongside robot; turn to follow",
+      "ball_present": true,
+      "ball_impulse": [
+        -3.0,
+        0.0
+      ]
+    }
+  ],
+  "minimum_coverage": {
+    "robot_walked_metres": 0.5,
+    "peak_ball_speed_metres_per_second": 5.0,
+    "fast_ball_seconds": 0.5
+  }
+}

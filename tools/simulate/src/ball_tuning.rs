@@ -30,7 +30,7 @@ use std::{
 };
 use types::{
     ball_filter_tuning::{
-        NAMESPACE, OPEN_VIEWER_TOPIC, OPPONENTS_TOPIC, OpponentParameters, PROGRESS_TOPIC,
+        BALL_FILTER_DEMOS, NAMESPACE, OPEN_VIEWER_TOPIC, OPPONENTS_TOPIC, OpponentParameters, PROGRESS_TOPIC,
         Progress, ROUTER, WALKING_SPEED_TOPIC, walking_speed_scale_is_valid,
     },
     field_dimensions::GlobalFieldSide,
@@ -40,19 +40,6 @@ use types::{
 };
 
 const EPISODE_SECONDS: f64 = 40.0;
-
-// Benchmark families plus the fast near-shot regression; one seed per demo.
-const DEMO_SCENARIOS: &[(&str, u32, f32)] = &[
-    ("stationary-close", 0, 0.44),
-    ("approach", 0, 0.44),
-    ("fast-crossing", 0, 0.44),
-    ("fast-near-shot", 0, 0.44),
-    ("brief-gaps", 0, 0.44),
-    ("contested", 2, 0.44),
-    ("long-occlusion", 1, 0.75),
-    ("empty-false", 0, 0.44),
-    ("sideline", 1, 0.44),
-];
 
 pub(crate) const TOPICS: &[&str] = &[
     "detected_objects",
@@ -130,6 +117,7 @@ impl Drop for ViewerProcess {
 pub enum TuningSource<'a> {
     Demo {
         parameters: Option<&'a Path>,
+        scenario: Option<&'a str>,
         images: &'a ball_filter_tuner::observation::ImageServer,
         viewer: bool,
         seed: u64,
@@ -170,6 +158,18 @@ pub fn run(
         walking_speed_scale_is_valid(walking_speed_scale),
         "walking speed scale must be finite and between 0.1 and 3"
     );
+    let demo_scenarios = match source {
+        TuningSource::Demo {
+            scenario: Some(name),
+            ..
+        } => std::slice::from_ref(
+            BALL_FILTER_DEMOS
+                .iter()
+                .find(|demo| demo.name == name)
+                .ok_or_else(|| eyre!("unknown demo scenario: {name}"))?,
+        ),
+        _ => BALL_FILTER_DEMOS,
+    };
     let (capture_parameters, seed_offset) = match source {
         TuningSource::Demo { parameters, .. } => {
             (parameters.map(capture_parameter_override).transpose()?, 0)
@@ -277,7 +277,7 @@ pub fn run(
                 "Preparing recordings"
             }.into(),
             output_directory: output.display().to_string(),
-            recordings: if matches!(source, TuningSource::Demo { .. }) { DEMO_SCENARIOS.len() as u64 } else if recipe.is_some() { 3 } else { 6 },
+            recordings: if matches!(source, TuningSource::Demo { .. }) { demo_scenarios.len() as u64 } else if recipe.is_some() { 3 } else { 6 },
             duration_seconds: EPISODE_SECONDS,
             opponents,
             walking_speed_scale,
@@ -374,17 +374,15 @@ pub fn run(
     let result = (|| -> Result<()> {
         if let TuningSource::Demo { images, seed, .. } = source {
             let mut manifest = Vec::new();
-            for (index, (family, count, width)) in DEMO_SCENARIOS.iter().enumerate() {
+            for (index, demo) in demo_scenarios.iter().enumerate() {
+                let family = demo.name;
                 ensure!(!shutdown.load(Ordering::Relaxed), "demo stopped");
                 let recipe: CaptureRecipe = serde_json::from_slice(&std::fs::read(root.join(
                     format!("tools/simulate/scenarios/ball-filter/{family}.json"),
                 ))?)?;
                 recipe.validate()?;
                 let path = output.join(format!("{family}.mcap"));
-                let opponents = OpponentParameters {
-                    count: *count,
-                    width: *width,
-                };
+                let opponents = demo.opponents;
                 progress.send_modify(|state| {
                     state.status = "Demo · no parameter search".into();
                     state.recording = format!("{family}.mcap");
@@ -393,7 +391,7 @@ pub fn run(
                     state.phase = "Starting robotics stack".into();
                     state.opponents = opponents;
                 });
-                eprintln!("Demo {}/{}: {family}", index + 1, DEMO_SCENARIOS.len());
+                eprintln!("Demo {}/{}: {family}", index + 1, demo_scenarios.len());
                 record(
                     runtime.handle(),
                     &root,
@@ -420,7 +418,7 @@ pub fn run(
                 write_checkpoint(
                     &output.join("demo.json"),
                     &serde_json::to_vec_pretty(&serde_json::json!({
-                        "search_trials":0,"complete": index + 1 == DEMO_SCENARIOS.len(),"scenarios":manifest
+                        "search_trials":0,"complete": index + 1 == demo_scenarios.len(),"scenarios":manifest
                     }))?,
                 )?;
             }
@@ -2008,16 +2006,11 @@ mod tests {
             .filter(|path| path.extension().is_some_and(|e| e == "json"))
             .map(|path| path.file_stem().unwrap().to_string_lossy().into_owned())
             .collect();
-        let mut families: Vec<_> = DEMO_SCENARIOS
+        let mut families: Vec<_> = BALL_FILTER_DEMOS
             .iter()
-            .map(|(name, count, width)| {
-                assert!(
-                    OpponentParameters {
-                        count: *count,
-                        width: *width
-                    }
-                    .is_valid()
-                );
+            .map(|demo| {
+                let name = demo.name;
+                assert!(demo.opponents.is_valid());
                 let recipe: CaptureRecipe = serde_json::from_slice(
                     &std::fs::read(directory.join(format!("{name}.json"))).unwrap(),
                 )

@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{sync::oneshot, task::JoinHandle};
 use twix_visualization::twix_painter::{Orientation, TwixPainter};
 use types::ball_filter_tuning::{
-    Metrics, NAMESPACE, OPEN_VIEWER_TOPIC, OPPONENTS_TOPIC, OpponentParameters, PROGRESS_TOPIC,
+    BALL_FILTER_DEMOS, Metrics, NAMESPACE, OPEN_VIEWER_TOPIC, OPPONENTS_TOPIC, OpponentParameters, PROGRESS_TOPIC,
     Progress, ROUTER, TUNED_PARAMETER_POINTERS, WALKING_SPEED_TOPIC, walking_speed_scale_is_valid,
 };
 use types::{
@@ -53,6 +53,7 @@ pub struct BallFilterOptimizationPanel {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 struct StartupSettings {
+    demo_scenario: Option<String>,
     recordings: String,
     output: String,
     host: String,
@@ -67,6 +68,7 @@ struct StartupSettings {
 impl Default for StartupSettings {
     fn default() -> Self {
         Self {
+            demo_scenario: None,
             recordings: String::new(),
             output: new_output_directory(),
             host: "remote-compiler".into(),
@@ -91,6 +93,7 @@ enum StartupAction {
 #[derive(Clone, Debug)]
 struct LaunchStatus {
     active: bool,
+    stop_requested: bool,
     message: String,
     pid: Option<u32>,
     log_path: PathBuf,
@@ -153,20 +156,30 @@ impl Panel for BallFilterOptimizationPanel {
         }
     }
 
+    fn header_ui(&mut self, ui: &mut Ui, context: PanelUiContext<'_>) {
+        self.connection_controls(ui, &context);
+    }
+
     fn ui(&mut self, ui: &mut Ui, context: PanelUiContext<'_>) {
-        ui.strong("Ball-filter optimization");
-        self.startup_ui(ui, &context);
-        self.history_ui(ui);
-        self.opponents_ui(ui, &context);
-        self.walking_speed_ui(ui, &context);
-        if self.auto_connect
-            && self.connection.is_none()
-            && self.pending.is_none()
-            && Instant::now() >= self.next_connect_attempt
-        {
-            self.connect(&context);
-        }
-        ui.horizontal(|ui| {
+        let width = ui.available_width();
+        egui::ScrollArea::vertical()
+            .id_salt("ball_filter_panel")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.set_max_width(width);
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                self.content_ui(ui, context);
+            });
+    }
+
+    fn save(&self) -> serde_json::Value {
+        serde_json::to_value(&self.startup).unwrap_or_default()
+    }
+}
+
+impl BallFilterOptimizationPanel {
+    fn connection_controls(&mut self, ui: &mut Ui, context: &PanelUiContext<'_>) {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .add_enabled(
                     self.pending.is_none(),
@@ -175,7 +188,7 @@ impl Panel for BallFilterOptimizationPanel {
                 .clicked()
             {
                 self.auto_connect = false;
-                self.connect(&context);
+                self.connect(context);
             }
             if let Some(connection) = &self.connection {
                 if ui
@@ -210,6 +223,27 @@ impl Panel for BallFilterOptimizationPanel {
                 self.auto_connect = false;
             }
         });
+    }
+
+    fn content_ui(&mut self, ui: &mut Ui, context: PanelUiContext<'_>) {
+        self.startup_ui(ui, &context);
+        self.history_ui(ui);
+        let is_demo = self.connection.as_ref()
+            .and_then(|connection| connection.progress.latest())
+            .is_some_and(|sample| sample.value.status.starts_with("Demo"));
+        if !is_demo && self.connection.is_some() {
+            ui.collapsing("Live optimization settings", |ui| {
+                self.opponents_ui(ui, &context);
+                self.walking_speed_ui(ui, &context);
+            });
+        }
+        if self.auto_connect
+            && self.connection.is_none()
+            && self.pending.is_none()
+            && Instant::now() >= self.next_connect_attempt
+        {
+            self.connect(&context);
+        }
         if let Some(pending) = &mut self.pending {
             match pending.receiver.try_recv() {
                 Ok(result) => {
@@ -311,11 +345,7 @@ impl Panel for BallFilterOptimizationPanel {
                 );
                 ui.ctx().request_repaint_after(Duration::from_millis(500));
             }
-            ui.label("You can also connect to an optimizer started with:");
-            monospace(
-                ui,
-                "./simulator --tune-ball-filter logs/my-run --keep-tuning-open",
-            );
+            ui.label("Run a demo above to open the simulator and connect automatically.");
             return;
         };
         ui.ctx().request_repaint_after(Duration::from_millis(500));
@@ -385,7 +415,7 @@ impl Panel for BallFilterOptimizationPanel {
         }
         let progress = &sample.value;
         let status_width = ui.available_width();
-        egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.scope(|ui| {
             ui.set_max_width(status_width);
             ui.add(egui::Label::new(egui::RichText::new(&progress.status).strong()).wrap());
             remote_status(ui, progress, unix_seconds());
@@ -415,7 +445,7 @@ impl Panel for BallFilterOptimizationPanel {
                     )),
                 );
             }
-            if progress.status == "Recording" || progress.live_trial.is_some() {
+            if progress.status == "Recording" || progress.status.starts_with("Demo") || progress.live_trial.is_some() {
                 live_ball(ui, connection);
             }
             if let Some(search) = &progress.search {
@@ -490,9 +520,6 @@ impl Panel for BallFilterOptimizationPanel {
         });
     }
 
-    fn save(&self) -> serde_json::Value {
-        serde_json::to_value(&self.startup).unwrap_or_default()
-    }
 }
 
 impl BallFilterOptimizationPanel {
@@ -528,65 +555,156 @@ impl BallFilterOptimizationPanel {
             self.auto_connect = false;
         }
         let mut action = None;
-        egui::CollapsingHeader::new("Start or attach to optimization").default_open(true).show(ui, |ui| {
-            ui.add_enabled_ui(!active, |ui| {
-                egui::Grid::new("ball_filter_startup_fields").num_columns(2).show(ui, |ui| {
-                    ui.label("Existing recordings").on_hover_text("Optional. Leave empty to capture a new simulation run before optimization.");
-                    ui.add(egui::TextEdit::singleline(&mut self.startup.recordings).hint_text("Optional recording directory").desired_width(f32::INFINITY));
-                    ui.end_row();
-                    ui.label("Output directory");
-                    ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(&mut self.startup.output).desired_width(260.0));
-                        if ui.button("New path").clicked() {
-                            self.startup.output = new_output_directory();
-                        }
-                    });
-                    ui.end_row();
-                    ui.label("Remote host");
-                    ui.text_edit_singleline(&mut self.startup.host);
-                    ui.end_row();
-                    ui.label("New recordings every (minutes)").on_hover_text("Remote optimization only. Defaults to 5 minutes. Zero keeps the initial recordings.");
-                    ui.add(egui::DragValue::new(&mut self.startup.refresh_minutes).range(0..=1440));
-                    ui.end_row();
-                    ui.label("Opponents");
-                    ui.add(egui::DragValue::new(&mut self.startup.opponent_count).range(0..=8));
-                    ui.end_row();
-                    ui.label("Opponent diameter (m)");
-                    ui.add(egui::DragValue::new(&mut self.startup.opponent_width).range(0.1..=1.2).speed(0.01));
-                    ui.end_row();
-                    ui.label("Walking speed ×").on_hover_text("Human-controlled multiplier for normal behavior walking commands. Policy speed limits still apply; the optimizer does not tune this value.");
-                    ui.add(egui::DragValue::new(&mut self.startup.walking_speed_scale).range(0.1..=3.0).speed(0.05));
-                    ui.end_row();
-                    ui.label("Remote workers");
-                    ui.add(egui::DragValue::new(&mut self.startup.workers).range(1..=32));
-                    ui.end_row();
+        ui.heading("Demos");
+        let selected = self
+            .startup
+            .demo_scenario
+            .as_ref()
+            .and_then(|name| BALL_FILTER_DEMOS.iter().find(|demo| demo.name == name));
+        ui.horizontal_wrapped(|ui| {
+            egui::ComboBox::from_id_salt("ball_filter_demo")
+                .width(ui.available_width().min(280.0))
+                .truncate()
+                .selected_text(selected.map_or("All scenarios", |demo| demo.label))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut self.startup.demo_scenario, None, "All scenarios");
+                    for demo in BALL_FILTER_DEMOS {
+                        ui.selectable_value(
+                            &mut self.startup.demo_scenario,
+                            Some(demo.name.into()),
+                            demo.label,
+                        );
+                    }
                 });
-                ui.label("Paths are relative to the repository. Closing this panel leaves the run active.");
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Run all scenarios · no search").clicked() { action = Some(StartupAction::Demo); }
-                    if ui.button("Start local optimization").clicked() { action = Some(StartupAction::Local); }
-                    if ui.button("Start remote optimization").clicked() { action = Some(StartupAction::Remote); }
-                });
-                ui.collapsing("Connect existing remote runs", |ui| {
-                    ui.label("Local manifest files, one path per line:");
-                    ui.add(egui::TextEdit::multiline(&mut self.startup.manifests).desired_rows(2).desired_width(f32::INFINITY).hint_text("logs/remote-run/manifest.json"));
-                    if ui.button("Connect remote runs").clicked() { action = Some(StartupAction::Connect); }
-                });
-            });
-            if let Some(status) = &status {
-                ui.add(egui::Label::new(&status.message).wrap());
-                if let Some(pid) = status.pid { ui.label(format!("Startup helper PID: {pid}")); }
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Startup log:");
-                    monospace(ui, status.log_path.display().to_string());
-                    if ui.button("Copy log path").clicked() { ui.ctx().copy_text(status.log_path.display().to_string()); }
-                });
-                if !status.log_tail.is_empty() {
-                    ui.collapsing("Startup log tail", |ui| {
-                        egui::ScrollArea::vertical().max_height(180.0).stick_to_bottom(true).show(ui, |ui| { monospace(ui, &status.log_tail); });
-                    });
+            let label = if self.startup.demo_scenario.is_some() {
+                "Run demo"
+            } else {
+                "Run all demos"
+            };
+            if ui.add_enabled(!active, egui::Button::new(label)).clicked() {
+                action = Some(StartupAction::Demo);
+            }
+        });
+        if let Some(demo) = selected {
+            ui.label(format!(
+                "40 seconds · {} opponents · no parameter search",
+                demo.opponents.count
+            ));
+        } else {
+            ui.label(format!(
+                "{} scenarios · 40 seconds each · no parameter search",
+                BALL_FILTER_DEMOS.len()
+            ));
+        }
+        ui.label("Next output directory");
+        ui.horizontal(|ui| {
+            let width = (ui.available_width() - 85.0).max(40.0);
+            ui.add_sized(
+                [width, ui.spacing().interact_size.y],
+                egui::TextEdit::singleline(&mut self.startup.output),
+            );
+            if ui.button("New path").clicked() {
+                self.startup.output = new_output_directory();
+            }
+        });
+        if let Some(status) = &status {
+            ui.add(egui::Label::new(&status.message).wrap());
+            if active
+                && ui
+                    .add_enabled(!status.stop_requested, egui::Button::new("Stop local run"))
+                    .clicked()
+            {
+                if let Some(launch) = &self.launch
+                    && let Ok(mut launch) = launch.try_lock()
+                {
+                    launch.stop_requested = true;
+                    launch.message = "Stopping local run…".into();
                 }
             }
+            ui.collapsing("Launch details", |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(status.log_path.display().to_string()).monospace(),
+                    )
+                    .wrap(),
+                );
+                if ui.button("Copy log path").clicked() {
+                    ui.ctx().copy_text(status.log_path.display().to_string());
+                }
+                if !status.log_tail.is_empty() {
+                    egui::ScrollArea::vertical()
+                        .id_salt("ball_filter_startup_log")
+                        .max_height(180.0)
+                        .stick_to_bottom(true)
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(&status.log_tail).monospace())
+                                    .wrap(),
+                            );
+                        });
+                }
+            });
+        }
+        ui.add_space(8.0);
+        ui.collapsing("Optimization and remote runs", |ui| {
+            ui.add_enabled_ui(!active, |ui| {
+                ui.label("Existing recordings (optional)");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.startup.recordings)
+                        .hint_text("Leave empty to capture new recordings")
+                        .desired_width(ui.available_width()),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Opponents");
+                    ui.add(egui::DragValue::new(&mut self.startup.opponent_count).range(0..=8));
+                    ui.label("Diameter (m)");
+                    ui.add(
+                        egui::DragValue::new(&mut self.startup.opponent_width)
+                            .range(0.1..=1.2)
+                            .speed(0.01),
+                    );
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Walking speed ×");
+                    ui.add(
+                        egui::DragValue::new(&mut self.startup.walking_speed_scale)
+                            .range(0.1..=3.0)
+                            .speed(0.05),
+                    );
+                });
+                if ui.button("Start local optimization").clicked() {
+                    action = Some(StartupAction::Local);
+                }
+                ui.separator();
+                ui.label("Remote host");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.startup.host)
+                        .desired_width(ui.available_width()),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Workers");
+                    ui.add(egui::DragValue::new(&mut self.startup.workers).range(1..=32));
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.label("Recording refresh (min)");
+                    ui.add(egui::DragValue::new(&mut self.startup.refresh_minutes).range(0..=1440));
+                });
+                if ui.button("Start remote optimization").clicked() {
+                    action = Some(StartupAction::Remote);
+                }
+                ui.collapsing("Connect existing remote runs", |ui| {
+                    ui.label("Local manifest files, one path per line:");
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.startup.manifests)
+                            .desired_rows(2)
+                            .desired_width(ui.available_width())
+                            .hint_text("logs/remote-run/manifest.json"),
+                    );
+                    if ui.button("Connect remote runs").clicked() {
+                        action = Some(StartupAction::Connect);
+                    }
+                });
+            });
         });
         if let Some(action) = action {
             match startup_arguments(&self.startup, action)
@@ -594,19 +712,21 @@ impl BallFilterOptimizationPanel {
             {
                 Ok(launch) => {
                     self.launch = Some(launch);
+                    self.startup.output = new_output_directory();
                     self.error = None;
                     self.pending = None;
                     self.connection = None;
                     self.auto_connect = true;
                     self.next_connect_attempt = Instant::now();
                 }
-                Err(error) => self.error = Some(format!("Could not start optimization: {error:#}")),
+                Err(error) => self.error = Some(format!("Could not start run: {error:#}")),
             }
         }
         if active || self.auto_connect {
             ui.ctx().request_repaint_after(Duration::from_millis(500));
         }
     }
+
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -1079,11 +1199,19 @@ fn startup_arguments(settings: &StartupSettings, action: StartupAction) -> Resul
         "Output directory is required"
     );
     if matches!(action, StartupAction::Demo) {
-        return Ok(vec![
+        let mut arguments = vec![
             "demo".into(),
             "--output".into(),
             settings.output.trim().into(),
-        ]);
+        ];
+        if let Some(name) = &settings.demo_scenario {
+            color_eyre::eyre::ensure!(
+                BALL_FILTER_DEMOS.iter().any(|demo| demo.name == name),
+                "Unknown demo scenario: {name}"
+            );
+            arguments.extend(["--scenario".into(), name.clone()]);
+        }
+        return Ok(arguments);
     }
     color_eyre::eyre::ensure!(
         walking_speed_scale_is_valid(settings.walking_speed_scale),
@@ -1172,6 +1300,7 @@ fn spawn_startup(
     ));
     let state = Arc::new(Mutex::new(LaunchStatus {
         active: true,
+        stop_requested: false,
         message: "Starting simulator helper…".into(),
         pid: None,
         log_path,
@@ -1185,6 +1314,7 @@ fn spawn_startup(
             if let Ok(mut state) = background_state.lock() {
                 state.active = false;
                 state.message = match result {
+                    Ok(_) if state.stop_requested => "Local run stopped.".into(),
                     Ok(status) if status.success() => "Startup helper finished.".into(),
                     Ok(status) => format!("Startup helper failed: {status}. See the startup log."),
                     Err(error) => format!("Startup failed: {error:#}"),
@@ -1235,9 +1365,31 @@ fn monitor_startup(
         state.message = "Simulator helper is running.".into();
     }
     repaint.request_repaint();
+    let mut stop_sent = false;
     loop {
         if let Some(status) = child.try_wait()? {
             return Ok(status);
+        }
+        let stop_requested = state.lock()
+            .map_err(|_| color_eyre::eyre::eyre!("launcher state lock poisoned"))?
+            .stop_requested;
+        if stop_requested && !stop_sent {
+            // The unreaped child owns this process group. Its SIGINT handler
+            // stops and reaps local descendants without stopping remote workers.
+            match Command::new("kill")
+                .args(["-INT", "--", &format!("-{}", child.id())])
+                .output() {
+                Ok(result) if result.status.success() => stop_sent = true,
+                result => {
+                    if let Ok(mut state) = state.lock() {
+                        state.stop_requested = false;
+                        state.message = match result {
+                            Ok(result) => format!("Could not stop local run: {}", String::from_utf8_lossy(&result.stderr)),
+                            Err(error) => format!("Could not stop local run: {error}"),
+                        };
+                    }
+                }
+            }
         }
         if Arc::strong_count(state) == 1 {
             // The panel closed. Keep reaping the child without ending its run.
@@ -1344,7 +1496,7 @@ fn remote_status(ui: &mut Ui, progress: &Progress, now: f64) {
 
 fn monospace(ui: &mut Ui, text: impl Into<String>) -> egui::Response {
     let size = egui::TextStyle::Body.resolve(ui.style()).size;
-    ui.label(egui::RichText::new(text).monospace().size(size))
+    ui.add(egui::Label::new(egui::RichText::new(text).monospace().size(size)).wrap())
 }
 
 fn observe_progress(backend: &RobotBackend) -> Result<TopicObservation<Progress>> {
@@ -1707,6 +1859,35 @@ mod tests {
                 "1"
             ]
         );
+    }
+
+    #[test]
+    fn demo_launches_share_the_simulator_catalog_and_ignore_optimizer_settings() {
+        let mut settings = StartupSettings {
+            output: "logs/demo with spaces".into(),
+            workers: 0,
+            walking_speed_scale: f32::NAN,
+            ..Default::default()
+        };
+        assert_eq!(
+            startup_arguments(&settings, StartupAction::Demo).unwrap(),
+            ["demo", "--output", "logs/demo with spaces"]
+        );
+        for demo in BALL_FILTER_DEMOS {
+            settings.demo_scenario = Some(demo.name.into());
+            assert_eq!(
+                startup_arguments(&settings, StartupAction::Demo).unwrap(),
+                [
+                    "demo",
+                    "--output",
+                    "logs/demo with spaces",
+                    "--scenario",
+                    demo.name
+                ]
+            );
+        }
+        settings.demo_scenario = Some("unknown".into());
+        assert!(startup_arguments(&settings, StartupAction::Demo).is_err());
     }
 
     #[test]

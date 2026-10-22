@@ -902,12 +902,32 @@ parameter search**:
 ```
 
 Use `--output logs/ball-demo` to choose the new output directory; otherwise a
-timestamped directory is created under `logs/`. This runs nine 40-second episodes: stationary close, approach, fast crossing,
-fast near shot, brief gaps, contested, long occlusion, empty false detections,
-and sideline. Each uses seed 42 and its prescribed opponent count/width. The
-normal behavior stack controls the robot. A desktop 3D viewer opens, and Twix's
-**Ball-filter optimization → Run all scenarios · no search** starts the same demo.
-The optimizer settings in that panel apply only to optimization, not this demo.
+timestamped directory is created under `logs/`. This runs ten 40-second episodes:
+stationary close, approach, fast crossing, fast near shot, approach fast pass,
+brief gaps, contested, long occlusion, empty false detections, and sideline.
+Each uses seed 42 and its prescribed opponent count/width. The normal behavior
+stack controls the robot except for explicitly scripted walking phases.
+A desktop 3D viewer opens. In Twix's **Ball-filter optimization** panel, use the
+**Demos** selector to pick any individual scenario and click **Run demo**, or
+choose **All scenarios → Run all demos** for the full suite. **Stop local run**
+stops the session launched by that panel so another demo can be started; detached
+remote searches keep running. Each start prepares a fresh output path for the
+next run. Optimizer settings are in a separate collapsed section and do not
+affect demos. Connection and 3D-view controls stay above the scrolling content.
+
+Run the approach-and-turn challenge on its own with:
+
+```sh
+./simulator demo --scenario approach-fast-pass
+```
+
+The robot walks toward a stationary ball for four seconds. A 3 N s backward
+impulse then sends the ball past its side at roughly 6–7 m/s, requiring a rapid
+turn to follow it behind the robot. Scripted walking ends at the kick; the
+normal head and behavior stack controls tracking and reacquisition. This example
+has no opponents and checks that the capture contains walking and a fast ball;
+it does not require successful tracking to retain the recording. Use `--scenario`
+with any demo name to run only that example.
 
 Open <http://127.0.0.1:8765> for the image observer. Completed scenarios become
 available as each recording finishes. Step through frames, seek by elapsed time,
@@ -954,12 +974,13 @@ zero-as-disabled limits need the explicit parameter migration described above.
 On a remote server, forward the port with `ssh -L 8765:127.0.0.1:8765 HOST`.
 Rendering is on demand, without a GPU or a continuously growing image queue.
 
-Use `./simulator demo --seed 4243` for a different reproducible realization of all nine scenarios (default seed: 42). Demo never searches parameters.
+Use `./simulator demo --seed 4243` for a different reproducible realization of the
+scenario suite (default seed: 42). Demo never searches parameters.
 
 ### Fast and airborne challenge captures
 
 The additional recipes in `scenarios/ball-filter-challenges/` exercise speeds above
-15 m/s and an airborne kick. They are separate from the established nine-scenario
+15 m/s and an airborne kick. They are separate from the standard
 demo and do not change its baseline dataset. Capture without parameter search:
 
 ```sh

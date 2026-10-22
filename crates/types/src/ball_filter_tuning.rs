@@ -10,6 +10,34 @@ pub const OPEN_VIEWER_TOPIC: &str = "/ball_tuning/tuning/open_viewer";
 pub const OPPONENTS_TOPIC: &str = "/ball_tuning/tuning/opponents";
 pub const WALKING_SPEED_TOPIC: &str = "/ball_tuning/tuning/walking_speed_scale";
 
+/// Demo names, display labels and physical opponents shared by Twix and the simulator.
+pub struct BallFilterDemo {
+    pub name: &'static str,
+    pub label: &'static str,
+    pub opponents: OpponentParameters,
+}
+
+const fn demo(name: &'static str, label: &'static str, count: u32, width: f32) -> BallFilterDemo {
+    BallFilterDemo {
+        name,
+        label,
+        opponents: OpponentParameters { count, width },
+    }
+}
+
+pub const BALL_FILTER_DEMOS: &[BallFilterDemo] = &[
+    demo("stationary-close", "Stationary close ball", 0, 0.44),
+    demo("approach", "Approach the ball", 0, 0.44),
+    demo("fast-crossing", "Fast crossing", 0, 0.44),
+    demo("fast-near-shot", "Fast near shot", 0, 0.44),
+    demo("approach-fast-pass", "Approach and fast pass", 0, 0.44),
+    demo("brief-gaps", "Brief detection gaps", 0, 0.44),
+    demo("contested", "Contested ball", 2, 0.44),
+    demo("long-occlusion", "Long occlusion", 1, 0.75),
+    demo("empty-false", "Empty scene with false detections", 0, 0.44),
+    demo("sideline", "Sideline", 1, 0.44),
+];
+
 pub const fn default_walking_speed_scale() -> f32 {
     1.0
 }

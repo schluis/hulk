@@ -122,7 +122,11 @@ impl App for TwixApp {
             ui.horizontal(|ui| {
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     ui.label("Namespace:");
-                    let namespace_response = ui.text_edit_singleline(&mut self.namespace_editor);
+                    let namespace_width = (ui.available_width() - 100.0).clamp(40.0, 280.0);
+                    let namespace_response = ui.add(
+                        eframe::egui::TextEdit::singleline(&mut self.namespace_editor)
+                            .desired_width(namespace_width),
+                    );
                     if shortcuts_enabled && context.keybind_pressed(KeybindAction::FocusNamespace) {
                         namespace_response.request_focus();
                     }

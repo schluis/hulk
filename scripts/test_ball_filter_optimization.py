@@ -53,6 +53,25 @@ class BallFilterLauncherTests(unittest.TestCase):
             children.start.assert_not_called()
             children.monitor.assert_not_called()
 
+    def test_individual_demo_is_forwarded_without_starting_an_optimizer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "demo with spaces"
+            children = Mock()
+            with patch.object(launcher, "remote_worker_slots") as capacity, patch.object(launcher, "log"):
+                launcher.run(self.arguments("demo", output, "--scenario", "approach-fast-pass"), children)
+            capacity.assert_not_called()
+            children.run.assert_called_once_with(
+                [launcher.REPOSITORY / "simulator", "demo", "--output", output / "demo",
+                 "--scenario", "approach-fast-pass"], "Scenario demo (no search)")
+            children.start.assert_not_called()
+
+    def test_scenario_selection_is_rejected_for_optimization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "run"
+            with self.assertRaisesRegex(ValueError, "only valid for demo"):
+                launcher.validate(self.arguments("local", output, "--scenario", "approach-fast-pass"))
+            self.assertFalse(output.exists())
+
     def test_existing_output_is_never_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)

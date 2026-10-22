@@ -194,6 +194,9 @@ def parser():
     result = argparse.ArgumentParser(description=__doc__)
     result.add_argument("mode", choices=["demo", "local", "remote", "connect"])
     result.add_argument("--output", type=Path, required=True, help="new local session directory")
+    result.add_argument("--scenario", choices=sorted(
+        path.stem for path in (REPOSITORY / "tools/simulate/scenarios/ball-filter").glob("*.json")
+    ), help="demo only: run one scenario; omitted runs the full suite")
     result.add_argument("--recordings", type=Path, help="completed six-recording capture directory")
     result.add_argument("--trials", type=int, default=256, help="candidates per continuous search round")
     result.add_argument("--host", default="remote-compiler")
@@ -214,6 +217,8 @@ def parser():
 
 
 def validate(args):
+    if args.scenario and args.mode != "demo":
+        raise ValueError("--scenario is only valid for demo mode")
     if args.mode == "demo" and (args.recordings or args.manifest or args.resume_manifest):
         raise ValueError("demo runs fresh scenarios; do not supply recordings or remote manifests")
     if args.trials < 1 or not 1 <= args.workers <= 32:
@@ -478,7 +483,10 @@ def run(args, children):
     save_session(session)
     log(f"Preparing {args.mode} session in {output}")
     if args.mode == "demo":
-        children.run([simulator, "demo", "--output", output / "demo"], "Scenario demo (no search)")
+        command = [simulator, "demo", "--output", output / "demo"]
+        if args.scenario:
+            command += ["--scenario", args.scenario]
+        children.run(command, "Scenario demo (no search)")
         return
     if args.mode == "local":
         command = [simulator, "--tune-ball-filter", output / "local", "--tuning-trials", str(args.trials), *simulator_scenario(args)]

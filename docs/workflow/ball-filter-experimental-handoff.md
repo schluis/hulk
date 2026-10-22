@@ -163,7 +163,7 @@ From the root of that checkout, run:
 The current default stable toolchain works: Rust 1.99.0 passed the simulator
 compile check. No toolchain override is needed.
 
-This runs nine scenarios without parameter search and opens the 3D viewer.
+This runs ten scenarios without parameter search and opens the 3D viewer.
 Recordings and summaries go to a new timestamped directory under `logs/`.
 Open <http://127.0.0.1:8765> for the image observer. Stored hypotheses may remain
 visible after the selected estimate disappears. Use `--headless --exit-after`

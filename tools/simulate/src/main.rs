@@ -54,13 +54,18 @@ fn default_demo_output() -> PathBuf {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Run every ball-filter example once, without parameter search, and serve replay images.
+    /// Run ball-filter examples once, without parameter search, and serve replay images.
     Demo {
         #[arg(long, value_name = "NEW_DIRECTORY", default_value_os_t = default_demo_output())]
         output: PathBuf,
         /// Optional ball-filter overrides. Omitted values use current robotics layers.
         #[arg(long)]
         parameters: Option<PathBuf>,
+        /// Run only this example. Omitted runs the complete demo suite.
+        #[arg(long, value_parser = clap::builder::PossibleValuesParser::new(
+            types::ball_filter_tuning::BALL_FILTER_DEMOS.iter().map(|demo| demo.name)
+        ))]
+        scenario: Option<String>,
         #[arg(long, default_value = "127.0.0.1:8765")]
         image_listen: std::net::SocketAddr,
         /// Random seed shared by the scenario suite.
@@ -158,6 +163,7 @@ fn main() -> Result<()> {
     if let Some(Command::Demo {
         output,
         parameters,
+        scenario,
         image_listen,
         seed,
         headless,
@@ -173,6 +179,7 @@ fn main() -> Result<()> {
             !exit_after,
             ball_tuning::TuningSource::Demo {
                 parameters: parameters.as_deref(),
+                scenario: scenario.as_deref(),
                 images: &images,
                 viewer: !headless,
                 seed: *seed,
@@ -390,17 +397,21 @@ mod cli_tests {
             "--exit-after",
             "--seed",
             "4243",
+            "--scenario",
+            "approach-fast-pass",
         ])
         .unwrap();
         assert!(matches!(
-            args.command,
+            &args.command,
             Some(Command::Demo {
                 headless: true,
                 exit_after: true,
                 seed: 4243,
+                scenario: Some(scenario),
                 ..
-            })
+            }) if scenario == "approach-fast-pass"
         ));
+        assert!(Args::try_parse_from(["simulate", "demo", "--scenario", "unknown"]).is_err());
         assert!(
             Args::try_parse_from([
                 "simulate",
