@@ -914,11 +914,18 @@ Use `--output logs/ball-demo` to choose the new output directory; otherwise a
 timestamped directory is created under `logs/`. This runs ten 40-second episodes:
 stationary close, approach, fast crossing, fast near shot, approach fast pass,
 brief gaps, contested, long occlusion, empty false detections, and sideline.
-Each uses seed 42 and its prescribed opponent count/width. The normal behavior
+Each uses seed 42 and, when launched without an opponent override, its prescribed
+opponent count/width. The normal behavior
 stack controls the robot except for explicitly scripted walking phases.
 A desktop 3D viewer opens. In Twix's **Ball-filter optimization** panel, use the
 **Demos** selector to pick any individual scenario and click **Run demo**, or
-choose **All scenarios → Run all demos** for the full suite. **Stop local run**
+choose **All scenarios → Run all demos** for the full suite. **Include opponents**
+is enabled by default in Twix and adds two opponents to every selected scenario,
+keeping each scenario's prescribed opponent diameter. Uncheck it to run any
+scenario or the full suite without opponents. This also removes scripted
+opponent occlusions and their dependent coverage checks; the effective settings
+are saved in `demo.json`. The toggle applies when starting a demo.
+**Stop local run**
 stops the session launched by that panel so another demo can be started; detached
 remote searches keep running. Each start prepares a fresh output path for the
 next run. Optimizer settings are under a separate **Optimization** heading and do not
@@ -928,13 +935,16 @@ Run the approach-and-turn challenge on its own with:
 
 ```sh
 ./simulator demo --scenario approach-fast-pass
+
+# Include two opponents in every scenario, or use false to remove all opponents.
+./simulator demo --demo-opponents true
 ```
 
 The robot walks toward a stationary ball for four seconds. A 3 N s backward
 impulse then sends the ball past its side at roughly 6–7 m/s, requiring a rapid
 turn to follow it behind the robot. Scripted walking ends at the kick; the
 normal head and behavior stack controls tracking and reacquisition. This example
-has no opponents and checks that the capture contains walking and a fast ball;
+has no opponents unless enabled and checks that the capture contains walking and a fast ball;
 it does not require successful tracking to retain the recording. Use `--scenario`
 with any demo name to run only that example.
 

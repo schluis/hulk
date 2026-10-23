@@ -198,6 +198,8 @@ def parser():
         path.stem for path in (REPOSITORY / "tools/simulate/scenarios/ball-filter").glob("*.json")
     ), help="demo only: run one scenario; omitted runs the full suite")
     result.add_argument("--recordings", type=Path, help="completed six-recording capture directory")
+    result.add_argument("--demo-opponents", choices=("true", "false"),
+                        help="demo only: include two opponents in every scenario, or disable all opponents")
     result.add_argument("--trials", type=int, default=256, help="candidates per continuous search round")
     result.add_argument("--host", default="remote-compiler")
     result.add_argument("--workers", type=int, default=32)
@@ -217,6 +219,8 @@ def parser():
 
 
 def validate(args):
+    if args.demo_opponents is not None and args.mode != "demo":
+        raise ValueError("--demo-opponents is only valid for demo mode")
     if args.scenario and args.mode != "demo":
         raise ValueError("--scenario is only valid for demo mode")
     if args.mode == "demo" and (args.recordings or args.manifest or args.resume_manifest):
@@ -486,6 +490,8 @@ def run(args, children):
         command = [simulator, "demo", "--output", output / "demo"]
         if args.scenario:
             command += ["--scenario", args.scenario]
+        if args.demo_opponents is not None:
+            command += ["--demo-opponents", args.demo_opponents]
         children.run(command, "Scenario demo (no search)")
         return
     if args.mode == "local":

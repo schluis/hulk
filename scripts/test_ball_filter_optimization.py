@@ -65,6 +65,25 @@ class BallFilterLauncherTests(unittest.TestCase):
                  "--scenario", "approach-fast-pass"], "Scenario demo (no search)")
             children.start.assert_not_called()
 
+    def test_opponent_override_is_forwarded_for_the_suite_and_individual_demos(self):
+        for enabled in ("true", "false"):
+            for scenario in ([], ["--scenario", "approach-fast-pass"]):
+                with self.subTest(enabled=enabled, scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                    output = Path(directory) / "demo"
+                    children = Mock()
+                    with patch.object(launcher, "log"):
+                        launcher.run(self.arguments("demo", output, *scenario, "--demo-opponents", enabled), children)
+                    children.run.assert_called_once_with(
+                        [launcher.REPOSITORY / "simulator", "demo", "--output", output / "demo",
+                         *scenario, "--demo-opponents", enabled], "Scenario demo (no search)")
+
+    def test_opponent_override_is_rejected_for_optimization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "run"
+            with self.assertRaisesRegex(ValueError, "only valid for demo"):
+                launcher.validate(self.arguments("local", output, "--demo-opponents", "true"))
+            self.assertFalse(output.exists())
+
     def test_scenario_selection_is_rejected_for_optimization(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "run"

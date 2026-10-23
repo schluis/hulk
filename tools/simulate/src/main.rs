@@ -66,6 +66,9 @@ enum Command {
             types::ball_filter_tuning::BALL_FILTER_DEMOS.iter().map(|demo| demo.name)
         ))]
         scenario: Option<String>,
+        /// Include two opponents in every demo, or disable all opponents. Omitted uses scenario defaults.
+        #[arg(long, action = clap::ArgAction::Set)]
+        demo_opponents: Option<bool>,
         #[arg(long, default_value = "127.0.0.1:8765")]
         image_listen: std::net::SocketAddr,
         /// Random seed shared by the scenario suite.
@@ -164,6 +167,7 @@ fn main() -> Result<()> {
         output,
         parameters,
         scenario,
+        demo_opponents,
         image_listen,
         seed,
         headless,
@@ -180,6 +184,7 @@ fn main() -> Result<()> {
             ball_tuning::TuningSource::Demo {
                 parameters: parameters.as_deref(),
                 scenario: scenario.as_deref(),
+                opponents_enabled: *demo_opponents,
                 images: &images,
                 viewer: !headless,
                 seed: *seed,
@@ -412,6 +417,13 @@ mod cli_tests {
             }) if scenario == "approach-fast-pass"
         ));
         assert!(Args::try_parse_from(["simulate", "demo", "--scenario", "unknown"]).is_err());
+        for (value, enabled) in [("true", true), ("false", false)] {
+            assert!(matches!(
+                Args::try_parse_from(["simulate", "demo", "--demo-opponents", value]).unwrap().command,
+                Some(Command::Demo { demo_opponents: Some(actual), .. }) if actual == enabled
+            ));
+        }
+        assert!(Args::try_parse_from(["simulate", "demo", "--demo-opponents", "invalid"]).is_err());
         assert!(
             Args::try_parse_from([
                 "simulate",

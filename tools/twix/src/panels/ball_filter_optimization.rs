@@ -54,6 +54,7 @@ pub struct BallFilterOptimizationPanel {
 #[serde(default)]
 struct StartupSettings {
     demo_scenario: Option<String>,
+    demo_opponents: bool,
     recordings: String,
     output: String,
     host: String,
@@ -69,6 +70,7 @@ impl Default for StartupSettings {
     fn default() -> Self {
         Self {
             demo_scenario: None,
+            demo_opponents: true,
             recordings: String::new(),
             output: new_output_directory(),
             host: "remote-compiler".into(),
@@ -585,15 +587,25 @@ impl BallFilterOptimizationPanel {
                 action = Some(StartupAction::Demo);
             }
         });
+        ui.add_enabled(
+            !active,
+            egui::Checkbox::new(&mut self.startup.demo_opponents, "Include opponents"),
+        )
+        .on_hover_text("Use two opponents in every scenario. Uncheck to remove all opponents, including scripted occluders. Applies when starting a demo.");
         if let Some(demo) = selected {
             ui.label(format!(
                 "40 seconds · {} opponents · no parameter search",
-                demo.opponents.count
+                demo.opponent_parameters(self.startup.demo_opponents).count
             ));
         } else {
             ui.label(format!(
-                "{} scenarios · 40 seconds each · no parameter search",
-                BALL_FILTER_DEMOS.len()
+                "{} scenarios · 40 seconds each · {} opponents each · no parameter search",
+                BALL_FILTER_DEMOS.len(),
+                if self.startup.demo_opponents {
+                    OpponentParameters::default().count
+                } else {
+                    0
+                }
             ));
         }
         ui.label("Next output directory");
@@ -1217,6 +1229,7 @@ fn startup_arguments(settings: &StartupSettings, action: StartupAction) -> Resul
             );
             arguments.extend(["--scenario".into(), name.clone()]);
         }
+        arguments.extend(["--demo-opponents".into(), settings.demo_opponents.to_string()]);
         return Ok(arguments);
     }
     color_eyre::eyre::ensure!(
@@ -1875,22 +1888,20 @@ mod tests {
             walking_speed_scale: f32::NAN,
             ..Default::default()
         };
-        assert_eq!(
-            startup_arguments(&settings, StartupAction::Demo).unwrap(),
-            ["demo", "--output", "logs/demo with spaces"]
-        );
-        for demo in BALL_FILTER_DEMOS {
-            settings.demo_scenario = Some(demo.name.into());
+        for (enabled, value) in [(true, "true"), (false, "false")] {
+            settings.demo_opponents = enabled;
+            settings.demo_scenario = None;
             assert_eq!(
                 startup_arguments(&settings, StartupAction::Demo).unwrap(),
-                [
-                    "demo",
-                    "--output",
-                    "logs/demo with spaces",
-                    "--scenario",
-                    demo.name
-                ]
+                ["demo", "--output", "logs/demo with spaces", "--demo-opponents", value]
             );
+            for demo in BALL_FILTER_DEMOS {
+                settings.demo_scenario = Some(demo.name.into());
+                assert_eq!(
+                    startup_arguments(&settings, StartupAction::Demo).unwrap(),
+                    ["demo", "--output", "logs/demo with spaces", "--scenario", demo.name, "--demo-opponents", value]
+                );
+            }
         }
         settings.demo_scenario = Some("unknown".into());
         assert!(startup_arguments(&settings, StartupAction::Demo).is_err());
@@ -1947,6 +1958,10 @@ mod tests {
         assert_eq!(restored.recordings, "logs/existing");
         assert_eq!(restored.host, "remote-compiler");
         assert_eq!(restored.workers, 32);
+        assert!(restored.demo_opponents);
+        let disabled = StartupSettings { demo_opponents: false, ..Default::default() };
+        let restored: StartupSettings = serde_json::from_value(serde_json::to_value(disabled).unwrap()).unwrap();
+        assert!(!restored.demo_opponents);
     }
 
     #[test]

@@ -17,6 +17,19 @@ pub struct BallFilterDemo {
     pub opponents: OpponentParameters,
 }
 
+impl BallFilterDemo {
+    pub fn opponent_parameters(&self, enabled: bool) -> OpponentParameters {
+        OpponentParameters {
+            count: if enabled {
+                OpponentParameters::default().count
+            } else {
+                0
+            },
+            ..self.opponents
+        }
+    }
+}
+
 const fn demo(name: &'static str, label: &'static str, count: u32, width: f32) -> BallFilterDemo {
     BallFilterDemo {
         name,

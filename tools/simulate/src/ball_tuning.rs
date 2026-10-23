@@ -118,6 +118,7 @@ pub enum TuningSource<'a> {
     Demo {
         parameters: Option<&'a Path>,
         scenario: Option<&'a str>,
+        opponents_enabled: Option<bool>,
         images: &'a ball_filter_tuner::observation::ImageServer,
         viewer: bool,
         seed: u64,
@@ -372,17 +373,23 @@ pub fn run(
     );
     let mut preview = None;
     let result = (|| -> Result<()> {
-        if let TuningSource::Demo { images, seed, .. } = source {
+        if let TuningSource::Demo {
+            images, seed, opponents_enabled, ..
+        } = source {
             let mut manifest = Vec::new();
             for (index, demo) in demo_scenarios.iter().enumerate() {
                 let family = demo.name;
                 ensure!(!shutdown.load(Ordering::Relaxed), "demo stopped");
-                let recipe: CaptureRecipe = serde_json::from_slice(&std::fs::read(root.join(
+                let mut recipe: CaptureRecipe = serde_json::from_slice(&std::fs::read(root.join(
                     format!("tools/simulate/scenarios/ball-filter/{family}.json"),
                 ))?)?;
                 recipe.validate()?;
                 let path = output.join(format!("{family}.mcap"));
-                let opponents = demo.opponents;
+                let opponents = opponents_enabled
+                    .map_or(demo.opponents, |enabled| demo.opponent_parameters(enabled));
+                if opponents.count == 0 {
+                    recipe.disable_opponents();
+                }
                 progress.send_modify(|state| {
                     state.status = "Demo · no parameter search".into();
                     state.recording = format!("{family}.mcap");
@@ -1770,6 +1777,17 @@ fn default_capture_wall_height() -> f64 {
 }
 
 impl CaptureRecipe {
+    fn disable_opponents(&mut self) {
+        // These checks depend on physical opponents. Keep unrelated reacquisition
+        // checks, such as the fast-crossing ball leaving the camera view.
+        if !self.occlusion_intervals.is_empty() {
+            self.minimum_coverage.remove("reacquisition_opportunities");
+        }
+        self.occlusion_intervals.clear();
+        self.minimum_coverage.remove("opponent_kicks");
+        self.minimum_coverage.remove("occluded_in_view_seconds");
+    }
+
     fn validate(&self) -> Result<()> {
         ensure!(
             !self.family.trim().is_empty(),
@@ -2022,6 +2040,34 @@ mod tests {
         files.sort();
         families.sort();
         assert_eq!(families, files);
+    }
+
+    #[test]
+    fn every_demo_supports_opponents_and_removes_only_their_dependent_requirements() {
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("scenarios/ball-filter");
+        for demo in BALL_FILTER_DEMOS {
+            let mut recipe: CaptureRecipe = serde_json::from_slice(
+                &std::fs::read(directory.join(format!("{}.json", demo.name))).unwrap(),
+            ).unwrap();
+            assert_eq!(demo.opponent_parameters(true).count, 2, "{}", demo.name);
+            assert_eq!(demo.opponent_parameters(false).count, 0, "{}", demo.name);
+            assert_eq!(demo.opponent_parameters(true).width, demo.opponents.width);
+            recipe.disable_opponents();
+            recipe.validate().unwrap();
+            assert!(recipe.occlusion_intervals.is_empty());
+            assert!(!recipe.minimum_coverage.contains_key("opponent_kicks"));
+            assert!(!recipe.minimum_coverage.contains_key("occluded_in_view_seconds"));
+            if demo.name == "long-occlusion" {
+                assert!(!recipe.minimum_coverage.contains_key("reacquisition_opportunities"));
+            }
+            if demo.name == "fast-crossing" {
+                assert_eq!(recipe.minimum_coverage["reacquisition_opportunities"], 1.0);
+            }
+            if demo.name == "approach-fast-pass" {
+                assert_eq!(recipe.minimum_coverage["robot_walked_metres"], 0.5);
+                assert_eq!(recipe.minimum_coverage["peak_ball_speed_metres_per_second"], 5.0);
+            }
+        }
     }
 
     #[test]
