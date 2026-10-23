@@ -169,6 +169,15 @@ python3 scripts/ball_filter_optimization connect --output logs/remote-monitor \
   --manifest logs/remote-ball-tuning-retention-20261003/manifest.json
 ```
 
+The connection field and `--manifest` expect a **local copy** of the run's
+`manifest.json`, not a path on the optimization server. Starting a remote run
+from Twix or the launcher saves it at `OUTPUT/remote/manifest.json` on the
+launching computer. The server also has a copy at
+`~/.cache/hulk-ball-filter-tuning/runs/RUN/manifest.json`; for a run launched
+from another computer, copy that manifest to the computer running Twix first.
+The local copy records the SSH host, run ID, and source/data hashes. The bridge
+uses it to query the server and validate that it is observing the intended run.
+
 Repeat `--manifest` to monitor multiple compatible runs. The bridge selects their
 best eligible training result; holdout scores remain evaluation-only. Remote
 workers perform offline search, while a local simulator runs the production
@@ -912,7 +921,7 @@ A desktop 3D viewer opens. In Twix's **Ball-filter optimization** panel, use the
 choose **All scenarios → Run all demos** for the full suite. **Stop local run**
 stops the session launched by that panel so another demo can be started; detached
 remote searches keep running. Each start prepares a fresh output path for the
-next run. Optimizer settings are in a separate collapsed section and do not
+next run. Optimizer settings are under a separate **Optimization** heading and do not
 affect demos. Connection and 3D-view controls stay above the scrolling content.
 
 Run the approach-and-turn challenge on its own with:

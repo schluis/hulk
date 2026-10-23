@@ -646,64 +646,64 @@ impl BallFilterOptimizationPanel {
             });
         }
         ui.add_space(8.0);
-        ui.collapsing("Optimization and remote runs", |ui| {
-            ui.add_enabled_ui(!active, |ui| {
-                ui.label("Existing recordings (optional)");
+        ui.heading("Optimization");
+        ui.add_enabled_ui(!active, |ui| {
+            ui.label("Existing recordings (optional)");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.startup.recordings)
+                    .hint_text("Leave empty to capture new recordings")
+                    .desired_width(ui.available_width()),
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Opponents");
+                ui.add(egui::DragValue::new(&mut self.startup.opponent_count).range(0..=8));
+                ui.label("Diameter (m)");
                 ui.add(
-                    egui::TextEdit::singleline(&mut self.startup.recordings)
-                        .hint_text("Leave empty to capture new recordings")
-                        .desired_width(ui.available_width()),
+                    egui::DragValue::new(&mut self.startup.opponent_width)
+                        .range(0.1..=1.2)
+                        .speed(0.01),
                 );
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Opponents");
-                    ui.add(egui::DragValue::new(&mut self.startup.opponent_count).range(0..=8));
-                    ui.label("Diameter (m)");
-                    ui.add(
-                        egui::DragValue::new(&mut self.startup.opponent_width)
-                            .range(0.1..=1.2)
-                            .speed(0.01),
-                    );
-                });
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Walking speed ×");
-                    ui.add(
-                        egui::DragValue::new(&mut self.startup.walking_speed_scale)
-                            .range(0.1..=3.0)
-                            .speed(0.05),
-                    );
-                });
-                if ui.button("Start local optimization").clicked() {
-                    action = Some(StartupAction::Local);
-                }
-                ui.separator();
-                ui.label("Remote host");
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Walking speed ×");
                 ui.add(
-                    egui::TextEdit::singleline(&mut self.startup.host)
-                        .desired_width(ui.available_width()),
+                    egui::DragValue::new(&mut self.startup.walking_speed_scale)
+                        .range(0.1..=3.0)
+                        .speed(0.05),
                 );
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Workers");
-                    ui.add(egui::DragValue::new(&mut self.startup.workers).range(1..=32));
-                });
-                ui.horizontal_wrapped(|ui| {
-                    ui.label("Recording refresh (min)");
-                    ui.add(egui::DragValue::new(&mut self.startup.refresh_minutes).range(0..=1440));
-                });
-                if ui.button("Start remote optimization").clicked() {
-                    action = Some(StartupAction::Remote);
+            });
+            if ui.button("Start local optimization").clicked() {
+                action = Some(StartupAction::Local);
+            }
+            ui.separator();
+            ui.label("Remote host");
+            ui.add(
+                egui::TextEdit::singleline(&mut self.startup.host)
+                    .desired_width(ui.available_width()),
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Workers");
+                ui.add(egui::DragValue::new(&mut self.startup.workers).range(1..=32));
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Recording refresh (min)");
+                ui.add(egui::DragValue::new(&mut self.startup.refresh_minutes).range(0..=1440));
+            });
+            if ui.button("Start remote optimization").clicked() {
+                action = Some(StartupAction::Remote);
+            }
+            ui.collapsing("Connect existing remote runs", |ui| {
+                ui.label("Local run manifests (one path per line)");
+                ui.label("Use OUTPUT/remote/manifest.json from the computer that launched the run. For runs launched elsewhere, copy the manifest here first.");
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.startup.manifests)
+                        .desired_rows(2)
+                        .desired_width(ui.available_width())
+                        .hint_text("logs/remote-run/remote/manifest.json"),
+                );
+                if ui.button("Connect remote runs").clicked() {
+                    action = Some(StartupAction::Connect);
                 }
-                ui.collapsing("Connect existing remote runs", |ui| {
-                    ui.label("Local manifest files, one path per line:");
-                    ui.add(
-                        egui::TextEdit::multiline(&mut self.startup.manifests)
-                            .desired_rows(2)
-                            .desired_width(ui.available_width())
-                            .hint_text("logs/remote-run/manifest.json"),
-                    );
-                    if ui.button("Connect remote runs").clicked() {
-                        action = Some(StartupAction::Connect);
-                    }
-                });
             });
         });
         if let Some(action) = action {
@@ -1094,80 +1094,86 @@ fn history_scores(ui: &mut Ui, metrics: &HistoryMetrics) {
             .filter(|value| value.is_finite())
             .map_or_else(|| "—".into(), |value| format!("{value:.3}"))
     }
-    egui::Grid::new("run_scores").num_columns(5).show(ui, |ui| {
-        for label in [
-            "Baseline → best",
-            "Loss",
-            "Close RMSE (m)",
-            "Velocity RMSE (m/s)",
-            "Close velocity RMSE (m/s)",
-            "Fast close velocity RMSE (m/s)",
-            "Missing (s)",
-            "Motion lag (s)",
-        ] {
-            ui.label(label);
-        }
-        ui.end_row();
-        for (label, baseline, best) in [
-            (
-                "Training",
-                &metrics.training_baseline,
-                &metrics.training_optimized,
-            ),
-            (
-                "Held out",
-                &metrics.validation_baseline,
-                &metrics.validation_optimized,
-            ),
-        ] {
-            ui.label(label);
-            for values in [
-                (
-                    baseline.as_ref().and_then(|m| m.loss),
-                    best.as_ref().and_then(|m| m.loss),
-                ),
-                (
-                    baseline
-                        .as_ref()
-                        .and_then(|m| m.close_range_position_rmse_metres),
-                    best.as_ref()
-                        .and_then(|m| m.close_range_position_rmse_metres),
-                ),
-                (
-                    baseline
-                        .as_ref()
-                        .and_then(|m| m.velocity_rmse_metres_per_second),
-                    best.as_ref()
-                        .and_then(|m| m.velocity_rmse_metres_per_second),
-                ),
-                (
-                    baseline
-                        .as_ref()
-                        .and_then(|m| m.close_range_velocity_rmse_metres_per_second),
-                    best.as_ref()
-                        .and_then(|m| m.close_range_velocity_rmse_metres_per_second),
-                ),
-                (
-                    baseline
-                        .as_ref()
-                        .and_then(|m| m.fast_close_range_velocity_rmse_metres_per_second),
-                    best.as_ref()
-                        .and_then(|m| m.fast_close_range_velocity_rmse_metres_per_second),
-                ),
-                (
-                    baseline.as_ref().and_then(|m| m.missing_seconds),
-                    best.as_ref().and_then(|m| m.missing_seconds),
-                ),
-                (
-                    baseline.as_ref().and_then(|m| m.motion_lag_seconds),
-                    best.as_ref().and_then(|m| m.motion_lag_seconds),
-                ),
-            ] {
-                ui.label(format!("{} → {}", number(values.0), number(values.1)));
-            }
-            ui.end_row();
-        }
-    });
+    let arrow = egui_material_icons::icons::ICON_ARROW_FORWARD.codepoint;
+    egui::ScrollArea::horizontal()
+        .id_salt("run_scores_scroll")
+        .show(ui, |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+            egui::Grid::new("run_scores").num_columns(8).show(ui, |ui| {
+                ui.label(format!("Baseline {arrow} best"));
+                for label in [
+                    "Loss",
+                    "Close RMSE (m)",
+                    "Velocity RMSE (m/s)",
+                    "Close velocity RMSE (m/s)",
+                    "Fast close velocity RMSE (m/s)",
+                    "Missing (s)",
+                    "Motion lag (s)",
+                ] {
+                    ui.label(label);
+                }
+                ui.end_row();
+                for (label, baseline, best) in [
+                    (
+                        "Training",
+                        &metrics.training_baseline,
+                        &metrics.training_optimized,
+                    ),
+                    (
+                        "Held out",
+                        &metrics.validation_baseline,
+                        &metrics.validation_optimized,
+                    ),
+                ] {
+                    ui.label(label);
+                    for values in [
+                        (
+                            baseline.as_ref().and_then(|m| m.loss),
+                            best.as_ref().and_then(|m| m.loss),
+                        ),
+                        (
+                            baseline
+                                .as_ref()
+                                .and_then(|m| m.close_range_position_rmse_metres),
+                            best.as_ref()
+                                .and_then(|m| m.close_range_position_rmse_metres),
+                        ),
+                        (
+                            baseline
+                                .as_ref()
+                                .and_then(|m| m.velocity_rmse_metres_per_second),
+                            best.as_ref()
+                                .and_then(|m| m.velocity_rmse_metres_per_second),
+                        ),
+                        (
+                            baseline
+                                .as_ref()
+                                .and_then(|m| m.close_range_velocity_rmse_metres_per_second),
+                            best.as_ref()
+                                .and_then(|m| m.close_range_velocity_rmse_metres_per_second),
+                        ),
+                        (
+                            baseline
+                                .as_ref()
+                                .and_then(|m| m.fast_close_range_velocity_rmse_metres_per_second),
+                            best.as_ref()
+                                .and_then(|m| m.fast_close_range_velocity_rmse_metres_per_second),
+                        ),
+                        (
+                            baseline.as_ref().and_then(|m| m.missing_seconds),
+                            best.as_ref().and_then(|m| m.missing_seconds),
+                        ),
+                        (
+                            baseline.as_ref().and_then(|m| m.motion_lag_seconds),
+                            best.as_ref().and_then(|m| m.motion_lag_seconds),
+                        ),
+                    ] {
+                        ui.label(format!("{} {arrow} {}", number(values.0), number(values.1)));
+                    }
+                    ui.end_row();
+                }
+            });
+        });
 }
 
 fn repository_root() -> PathBuf {
